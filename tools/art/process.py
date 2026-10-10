@@ -44,7 +44,7 @@ MAX_BOX = {
     "jaw": (26, 18),
     "brain": (24, 15),
     "horns": (52, 26),
-    "ear": (14, 18),
+    "ear": (17, 21),
     "spine": (100, 44),
     "spark": (32, 32),
 }
@@ -60,8 +60,16 @@ SCENE = [
 SCENE_COLORS = 64
 PROP_LIFT = 1.35
 
-# Sprites turned before use (degrees, counter-clockwise): the rat tail was drawn standing up.
-ROTATE = {"tail_rat": -90}
+# Sprites turned before use (degrees, counter-clockwise): the rat tail was drawn standing up,
+# and third arms lean out so they reach past the head instead of hiding behind it.
+ROTATE = {"tail_rat": -90, **{p: 30 for p in PARTS if PARTS[p][0] == "arm3"}}
+
+
+def rotate(im, degrees, k=8):
+    """Turn pixel art without smearing it: rotate an 8x nearest-neighbour blow-up, shrink back."""
+    big = im.resize((im.width * k, im.height * k), Image.NEAREST)
+    big = big.rotate(degrees, resample=Image.NEAREST, expand=True)
+    return crop(binarize(big.resize((big.width // k, big.height // k), Image.NEAREST)))
 
 
 def load_pick(part_id, picks):
@@ -121,7 +129,7 @@ def main():
     for part_id in PARTS:
         im = crop(binarize(load_pick(part_id, picks)))
         if part_id in ROTATE:
-            im = im.rotate(ROTATE[part_id], expand=True)
+            im = rotate(im, ROTATE[part_id])
         icons[part_id] = im
         box = MAX_BOX.get(PARTS[part_id][0])
         if box:

@@ -80,13 +80,16 @@ Prompts live in `tools/art/prompts.py` (keys match option ids in `src/game/catal
 
 Stitching (nothing may float): `tools/art/anchors.py` measures each processed sprite and writes its
 attachment point `a` (top of an arm or leg, neck of a head, cut end of a tail...) plus host sockets
-(torso: neck, shoulders, hips, chest, belly, back; head: skull top, brow, mouth, ear sides; leg: thigh) into
+(torso: neck, shoulder stumps, hips, chest, belly, back; head: skull top, brow, mouth, ear sides; leg: shin) into
 `sprites.json`. Faces and tail ends are hand-set in its `POINTS` (fractions). `layoutMonster` puts each
 part's `a` on its host's socket, stands legs on the base plate (`FLOOR_Y`) and returns the seams that
 `Monster` draws. `src/game/stitch.test.ts` reads the real PNGs and fails if any option of any slot touches
 its host by fewer than 12 px (each side, for wings and horn pairs), if an inlaid eye/heart/mouth sticks out of
-the body's outline or piles onto another, or if a foot misses the plate. Re-run `npm test` after re-picking art.
-`process.py` can turn a sprite (`ROTATE`; the rat tail lies on its side).
+the body's outline or piles onto another, if a foot misses the plate, or if a part is buried on a finished
+21-part monster (under 25% of its pixels showing; spine 12%, wings 15%). Re-run `npm test` after re-picking art.
+The space beside the head is crowded (ears, third arm, second head, spine), so: ears sit in front of horns,
+third arms are tilted 30 degrees to reach past the head, and the spine rises behind BOTH shoulders (a mirrored
+pair). `process.py` turns sprites with `ROTATE` (pixel-safe 8x rotate; the rat tail lies on its side).
 
 The lab (`public/art/lab.png`, 240x224) = the picked room (`bg_lab`) with props composited by `SCENE` in
 `process.py` (surgical cart left, specimen jars and tesla coil right; the rack stands in the middle). The

@@ -49,7 +49,7 @@ export interface SpriteInfo {
   earL?: Pt;
   earR?: Pt;
   // leg socket
-  thigh?: Pt;
+  shin?: Pt;
 }
 
 /** Sprite info keyed by option id (generated into sprites.json by tools/art/process.py). */
@@ -98,7 +98,7 @@ const Z: Record<SlotId, number> = {
   maw: 9,
   armR: 10,
   armL: 10,
-  ears: 11,
+  ears: 14.5,
   head: 12,
   brain: 13,
   horns: 14,
@@ -297,11 +297,16 @@ export function layoutMonster(
       case 'wings':
         sew(slot, id, { x: f.neck.x, y: f.torso.y + 18 });
         break;
-      case 'spine':
-        sew(slot, id, { x: f.neck.x, y: f.torso.y + 8 });
+      case 'spine': {
+        // a ridge seen from the front: it rises behind both shoulders, half clear of the head
+        const y = Math.min(f.shoulderL.y, f.shoulderR.y) + 8;
+        sew(slot, id, { x: Math.min(f.shoulderL.x + 4, f.head.x + 2), y });
+        sew(slot, id, { x: Math.max(f.shoulderR.x - 4, f.head.x + f.head.w - 2), y }, true);
         break;
+      }
       case 'arm3':
-        sew(slot, id, { x: f.shoulderL.x + 6, y: f.shoulderL.y + 22 });
+        // leans out from behind the right shoulder blade, reaching past the head
+        sew(slot, id, { x: f.shoulderL.x + 6, y: f.shoulderL.y + 10 });
         break;
       case 'head2': {
         const socket = { x: f.shoulderR.x + 3, y: f.shoulderR.y + 6 };
@@ -326,13 +331,13 @@ export function layoutMonster(
         break;
       }
       case 'hide': {
-        // a patch sewn over the right thigh, just below the hip
+        // a patch sewn onto the right shin, below where the hands hang
         const leg = infoOf(parts.legR, sheet);
-        const thighX = leg?.thigh ? f.hipL.x - leg.a[0]! + leg.thigh[0]! : f.hipL.x;
-        const thighY = Math.max(leg?.thigh ? FLOOR_Y + 1 - leg.h + leg.thigh[1]! : 0, f.hipL.y + 9);
-        const x0 = Math.round(thighX - (s.w >> 1));
-        const y0 = Math.round(thighY - (s.h >> 1));
-        sew(slot, id, { x: thighX, y: thighY }, false, [
+        const shinX = leg?.shin ? f.hipL.x - leg.a[0]! + leg.shin[0]! : f.hipL.x;
+        const shinY = leg?.shin ? FLOOR_Y + 1 - leg.h + leg.shin[1]! : FLOOR_Y - 30;
+        const x0 = Math.round(shinX - (s.w >> 1));
+        const y0 = Math.round(shinY - (s.h >> 1));
+        sew(slot, id, { x: shinX, y: shinY }, false, [
           { x: x0, y: y0, len: s.w },
           { x: x0, y: y0 + s.h - 1, len: s.w },
           { x: x0, y: y0, len: s.h, vertical: true },

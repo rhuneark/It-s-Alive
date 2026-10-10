@@ -3,7 +3,7 @@
 Each sprite gets "a": the pixel (in the unflipped sprite) that is sewn onto its host,
 e.g. the top of an arm, the neck of a head, the cut end of a tail. Hosts also get their
 sockets: a torso has neck, shoulders, hips, chest, belly and back points; a head has its
-skull top, brow, mouth and the sides where ears go; a leg has a thigh.
+skull top, brow, mouth and the sides where ears go; a leg has a shin.
 
 Most points come from the sprite's own pixels (so a narrow torso gets narrow shoulders).
 Faces and tails differ too much for rules, so their points are set by hand in POINTS, as
@@ -20,6 +20,7 @@ POINTS = {
     "head_raven": {"brow": (0.5, 0.2), "mouth": (0.5, 0.74), "ear": 0.33},
     "head_werewolf": {"brow": (0.5, 0.33), "mouth": (0.5, 0.86), "ear": 0.45},
     "horns_ram": {"a": (0.5, 0.15)},  # ram horns grow from the crown and curl down the sides
+    "spine_shark": {"a": (0.8, 1.0)},  # the fin stands at the outer end of its base
     "tail_croc": {"a": (0.06, 0.7)},
     "tail_devil": {"a": (0.08, 0.72)},
     "tail_fox": {"a": (0.06, 0.9)},
@@ -79,20 +80,25 @@ def points_for(part_id, kind, im):
     if kind == "torso":
         out["a"] = [w // 2, 0]
         out["neck"] = [mean_x(m, 0, 2), 0]
-        ys = round(h * 0.13)
-        l, r = extent(m, ys)
-        out["shoulderL"] = [l + 2, first_row(m, l + 2, l + 2)]
-        out["shoulderR"] = [r - 2, first_row(m, r - 2, r - 2)]
+        # shoulders: the outermost stump in the upper 40%, so arms hang beside the
+        # trunk instead of over a wide belly or chest
+        top = range(3, round(h * 0.4))
+        lmin = min(extent(m, y)[0] for y in top)
+        rmax = max(extent(m, y)[1] for y in top)
+        out["shoulderL"] = [lmin + 3, first_row(m, lmin + 3, lmin + 3)]
+        out["shoulderR"] = [rmax - 3, first_row(m, rmax - 3, rmax - 3)]
         # hips: a quarter of the way in from the sides of the waist, never closer
         # together than a leg's width
         l, r = extent(m, h - 7)
         cx, half = (l + r) / 2, max(10, round((r - l) * 0.25))
         for name, x in (("hipL", round(cx - half)), ("hipR", round(cx + half))):
             out[name] = [x, last_row(m, x, x)]
+        # chest eye and heart sit either side of the breastbone, clear of the arms
         yc = round(h * 0.3)
         l, r = extent(m, yc)
-        out["chestL"] = [round(l + (r - l) * 0.3), yc]
-        out["chestR"] = [round(r - (r - l) * 0.3), yc + 4]
+        cx, off = (l + r) / 2, max(7, round((r - l) * 0.17))
+        out["chestL"] = [round(cx - off), yc]
+        out["chestR"] = [round(cx + off), yc + 4]
         # belly: the row nearest 62% down that is wide enough to hold a mouth and
         # clear of the heart (a skeleton's waist is only a spine, so it moves to the pelvis)
         def room(y):  # narrowest width over the rows a mouth would cover
@@ -119,9 +125,13 @@ def points_for(part_id, kind, im):
         out["a"] = [mean_x(m, 0, 3), 0]
     elif kind == "leg":
         out["a"] = [mean_x(m, 0, 3), 0]
-        yt = round(h * 0.22)
-        out["thigh"] = [mean_x(m, yt - 1, yt + 1), yt]
-    elif kind in ("head2", "arm3", "brain", "horns", "spine", "ear"):
+        ys = round(h * 0.6)
+        out["shin"] = [mean_x(m, ys - 1, ys + 1), ys]
+    elif kind == "ear":
+        # drawn pointing up and out: sewn on by the inner corner of its base
+        xs = [x for y in range(h - 3, h) for x in _row_xs(m, y)]
+        out["a"] = [max(xs) - 2, h - 2]
+    elif kind in ("head2", "arm3", "brain", "horns", "spine"):
         out["a"] = [mean_x(m, h - 3, h - 1), h - 1]
     elif kind == "wings":
         out["a"] = [w // 2, round(h * 0.4)]

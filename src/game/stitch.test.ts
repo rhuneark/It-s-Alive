@@ -101,6 +101,39 @@ const INLAID: SlotId[] = ['browEye', 'chestEye', 'heart', 'maw'];
 /** Least number of pixels a part must share with its host. */
 const MIN_SHARED = 12;
 
+/** Least share of a part's pixels that must show on a finished monster (default 25%). */
+const LEAST_VISIBLE: Partial<Record<SlotId, number>> = { spine: 0.12, wings: 0.15 };
+
+/** All 21 slots filled, rotating through the options so each set differs. */
+function fullMonster(k: number): Partial<Record<SlotId, string>> {
+  const parts: Partial<Record<SlotId, string>> = {};
+  QUESTIONS.forEach((q, i) => (parts[q.slot] = q.options[(k + i) % q.options.length]!.id));
+  return parts;
+}
+
+function opaqueAt(p: Placed, X: number, Y: number): boolean {
+  const x = X - p.x;
+  const y = Y - p.y;
+  if (x < 0 || y < 0 || x >= p.w || y >= p.h) return false;
+  const m = mask(p.id);
+  return m.on[y * m.w + (p.flip ? m.w - 1 - x : x)] === 1;
+}
+
+/** Share of `t`'s pixels not covered by anything drawn in front of it. */
+function visibleShare(placed: Placed[], t: Placed): number {
+  const at = placed.indexOf(t);
+  const front = placed.filter((p, i) => p.z > t.z || (p.z === t.z && i > at));
+  let all = 0;
+  let shown = 0;
+  for (let y = 0; y < t.h; y++)
+    for (let x = 0; x < t.w; x++) {
+      if (!opaqueAt(t, t.x + x, t.y + y)) continue;
+      all++;
+      if (!front.some((p) => opaqueAt(p, t.x + x, t.y + y))) shown++;
+    }
+  return shown / all;
+}
+
 type Combo = { label: string; parts: Partial<Record<SlotId, string>> };
 
 /** Every option of `slot` on every torso x head, and on every option of a host limb. */
@@ -170,6 +203,30 @@ describe('every part is sewn onto its host', () => {
     expect([...new Set(problems)]).toEqual([]);
   });
 
+  it('no part is buried under the others on a finished monster', () => {
+    const problems: string[] = [];
+    for (const q of QUESTIONS) {
+      if (q.slot === 'spark' || q.slot === 'torso' || q.slot === 'head') continue;
+      const least = LEAST_VISIBLE[q.slot] ?? 0.25;
+      for (const o of q.options)
+        for (const torso of ids('torso'))
+          for (const head of ids('head'))
+            for (let k = 0; k < 5; k++) {
+              const parts = fullMonster(k);
+              Object.assign(parts, { torso, head, [q.slot]: o.id });
+              const placed = layoutMonster(parts, SHEET);
+              for (const p of placed.filter((x) => x.slot === q.slot)) {
+                const v = visibleShare(placed, p);
+                if (v < least)
+                  problems.push(
+                    `${o.id} on ${torso} + ${head} (set ${k}): ${Math.round(v * 100)}% shows`,
+                  );
+              }
+            }
+    }
+    expect(problems).toEqual([]);
+  });
+
   it('feet stand on the base plate', () => {
     for (const torso of ids('torso'))
       for (const slot of ['legR', 'legL'] as const)
@@ -183,8 +240,7 @@ describe('every part is sewn onto its host', () => {
     for (const torso of ids('torso'))
       for (const head of ids('head'))
         for (let k = 0; k < 5; k++) {
-          const parts: Partial<Record<SlotId, string>> = {};
-          for (const q of QUESTIONS) parts[q.slot] = q.options[(k + QUESTIONS.indexOf(q)) % 5]!.id;
+          const parts = fullMonster(k);
           Object.assign(parts, { torso, head });
           for (const p of layoutMonster(parts, SHEET)) {
             const where = `${p.id} on ${torso} + ${head}`;
