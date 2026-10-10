@@ -8,7 +8,8 @@ Every UTC day all players vote on one body part for a shared gothic monster; at
 midnight the most-voted option is stitched on. Night 1 is always the HEAD; the season
 ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wakes.
 
-- **Share link (private):** _not deployed yet — add it here after the first deploy and end every update with it._
+- **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
+  (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
 - Season config: `SEASON` in `src/game/schedule.ts` (id, first day, Halloween). Changing `id` starts fresh tallies.
   The first day must be the launch day so night 1 (HEAD) is playable; a later start drops middle questions
   (`buildSchedule`), never the head, brain or spark.
@@ -91,3 +92,6 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   3. `rundot game api-keys create --label "GitHub Actions"` and save the secret as the `RUNDOT_API_KEY` repo secret
 - `public/thumbnail.jpg` must be exactly 512x512 and under ~150 KB (`tools/thumbnail/` renders it).
 - No leaderboard in this game.
+- `rundot/textGen.config.json` is `{"disabled": true}`: the game uses no AI, and `rundot deploy` otherwise
+  auto-creates an uncapped config. Keep it disabled unless a feature needs it (then set caps).
+- The cloud sandbox cannot reach w.run (network policy), so live checks on the deployed build are done by the owner.
