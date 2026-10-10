@@ -4,9 +4,9 @@
 # It's Alive! — project guide
 
 A RUN.world game (React + Vite + TypeScript, from series-ai/run-template-2d-react).
-Every UTC day all players vote on one body part for a shared gothic monster; at
-midnight the most-voted option is stitched on. Night 1 is always the HEAD; the season
-ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wakes.
+The monster starts as a whole human husk standing in the lab. Every UTC day all players vote
+on one body part; at midnight the most-voted option is painted into the husk. Night 1 is always
+the HEAD; the season ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wakes.
 
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
@@ -32,17 +32,19 @@ ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wake
 
 ```
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
-               layout (sews parts onto the 240x224 scene by their anchors), crowd (stand-in tallies), rng;
-               rules.test.ts, stitch.test.ts (every option of every slot attaches on every torso x head)
+               layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
+               rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
-src/components Monster (layered pixel art + iron rack + stitches), Voting (options + results), Chronicle,
+src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
                TestLab (owner-only sandbox controls), SoundPanel (music on/off + volume), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, awakened
-public/art/    shipped art: parts/<id>.png (fitted for the monster), icons/<id>.png (cards), lab.png (room+props)
+public/art/    shipped art: husk/<region>.png, parts/<key>.png (painted layers, also the card art),
+               icons/spark_*.png (the spark is an effect), lab.png (room with its props painted in)
 public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audio/theme.mp3
-art/           NOT shipped: picks.json, picked/ (chosen raw sprites), raw/ (git-ignored candidates), palette.png
-tools/art/     PixelLab generation + processing scripts (python3)
+art/           NOT shipped: picks.json, picked/ (chosen scene-sized paintings, husk.png, bg_lab.png),
+               raw/ (git-ignored candidates)
+tools/art/     husk.py (inpaint/edit parts into the husk), process.py (layers), pixellab.py, prompts.py
 scripts/       simulate.ts (Monte-Carlo checks), shot.mjs (dev screenshots)
 e2e/           Playwright full-season playthrough at 375x667 and 390x844
 ```
@@ -63,39 +65,52 @@ e2e/           Playwright full-season playthrough at 375x667 and 390x844
   days are picked at random) and cached in the save's `history`.
 - Portrait, phone-first: check 375x667 and 390x844, no sideways scrolling, buttons framed (>=2px border),
   >=44px tall, text >=14px. Fonts: UnifrakturMaguntia (titles), Cinzel (UI), IM Fell English (body).
-- Pixel art: `image-rendering: pixelated`, palette-quantized to one shared 64-colour palette.
+- Pixel art: `image-rendering: pixelated`, palette-quantized (all monster layers share one 256-colour palette;
+  96 was too few for 300+ layers and turned the croc grey).
   Everything in `public/` ships — keep unreleased art in `art/`.
 
-## Art pipeline (PixelLab, connected via the environment proxy)
+## The monster: one husk with parts painted into it (PixelLab, connected via the environment proxy)
+
+Night 1 (and before launch) shows a whole human husk (`art/picked/husk.png`) standing in the lab. Every
+part is PAINTED INTO that body by PixelLab, never pasted on as a separate sprite, so all parts share the
+husk's scale, pose, outline and light, and sit on the same neck, shoulders, waist and floor:
+- One coordinate system: the 224x200 lab scene, husk at `HUSK_AT` (60, 26), feet on `FLOOR_Y` 192.
+  `husk.py regions()` splits the husk into head / torso / loincloth / armR / armL / legR / legL.
+  `mask_for(slot)` says where each slot may paint (a head may grow above the neck, an arm outward, etc.).
+- The six big parts (head, torso, arms, legs) are Pro inpaints (`/inpaint-v3`, ~9 generations each) of
+  the husk region. The loincloth is never replaced: it ties the waist together.
+- Add-ons that sit on a chosen part (third eye, horns, ears, jaw, brain on each HEAD; chest eye, heart,
+  belly mouth, second head on each TORSO; hide on each right LEG) are made with `edit-images-v2`: one job
+  (~10 generations) paints an option onto all 5 bases; `added()` keeps only the new/clearly changed pixels
+  inside the slot mask, so the base keeps its own colours. Their layer key is `<option>@<base>`.
+- Behind-the-body parts (wings, spine, tail, third arm) are Pro inpaints around the husk, drawn behind it.
+- The cheap `/inpaint` (1 generation) was tried and is too weak for add-ons (lost horns, no third eye).
+- Shapes that fill a box to its edges get an oval painting area (`OVAL`); a fin that would hide behind
+  the head keeps clear of it (`KEEP_CLEAR`); chest eyes are mirrored to the other pectoral (`MIRROR`,
+  the edit model puts them where the heart goes). Faint generator pixels are dropped (`solid`).
+- Nothing floats, by construction: `process.py rooted()` keeps only the pieces of a layer that touch
+  what it grows from (its base part, the shoulder for a second head, the body for the rest).
+- An add-on keeps only pixels that are really new (`only_new`, `STRONG`): where it lies on its base it
+  must differ clearly from the base, otherwise it is the edit model re-rendering the base (greyer croc).
+- Draw order (`Z` in husk.py and layout.ts, keep them equal): heart over chest eye and mouth; third eye
+  over brain over horns (their layers carry a little redrawn skull); spine over the third arm.
 
 ```
-python3 tools/art/generate.py --only <ids>              # pixflux candidates -> art/raw/<id>__<seed>.png
-python3 tools/art/generate_pro.py <ids>                 # PixelLab Pro, 16-64 variants -> art/raw/<id>__proNN.png
-python3 tools/art/contact.py <prefix> out.png 3         # contact sheet to review candidates
-# edit art/picks.json (id -> chosen file), then:
-python3 tools/art/scene.py room 6 | props [ids]         # the lab: wide room candidates, prop candidates
-python3 tools/art/process.py                            # crop, fit, quantize -> public/art + src/game/sprites.json
+python3 tools/art/husk.py gen <slot> [ids] [--seed=7,21] [--par=4]     # Pro inpaints -> art/raw/<key>__iN.png
+python3 tools/art/husk.py edit <slot> [ids] [--seed=7]                 # add-on on all 5 bases -> __eN.png
+python3 tools/art/husk.py sheet <prefix,...> out.png x0,y0,x1,y1        # review candidates in place
+# set art/picks.json (key -> raw file), then:
+python3 tools/art/process.py [--partial]     # cut, crop, quantize -> public/art + src/game/layers.json
 ```
-Prompts live in `tools/art/prompts.py` (keys match option ids in `src/game/catalog.ts`).
+Option descriptions live in `tools/art/prompts.py` (`PARTS`); slot wording in `TEMPLATES` / `EDITS`.
+`layout.ts` mirrors husk.py's `Z` (draw order) and `BASE_OF` (which add-ons are painted per base).
+`src/game/stitch.test.ts` reads the real PNGs and fails if a layer is missing for any option x base, a
+head/arm/leg/torso does not meet its neighbours, an add-on does not touch its base, a behind part is not
+rooted in the body, a foot misses the floor, or a part is buried on a finished monster.
 
-Stitching (nothing may float): `tools/art/anchors.py` measures each processed sprite and writes its
-attachment point `a` (top of an arm or leg, neck of a head, cut end of a tail...) plus host sockets
-(torso: neck, shoulder stumps, hips, chest, belly, back; head: skull top, brow, mouth, ear sides; leg: shin) into
-`sprites.json`. Faces and tail ends are hand-set in its `POINTS` (fractions). `layoutMonster` puts each
-part's `a` on its host's socket, stands legs on the base plate (`FLOOR_Y`) and returns the seams that
-`Monster` draws. `src/game/stitch.test.ts` reads the real PNGs and fails if any option of any slot touches
-its host by fewer than 12 px (each side, for wings and horn pairs), if an inlaid eye/heart/mouth sticks out of
-the body's outline or piles onto another, if a foot misses the plate, or if a part is buried on a finished
-21-part monster (under 25% of its pixels showing; spine 12%, wings 15%). Re-run `npm test` after re-picking art.
-The space beside the head is crowded (ears, third arm, second head, spine), so: ears sit in front of horns,
-third arms are tilted 30 degrees to reach past the head, and the spine rises behind BOTH shoulders (a mirrored
-pair). `process.py` turns sprites with `ROTATE` (pixel-safe 8x rotate; the rat tail lies on its side).
-
-The lab (`public/art/lab.png`, 240x224) = the picked room (`bg_lab`) with props composited by `SCENE` in
-`process.py` (surgical cart left, specimen jars and tesla coil right; the rack stands in the middle). The
-coil's spark overlay in `Monster.tsx` (`COIL_SPARK`) must follow the coil if it moves. The big stage shows the
-whole room; option-card minis, the title and the thumbnail show its middle (`.monster-stage` is centred and
-clipped by its frame).
+The lab (`public/art/lab.png`, 224x200) is one painting: room `bg_lab__s14` (upright blood-stained
+operating slab behind the husk) with the surgical cart and the generator INPAINTED onto its floor, so
+the props share its perspective. Never composite props onto the room: they float.
 
 ## Test Lab (owner/editor only, works on the deployed build)
 

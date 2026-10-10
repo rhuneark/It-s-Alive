@@ -1,31 +1,6 @@
-"""Generation prompts for every part sprite. Keys match option ids in src/game/catalog.ts."""
-
-STYLE = (
-    "dark gothic horror pixel art, Victorian Frankenstein laboratory specimen, "
-    "muted desaturated colors, dramatic candle lighting, black outline"
-)
-
-# slot -> (width, height, template). {d} is the option description.
-SLOTS = {
-    "head": (64, 64, "{d}, severed head, front view facing the viewer, symmetrical face, neck stump at the bottom, no body"),
-    "torso": (64, 72, "{d}, headless torso with no arms and no legs, front view, symmetrical, stitched stumps at neck shoulders and waist"),
-    "arm": (32, 80, "{d}, one single severed arm hanging straight down vertically, shoulder stump at the top, hand at the bottom, front view"),
-    "leg": (32, 80, "{d}, one single severed leg standing straight vertically, hip stump at the top, foot at the bottom, front view"),
-    "eye": (32, 32, "{d}, a single eyeball with eyelids, close up, front view, centered"),
-    "heart": (32, 32, "{d}, anatomical heart organ, front view, centered"),
-    "tail": (64, 64, "{d}, a single tail curving upward to the right, base of the tail at bottom left, side view, no body"),
-    "horns": (64, 32, "a symmetrical pair of {d}, left and right, front view, no head, no skull"),
-    "maw": (40, 28, "{d}, gaping monstrous mouth with teeth, front view, wide horizontal mouth, no head"),
-    "wings": (160, 80, "a symmetrical pair of {d} spread wide open, front view, no body"),
-    "head2": (40, 40, "{d}, severed head, front view facing the viewer, neck stump at the bottom, no body"),
-    "spine": (96, 48, "{d} growing upward in a fan, back view, centered, no body"),
-    "arm3": (32, 72, "{d}, one single severed arm reaching straight up vertically, grasping hand at the top, stump at the bottom, front view"),
-    "ear": (32, 32, "a single {d}, pointing up and to the left, side view, no head"),
-    "hide": (32, 32, "a square patch of {d} with stitched edges, flat texture swatch, front view"),
-    "jaw": (40, 32, "{d} hanging downward, front view, no head"),
-    "brain": (40, 28, "{d}, wrinkled brain, front view, wide, centered"),
-    "spark": (32, 32, "icon of {d}, centered"),
-}
+"""What each option looks like, for the PixelLab prompts in husk.py. Keys match option ids in
+src/game/catalog.ts; the first field is the old sprite kind (kept for reference), the second the
+description painted into the husk."""
 
 # option id -> (template slot, description)
 PARTS = {

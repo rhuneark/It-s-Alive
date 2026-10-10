@@ -1,14 +1,14 @@
-"""Turn picked raw PixelLab sprites into shipped assets.
+"""Turn the picked husk, part paintings and room into shipped assets.
 
-- art/picks.json maps option id -> candidate file name in art/raw/ (git-ignored). The chosen
-  candidate is copied to art/picked/<id>.png, which IS committed, so the shipped art can be
-  rebuilt without the raw candidates.
-- alpha is made binary, sprites are cropped to their content
-- every sprite is quantized (no dithering) to ONE shared palette, so parts that were
-  generated separately still look like they belong to the same monster
-- output: public/art/parts/<id>.png (sized for the monster), public/art/icons/<id>.png
-  (full-size, for option cards) and src/game/sprites.json ({id: {w, h, a, ...sockets}}: size
-  plus the attachment points from anchors.py, which src/game/layout.ts sews together)
+- art/picks.json maps a key (option id, or "<option>@<base>" for add-ons painted onto one
+  particular head/torso/leg) to its candidate in art/raw/ (git-ignored). The chosen candidate is
+  copied to art/picked/<key>.png, which IS committed, so assets can be rebuilt without art/raw.
+- every candidate is a full 224x200 scene image (see husk.py); its layer is the candidate cut to
+  the slot's mask and cropped. Husk regions are cut the same way.
+- all layers share ONE palette, so parts painted in separate jobs still match.
+- output: public/art/husk/<region>.png, public/art/parts/<key>.png (layers, which double as the
+  option-card icons), public/art/icons/spark_*.png (the spark has no layer), public/art/lab.png,
+  and src/game/layers.json ({husk|parts: {key: [x, y, w, h]}}).
 
 Usage: python3 tools/art/process.py
 """
@@ -17,155 +17,204 @@ import os
 import shutil
 import sys
 
-from PIL import Image, ImageEnhance
+from PIL import Image
 
 sys.path.insert(0, os.path.dirname(__file__))
-from anchors import points_for  # noqa: E402
-from prompts import PARTS  # noqa: E402
+import husk  # noqa: E402
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-RAW = os.path.join(ROOT, "art", "raw")
-PICKED = os.path.join(ROOT, "art", "picked")
-OUT = os.path.join(ROOT, "public", "art", "parts")
-ICONS = os.path.join(ROOT, "public", "art", "icons")
-META = os.path.join(ROOT, "src", "game", "sprites.json")
-PICKS = os.path.join(ROOT, "art", "picks.json")
-PALETTE_OUT = os.path.join(ROOT, "art", "palette.png")
-PALETTE_SIZE = 64
-# Largest size (w, h) a part may have on the 160x224 monster canvas, by slot.
-# Bigger sprites are scaled down to fit so overlays never bury the torso.
-MAX_BOX = {
-    "head": (46, 52),
-    "head2": (26, 28),
-    "eye": (13, 13),
-    "heart": (17, 17),
-    "maw": (24, 16),
-    "hide": (16, 16),
-    "jaw": (26, 18),
-    "brain": (24, 15),
-    "horns": (52, 26),
-    "ear": (17, 21),
-    "spine": (100, 44),
-    "spark": (32, 32),
-}
-
-
-# Props set into the 240x224 laboratory (art/picks.json -> art/raw), drawn in order:
-# (id, left x, bottom y). The monster's rack stands in the middle, so props keep to the sides.
-SCENE = [
-    ("prop_jars", 158, 198),
-    ("prop_cart", 2, 222),
-    ("prop_coil", 192, 222),
-]
+ROOT = husk.ROOT
+RAW, PICKED = husk.RAW, husk.PICKED
+OUT = os.path.join(ROOT, "public", "art")
+META = os.path.join(ROOT, "src", "game", "layers.json")
+PALETTE_SIZE = 256
 SCENE_COLORS = 64
-PROP_LIFT = 1.35
-
-# Sprites turned before use (degrees, counter-clockwise): the rat tail was drawn standing up,
-# and third arms lean out so they reach past the head instead of hiding behind it.
-ROTATE = {"tail_rat": -90, **{p: 30 for p in PARTS if PARTS[p][0] == "arm3"}}
 
 
-def rotate(im, degrees, k=8):
-    """Turn pixel art without smearing it: rotate an 8x nearest-neighbour blow-up, shrink back."""
-    big = im.resize((im.width * k, im.height * k), Image.NEAREST)
-    big = big.rotate(degrees, resample=Image.NEAREST, expand=True)
-    return crop(binarize(big.resize((big.width // k, big.height // k), Image.NEAREST)))
-
-
-def load_pick(part_id, picks):
-    name = picks.get(part_id, f"{part_id}__11.png")
-    raw = os.path.join(RAW, name)
-    picked = os.path.join(PICKED, f"{part_id}.png")
-    if os.path.exists(raw):
-        os.makedirs(PICKED, exist_ok=True)
+def load_pick(key, picks):
+    raw = os.path.join(RAW, picks.get(key, ""))
+    picked = os.path.join(PICKED, f"{key}.png")
+    if picks.get(key) and os.path.exists(raw):
         shutil.copyfile(raw, picked)
     if not os.path.exists(picked):
-        raise FileNotFoundError(f"{part_id}: missing {name}")
+        raise FileNotFoundError(f"{key}: no picked image (art/picks.json -> art/raw/)")
     return Image.open(picked).convert("RGBA")
 
 
 def binarize(im):
-    px = im.load()
-    for y in range(im.height):
-        for x in range(im.width):
-            r, g, b, a = px[x, y]
-            px[x, y] = (r, g, b, 255) if a >= 128 else (0, 0, 0, 0)
-    return im
-
-
-def crop(im):
-    box = im.getbbox()
-    return im.crop(box) if box else im
-
-
-def shrink(im, factor):
-    w, h = max(1, round(im.width * factor)), max(1, round(im.height * factor))
-    return binarize(im.resize((w, h), Image.LANCZOS))
-
-
-def build_palette(images):
-    pixels = []
-    for im in images:
-        for r, g, b, a in getattr(im, "get_flattened_data", im.getdata)():
-            if a:
-                pixels.append((r, g, b))
-    strip = Image.new("RGB", (len(pixels), 1))
-    strip.putdata(pixels)
-    pal = strip.quantize(colors=PALETTE_SIZE, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-    return pal
-
-
-def apply_palette(im, pal):
-    rgb = im.convert("RGB").quantize(palette=pal, dither=Image.Dither.NONE).convert("RGB")
-    out = Image.new("RGBA", im.size, (0, 0, 0, 0))
-    out.paste(rgb, (0, 0), im.split()[3])
+    a = im.split()[3].point(lambda v: 255 if v >= 128 else 0)
+    out = im.copy()
+    out.putalpha(a)
     return out
 
 
-def main():
-    picks = json.load(open(PICKS)) if os.path.exists(PICKS) else {}
-    sprites = {}
-    icons = {}
-    for part_id in PARTS:
-        im = crop(binarize(load_pick(part_id, picks)))
-        if part_id in ROTATE:
-            im = rotate(im, ROTATE[part_id])
-        icons[part_id] = im
-        box = MAX_BOX.get(PARTS[part_id][0])
-        if box:
-            factor = min(1.0, box[0] / im.width, box[1] / im.height)
-            if factor < 1.0:
-                im = crop(shrink(im, factor))
-        sprites[part_id] = im
-    pal = build_palette(sprites.values())
-    os.makedirs(OUT, exist_ok=True)
-    os.makedirs(ICONS, exist_ok=True)
-    for part_id, im in icons.items():
-        apply_palette(im, pal).save(os.path.join(ICONS, f"{part_id}.png"), optimize=True)
-    pal_img = pal.convert("RGB").resize((PALETTE_SIZE, 1))
-    pal_img.save(PALETTE_OUT)
-    meta = {}
-    for part_id, im in sprites.items():
-        q = apply_palette(im, pal)
-        q.save(os.path.join(OUT, f"{part_id}.png"), optimize=True)
-        meta[part_id] = {"w": q.width, "h": q.height, **points_for(part_id, PARTS[part_id][0], q)}
+def rooted(layer, anchor, reach=2, min_blob=8):
+    """Keep only the pieces of `layer` that touch `anchor` (within `reach` px): nothing floats."""
+    from PIL import ImageFilter
+
+    near = anchor.filter(ImageFilter.MaxFilter(reach * 2 + 1)).load()
+    a = layer.split()[3].load()
+    w, h = layer.size
+    seen = set()
+    keep = Image.new("L", layer.size, 0)
+    kp = keep.load()
+    for y in range(h):
+        for x in range(w):
+            if a[x, y] < 128 or (x, y) in seen:
+                continue
+            blob, stack, touches = [], [(x, y)], False
+            seen.add((x, y))
+            while stack:
+                cx, cy = stack.pop()
+                blob.append((cx, cy))
+                touches = touches or near[cx, cy] > 0
+                for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                    if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in seen and a[nx, ny] >= 128:
+                        seen.add((nx, ny))
+                        stack.append((nx, ny))
+            if touches and len(blob) >= min_blob:
+                for bx, by in blob:
+                    kp[bx, by] = 255
+    out = layer.copy()
+    out.putalpha(keep)
+    return out
+
+
+# An add-on pixel lying on its base must differ from the base by more than this (sum of RGB
+# differences), or it is the edit model's re-rendering of the base (a greyer croc, a shifted wig).
+STRONG = 110
+
+
+def only_new(layer, base_img):
+    """Drop add-on pixels that merely repaint the base underneath them."""
+    out = layer.copy()
+    a, lp, bp = out.split()[3].load(), layer.load(), base_img.load()
+    w, h = layer.size
+    for y in range(h):
+        for x in range(w):
+            if a[x, y] and bp[x, y][3] >= 128:
+                if sum(abs(c - d) for c, d in zip(lp[x, y][:3], bp[x, y][:3])) <= STRONG:
+                    a[x, y] = 0
+    return out
+
+
+def all_keys():
+    """Every layer the game can show: husk regions, replacements, add-ons (per base where needed)."""
+    keys = []
+    for slot, ids in husk.catalog():
+        if slot == "spark":
+            continue
+        base_slot = husk.BASE_OF.get(slot)
+        for oid in ids:
+            if base_slot:
+                keys += [(slot, oid, b) for b in husk.options(base_slot)]
+            else:
+                keys.append((slot, oid, None))
+    return keys
+
+
+def autopick(picks):
+    """Keys without a pick take their first candidate in art/raw (review sheets, then override)."""
+    for slot, oid, base in all_keys():
+        key = husk.key(oid, base)
+        if key in picks:
+            continue
+        found = sorted(f for f in os.listdir(RAW) if f.startswith(f"{key}__") and f[len(key) + 2] in "ie")
+        if found:
+            picks[key] = found[0]
+    return picks
+
+
+def main(partial=False):
+    picks = json.load(open(husk.PICKS))
+    if partial:
+        picks = autopick(picks)
+    R = husk.regions()
+    layers = {}  # name -> (scene-sized RGBA layer)
+    whole = husk.husk()
+    for region in husk.REGIONS:
+        layers[f"husk/{region}"] = husk.cut(whole, R[region])
+    base_masks = {}
+    body = husk.union(*R.values())
+    for slot, oid, base in all_keys():
+        key = husk.key(oid, base)
+        try:
+            img = load_pick(key, picks)
+        except FileNotFoundError:
+            if not partial:
+                raise
+            continue
+        bm = None
+        if base:
+            if base not in base_masks:
+                base_masks[base] = husk.solid(
+                    husk.cut(load_pick(base, picks), husk.mask_for(husk.slot_of(base), R))
+                )
+            bm = base_masks[base].split()[3]
+        lay = binarize(husk.cut(husk.placed(slot, img), husk.mask_for(slot, R, bm)))
+        if base:
+            lay = only_new(lay, base_masks[base])
+        # what it must grow from: its base part, or the husk body for parts behind / replacing it
+        anchor = body if bm is None else bm
+        if slot == "head2":  # it grows from the shoulder, which may be torso or arm
+            anchor = husk.union(bm, R["armL"], R["armR"])
+        layers[f"parts/{key}"] = rooted(lay, anchor)
+
+    # one palette for every layer
+    strip_px = []
+    for im in layers.values():
+        strip_px += [p[:3] for p in getattr(im, "get_flattened_data", im.getdata)() if p[3]]
+    strip = Image.new("RGB", (len(strip_px), 1))
+    strip.putdata(strip_px)
+    pal = strip.quantize(colors=PALETTE_SIZE, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+
+    def quantize(im):
+        rgb = im.convert("RGB").quantize(palette=pal, dither=Image.Dither.NONE).convert("RGB")
+        out = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        out.paste(rgb, (0, 0), im.split()[3])
+        return out
+
+    for sub in ("husk", "parts", "icons"):  # empty, don't delete: a running dev server keeps serving
+        d = os.path.join(OUT, sub)
+        os.makedirs(d, exist_ok=True)
+        for f in os.listdir(d):
+            os.remove(os.path.join(d, f))
+    meta = {"husk": {}, "parts": {}}
+    total = 0
+    for name, im in layers.items():
+        box = im.getbbox()
+        if not box:
+            if partial:
+                print(f"skipped {name}: nothing attached")
+                continue
+            raise ValueError(f"{name}: empty layer (nothing in it touches its base)")
+        crop = quantize(im.crop(box))
+        path = os.path.join(OUT, f"{name}.png")
+        crop.save(path, optimize=True)
+        total += os.path.getsize(path)
+        group, key = name.split("/", 1)
+        meta[group][key] = [box[0], box[1], box[2] - box[0], box[3] - box[1]]
+
+    # the spark is an effect, not a layer: its option cards keep a small icon
+    for oid in husk.options("spark"):
+        im = binarize(load_pick(oid, picks))
+        im = quantize(im.crop(im.getbbox()))
+        im.save(os.path.join(OUT, "icons", f"{oid}.png"), optimize=True)
+
     with open(META, "w") as f:
-        rows = [f'  "{k}": {json.dumps(v, separators=(", ", ": "))}' for k, v in sorted(meta.items())]
-        f.write("{\n" + ",\n".join(rows) + "\n}\n")
-    # The laboratory: the wide room with its props set on the floor, on its own palette.
-    scene = load_pick("bg_lab", picks).convert("RGBA")
-    for prop_id, x, bottom in SCENE:
-        prop = crop(binarize(load_pick(prop_id, picks)))
-        # lifted a little: the page dims the whole room behind the monster
-        rgb = ImageEnhance.Brightness(prop.convert("RGB")).enhance(PROP_LIFT)
-        prop = Image.merge("RGBA", (*rgb.split(), prop.split()[3]))
-        scene.alpha_composite(prop, (x, bottom - prop.height))
-    scene.convert("RGB").quantize(
-        colors=SCENE_COLORS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
-    ).save(os.path.join(ROOT, "public", "art", "lab.png"), optimize=True)
-    total = sum(os.path.getsize(os.path.join(OUT, f"{p}.png")) for p in meta)
-    print(f"{len(meta)} sprites, {total / 1024:.1f} KB, palette {PALETTE_SIZE} colors")
+        f.write("{\n")
+        groups = []
+        for group in ("husk", "parts"):
+            rows = [f'    "{k}": {json.dumps(v)}' for k, v in sorted(meta[group].items())]
+            groups.append(f'  "{group}": {{\n' + ",\n".join(rows) + "\n  }")
+        f.write(",\n".join(groups) + "\n}\n")
+
+    # the laboratory: the room with its props painted in, on its own palette
+    room = load_pick("bg_lab", picks).convert("RGB")
+    room.quantize(colors=SCENE_COLORS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(
+        os.path.join(OUT, "lab.png"), optimize=True
+    )
+    print(f"{len(layers)} layers, {total / 1024:.1f} KB, palette {PALETTE_SIZE} colours")
 
 
 if __name__ == "__main__":
-    main()
+    main(partial="--partial" in sys.argv)

@@ -19,6 +19,12 @@ function nightDate(day: number): string {
 
 /** Night-by-night record of which part won and by how much. */
 export function Chronicle({ save, today, onClose }: Props) {
+  const parts = Object.fromEntries(
+    SCHEDULE.flatMap((q, day) => {
+      const r = save.history[String(day)];
+      return r ? [[q.slot, r.winner]] : [];
+    }),
+  );
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
@@ -48,7 +54,7 @@ export function Chronicle({ save, today, onClose }: Props) {
             return (
               <li key={q.slot} className={`chron chron-${state}`}>
                 <span className="chron-art">
-                  {winner && <img src={iconUrl(winner.id)} alt="" />}
+                  {winner && <img src={iconUrl(q.slot, winner.id, parts)} alt="" />}
                 </span>
                 <span className="chron-text">
                   <span className="chron-day">

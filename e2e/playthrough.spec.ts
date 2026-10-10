@@ -10,6 +10,17 @@ async function noSidewaysScroll(page: Page) {
   expect(scroll, 'page must not scroll sideways').toBeLessThanOrEqual(width);
 }
 
+/** Every picture on screen (monster layers, option art) actually loaded. */
+async function imagesLoaded(page: Page) {
+  await expect
+    .poll(() =>
+      page.$$eval('img', (els) =>
+        els.filter((e) => !e.complete || e.naturalWidth === 0).map((e) => e.getAttribute('src')),
+      ),
+    )
+    .toEqual([]);
+}
+
 async function framedButtons(page: Page) {
   const issues = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('.btn')]
@@ -118,17 +129,22 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('music-toggle')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.sound-scrim').click();
 
-  // Nights 2..21: a new part every night, the monster grows.
-  let lastParts = await page.locator('.monster:not(.monster-mini) .part').count();
+  // Nights 2..21: a new part painted in every night (husk regions give way to parts).
+  let lastParts = await page
+    .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
+    .count();
   for (let day = 1; day <= 20; day++) {
     await openDay(page, day);
     await expect(page.locator('.dayline')).toHaveText(`Night ${day + 1} of 21`);
     await expect(page.locator('.option')).toHaveCount(5);
     await expect(page.locator('.result')).toHaveCount(0);
     await expect
-      .poll(() => page.locator('.monster:not(.monster-mini) .part').count())
+      .poll(() => page.locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]').count())
       .toBeGreaterThan(lastParts);
-    lastParts = await page.locator('.monster:not(.monster-mini) .part').count();
+    lastParts = await page
+      .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
+      .count();
+    await imagesLoaded(page);
     await voteFor(page, day % 5);
     await percentagesSumTo100(page);
     await noSidewaysScroll(page);
@@ -147,6 +163,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await openDay(page, 21);
   await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
   await expect(page.locator('.monster.alive')).toBeVisible();
+  await imagesLoaded(page);
   await noSidewaysScroll(page);
   await shot('alive');
   await page.getByRole('button', { name: 'Chronicle' }).click();
@@ -192,12 +209,14 @@ test('owner Test Lab: jump between nights, vote freely, then leave without touch
   await framedButtons(page);
 
   // Next night: night 5's winner is stitched on.
-  const before = await page.locator('.monster:not(.monster-mini) .part').count();
+  const before = await page
+    .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
+    .count();
   await page.getByTestId('lab-banner-open').click();
   await page.getByTestId('lab-next').click();
   await expect(page.locator('.dayline')).toHaveText('Night 6 of 21');
   await expect
-    .poll(() => page.locator('.monster:not(.monster-mini) .part').count())
+    .poll(() => page.locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]').count())
     .toBeGreaterThan(before);
 
   // Test mode survives a reload.

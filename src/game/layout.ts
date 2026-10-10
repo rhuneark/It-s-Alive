@@ -1,353 +1,156 @@
 /**
- * Where each grafted part sits on the monster. Pure geometry on a fixed
- * 240x224 pixel canvas: give it the parts so far (and optionally a preview
- * part) and it returns positioned sprites in draw order, each with the seams
- * that sew it on.
+ * Which layers make up the monster, in draw order. Pure data, no DOM.
  *
- * Every sprite carries attachment points measured from its own pixels
- * (tools/art/anchors.py -> sprites.json): "a" is the spot on the part that is
- * sewn on, and torsos, heads and legs also list their sockets (shoulders, hips,
- * skull top, mouth...). A part is placed so that its "a" lands on its host's
- * socket, so a narrow torso gets narrow shoulders and a horned head gets its
- * brain sewn onto the skull rather than onto the ear tips.
+ * The monster is one human husk. Each night's winning part was painted INTO the
+ * husk (tools/art/husk.py): a head onto its neck, a torso between its shoulders,
+ * horns onto the chosen head, a heart into the chosen chest. Every layer is
+ * already cut to its place in the 224x200 laboratory scene (layers.json), so
+ * nothing is positioned here: we only choose the husk pieces and the layers to
+ * show, and stack them back to front.
  */
-import type { SlotId } from './catalog';
+import { questionForSlot, type SlotId } from './catalog';
 
-export const CANVAS_W = 240;
-export const CANVAS_H = 224;
-/** Horizontal centre: the iron post the monster hangs on. */
-export const CX = CANVAS_W / 2;
-/** Top of the iron base plate the monster stands on. */
-export const FLOOR_Y = 212;
-/** Top of the torso. Low enough that even the shortest leg reaches up behind it. */
-const TORSO_TOP = 90;
-/** How far a head's neck sinks into the torso. */
-const NECK_SINK = 5;
+export const SCENE_W = 224;
+export const SCENE_H = 200;
+/** The row the husk's feet stand on. */
+export const FLOOR_Y = 192;
 
-type Pt = readonly number[];
+/** Parts of the husk that a vote can replace, plus the rag that stays at the waist. */
+export type Region = 'head' | 'torso' | 'loincloth' | 'armR' | 'armL' | 'legR' | 'legL';
+export const REGIONS: readonly Region[] = [
+  'head',
+  'torso',
+  'loincloth',
+  'armR',
+  'armL',
+  'legR',
+  'legL',
+];
 
-/** One sprite's size and attachment points (sprite pixels, unflipped). */
-export interface SpriteInfo {
-  w: number;
-  h: number;
-  /** The pixel that is sewn onto the host. */
-  a: Pt;
-  // torso sockets
-  neck?: Pt;
-  shoulderL?: Pt;
-  shoulderR?: Pt;
-  hipL?: Pt;
-  hipR?: Pt;
-  chestL?: Pt;
-  chestR?: Pt;
-  belly?: Pt;
-  back?: Pt;
-  // head sockets
-  top?: Pt;
-  brow?: Pt;
-  mouth?: Pt;
-  earL?: Pt;
-  earR?: Pt;
-  // leg socket
-  shin?: Pt;
+/** [x, y, w, h] in scene pixels. */
+export type Box = readonly number[];
+
+export interface LayerSheet {
+  husk: Record<string, Box>;
+  parts: Record<string, Box>;
 }
 
-/** Sprite info keyed by option id (generated into sprites.json by tools/art/process.py). */
-export type SpriteSheet = Record<string, SpriteInfo>;
+/** Slots that replace a husk region outright. */
+const REPLACES: Partial<Record<SlotId, Region>> = {
+  head: 'head',
+  torso: 'torso',
+  armR: 'armR',
+  armL: 'armL',
+  legR: 'legR',
+  legL: 'legL',
+};
 
-export interface P {
-  x: number;
-  y: number;
-}
+/** Add-ons painted onto one particular chosen part: their layer depends on it. */
+export const BASE_OF: Partial<Record<SlotId, SlotId>> = {
+  browEye: 'head',
+  horns: 'head',
+  ears: 'head',
+  jaw: 'head',
+  brain: 'head',
+  chestEye: 'torso',
+  heart: 'torso',
+  maw: 'torso',
+  head2: 'torso',
+  hide: 'legR',
+};
 
-/** A row (or column) of stitches, in canvas pixels. */
-export interface Seam {
-  x: number;
-  y: number;
-  len: number;
-  vertical?: boolean;
-}
-
-export interface Placed {
-  slot: SlotId;
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  flip: boolean;
-  z: number;
-  /** Canvas position of the part's attachment point. */
-  anchor: P;
-  /** Stitches where this part is sewn on. */
-  seams: Seam[];
-}
-
-/** Draw order, back to front. */
-const Z: Record<SlotId, number> = {
+/** Draw order, back to front (matches Z in tools/art/husk.py). */
+const Z: Record<SlotId | Region, number> = {
   wings: 0,
-  spine: 1,
-  arm3: 2,
+  arm3: 1,
+  spine: 2,
   tail: 3,
   legR: 4,
   legL: 4,
   hide: 5,
   torso: 6,
-  heart: 7,
-  chestEye: 8,
-  maw: 9,
-  armR: 10,
-  armL: 10,
-  ears: 14.5,
+  chestEye: 7,
+  maw: 8,
+  heart: 9,
+  loincloth: 10,
+  armR: 11,
+  armL: 11,
   head: 12,
-  brain: 13,
+  ears: 13,
   horns: 14,
-  browEye: 15,
+  brain: 15,
   jaw: 16,
-  head2: 17,
-  spark: 18,
+  browEye: 17,
+  head2: 18,
+  spark: 19,
 };
 
-/** Stand-ins used before the torso / head exist, so limbs still hang somewhere sensible. */
-const DEFAULT_TORSO: SpriteInfo = {
-  w: 48,
-  h: 60,
-  a: [24, 0],
-  neck: [24, 0],
-  shoulderL: [6, 6],
-  shoulderR: [41, 6],
-  hipL: [14, 58],
-  hipR: [34, 58],
-  chestL: [16, 18],
-  chestR: [32, 22],
-  belly: [24, 37],
-  back: [38, 46],
-};
-const DEFAULT_HEAD: SpriteInfo = {
-  w: 40,
-  h: 52,
-  a: [20, 51],
-  top: [20, 2],
-  brow: [20, 14],
-  mouth: [20, 36],
-  earL: [4, 20],
-  earR: [36, 20],
-};
-
-type Box = { x: number; y: number; w: number; h: number };
-
-export interface Frame {
-  torso: Box;
-  head: Box;
-  neck: P;
-  shoulderL: P;
-  shoulderR: P;
-  hipL: P;
-  hipR: P;
-  chestL: P;
-  chestR: P;
-  belly: P;
-  back: P;
-  skull: P;
-  brow: P;
-  mouth: P;
-  earL: P;
-  earR: P;
+export interface Piece {
+  /** Image path under art/: husk/<region> or parts/<key>. */
+  src: string;
+  /** The vote slot this layer shows, or the husk region when it is bare husk. */
+  slot: SlotId | Region;
+  husk: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  z: number;
 }
 
-function infoOf(id: string | undefined, sheet: SpriteSheet): SpriteInfo | null {
-  if (!id) return null;
-  const s = sheet[id];
-  return s && s.w > 0 && s.h > 0 && s.a?.length >= 2 ? s : null;
+/**
+ * Layer key for an option: add-ons painted per base are keyed "<option>@<base>".
+ * Before its base is chosen (never in a real season) the base's first option stands in.
+ */
+export function layerKey(slot: SlotId, id: string, parts: Partial<Record<SlotId, string>>): string {
+  const baseSlot = BASE_OF[slot];
+  if (!baseSlot) return id;
+  const base = parts[baseSlot] ?? questionForSlot(baseSlot).options[0].id;
+  return `${id}@${base}`;
 }
 
-const at = (base: Box, pt: Pt | undefined, fallback: Pt): P => {
-  const p = pt && pt.length >= 2 ? pt : fallback;
-  return { x: base.x + p[0]!, y: base.y + p[1]! };
-};
-
-/** Key body landmarks (canvas pixels), derived from whichever torso and head have been chosen. */
-export function frameFor(parts: Partial<Record<SlotId, string>>, sheet: SpriteSheet): Frame {
-  const t = infoOf(parts.torso, sheet) ?? DEFAULT_TORSO;
-  const d = DEFAULT_TORSO;
-  const torso = { x: Math.round(CX - t.w / 2), y: TORSO_TOP, w: t.w, h: t.h };
-  const neck = at(torso, t.neck, [t.w >> 1, 0]);
-  const h = infoOf(parts.head, sheet) ?? DEFAULT_HEAD;
-  const dh = DEFAULT_HEAD;
-  const head = { x: neck.x - h.a[0]!, y: neck.y + NECK_SINK - h.a[1]!, w: h.w, h: h.h };
-  return {
-    torso,
-    head,
-    neck,
-    shoulderL: at(torso, t.shoulderL, d.shoulderL!),
-    shoulderR: at(torso, t.shoulderR, [t.w - 7, 6]),
-    hipL: at(torso, t.hipL, [t.w / 2 - 10, t.h - 2]),
-    hipR: at(torso, t.hipR, [t.w / 2 + 10, t.h - 2]),
-    chestL: at(torso, t.chestL, [t.w * 0.3, 18]),
-    chestR: at(torso, t.chestR, [t.w * 0.7, 22]),
-    belly: at(torso, t.belly, [t.w / 2, t.h * 0.62]),
-    back: at(torso, t.back, [t.w - 8, t.h - 14]),
-    skull: at(head, h.top, [h.w / 2, 0]),
-    brow: at(head, h.brow, [h.w / 2, h.h * 0.25]),
-    mouth: at(head, h.mouth, [h.w / 2, h.h * 0.7]),
-    earL: at(head, h.earL, [3, dh.earL![1]!]),
-    earR: at(head, h.earR, [h.w - 4, dh.earR![1]!]),
-  };
-}
-
-/** Horizontal stitches of `len` centred on x. */
-const across = (x: number, y: number, len: number): Seam => ({
-  x: Math.round(x - len / 2),
-  y: Math.round(y),
-  len,
-});
-/** Vertical stitches of `len` centred on y. */
-const down = (x: number, y: number, len: number): Seam => ({
-  x: Math.round(x),
-  y: Math.round(y - len / 2),
-  len,
-  vertical: true,
+const piece = (src: string, slot: SlotId | Region, isHusk: boolean, b: Box): Piece => ({
+  src,
+  slot,
+  husk: isHusk,
+  x: b[0]!,
+  y: b[1]!,
+  w: b[2]!,
+  h: b[3]!,
+  z: Z[slot],
 });
 
 /**
- * Positions for every part. `parts` maps slot -> chosen option id. Unknown
- * sprites are skipped. The spark has no sprite (it is drawn as an effect).
+ * Every layer to draw for these parts (slot -> option id), back to front. Husk
+ * regions that have not been replaced yet show bare husk. The spark has no layer.
  */
-export function layoutMonster(
-  parts: Partial<Record<SlotId, string>>,
-  sheet: SpriteSheet,
-): Placed[] {
-  const f = frameFor(parts, sheet);
-  const out: Placed[] = [];
-  /** Place `id` so its attachment point lands on `socket`. */
-  const sew = (slot: SlotId, id: string, socket: P, flip = false, seams: Seam[] = []) => {
-    const s = infoOf(id, sheet);
-    if (!s) return null;
-    const ax = flip ? s.w - 1 - s.a[0]! : s.a[0]!;
-    const p: Placed = {
-      slot,
-      id,
-      x: Math.round(socket.x - ax),
-      y: Math.round(socket.y - s.a[1]!),
-      w: s.w,
-      h: s.h,
-      flip,
-      z: Z[slot],
-      anchor: { x: Math.round(socket.x), y: Math.round(socket.y) },
-      seams,
-    };
-    out.push(p);
-    return p;
-  };
-  /** Legs stand on the base plate; their tops reach up behind the hips. */
-  const leg = (slot: 'legR' | 'legL', id: string, hip: P, flip: boolean) => {
-    const s = infoOf(id, sheet);
-    if (!s) return;
-    const top = FLOOR_Y + 1 - s.h;
-    sew(slot, id, { x: hip.x, y: top + s.a[1]! }, flip, [across(hip.x, hip.y, 11)]);
-  };
-
+export function layoutMonster(parts: Partial<Record<SlotId, string>>, sheet: LayerSheet): Piece[] {
+  const out: Piece[] = [];
+  const replaced = new Set<Region>();
   for (const slot of Object.keys(parts) as SlotId[]) {
     const id = parts[slot];
-    const s = infoOf(id, sheet);
-    if (!id || !s) continue;
-    switch (slot) {
-      case 'head':
-        sew(slot, id, { x: f.neck.x, y: f.neck.y + NECK_SINK }, false, [
-          across(f.neck.x, f.neck.y + 1, 15),
-        ]);
-        break;
-      case 'torso':
-        sew(slot, id, { x: f.torso.x + s.a[0]!, y: f.torso.y + s.a[1]! });
-        break;
-      case 'armR': // the monster's right arm is on the viewer's left
-        sew(slot, id, { x: f.shoulderL.x, y: f.shoulderL.y + 1 }, false, [
-          across(f.shoulderL.x, f.shoulderL.y + 4, 9),
-        ]);
-        break;
-      case 'armL':
-        sew(slot, id, { x: f.shoulderR.x, y: f.shoulderR.y + 1 }, true, [
-          across(f.shoulderR.x, f.shoulderR.y + 4, 9),
-        ]);
-        break;
-      case 'legR':
-        leg(slot, id, f.hipL, false);
-        break;
-      case 'legL':
-        leg(slot, id, f.hipR, true);
-        break;
-      case 'browEye':
-        sew(slot, id, f.brow);
-        break;
-      case 'chestEye':
-        sew(slot, id, f.chestL);
-        break;
-      case 'heart':
-        sew(slot, id, f.chestR);
-        break;
-      case 'maw':
-        sew(slot, id, f.belly, false, [
-          down(f.belly.x - s.w / 2, f.belly.y, 7),
-          down(f.belly.x + s.w / 2 - 1, f.belly.y, 7),
-        ]);
-        break;
-      case 'tail':
-        sew(slot, id, f.back, false, [down(f.back.x + 3, f.back.y, 7)]);
-        break;
-      case 'wings':
-        sew(slot, id, { x: f.neck.x, y: f.torso.y + 18 });
-        break;
-      case 'spine': {
-        // a ridge seen from the front: it rises behind both shoulders, half clear of the head
-        const y = Math.min(f.shoulderL.y, f.shoulderR.y) + 8;
-        sew(slot, id, { x: Math.min(f.shoulderL.x + 4, f.head.x + 2), y });
-        sew(slot, id, { x: Math.max(f.shoulderR.x - 4, f.head.x + f.head.w - 2), y }, true);
-        break;
-      }
-      case 'arm3':
-        // leans out from behind the right shoulder blade, reaching past the head
-        sew(slot, id, { x: f.shoulderL.x + 6, y: f.shoulderL.y + 10 });
-        break;
-      case 'head2': {
-        const socket = { x: f.shoulderR.x + 3, y: f.shoulderR.y + 6 };
-        sew(slot, id, socket, false, [across(socket.x, socket.y - 3, 10)]);
-        break;
-      }
-      case 'horns':
-        sew(slot, id, { x: f.skull.x, y: f.skull.y + 8 });
-        break;
-      case 'ears':
-        sew(slot, id, f.earL, false, [down(f.earL.x - 2, f.earL.y - 3, 7)]);
-        sew(slot, id, f.earR, true, [down(f.earR.x + 2, f.earR.y - 3, 7)]);
-        break;
-      case 'brain': {
-        const socket = { x: f.skull.x, y: f.skull.y + 7 };
-        sew(slot, id, socket, false, [across(socket.x, socket.y - 1, Math.round(s.w * 0.7))]);
-        break;
-      }
-      case 'jaw': {
-        const len = Math.min(s.w, 14);
-        sew(slot, id, f.mouth, false, [across(f.mouth.x, f.mouth.y + 1, len)]);
-        break;
-      }
-      case 'hide': {
-        // a patch sewn onto the right shin, below where the hands hang
-        const leg = infoOf(parts.legR, sheet);
-        const shinX = leg?.shin ? f.hipL.x - leg.a[0]! + leg.shin[0]! : f.hipL.x;
-        const shinY = leg?.shin ? FLOOR_Y + 1 - leg.h + leg.shin[1]! : FLOOR_Y - 30;
-        const x0 = Math.round(shinX - (s.w >> 1));
-        const y0 = Math.round(shinY - (s.h >> 1));
-        sew(slot, id, { x: shinX, y: shinY }, false, [
-          { x: x0, y: y0, len: s.w },
-          { x: x0, y: y0 + s.h - 1, len: s.w },
-          { x: x0, y: y0, len: s.h, vertical: true },
-          { x: x0 + s.w - 1, y: y0, len: s.h, vertical: true },
-        ]);
-        break;
-      }
-      case 'spark':
-        break;
-    }
+    if (!id || slot === 'spark') continue;
+    const key = layerKey(slot, id, parts);
+    const box = sheet.parts[key];
+    if (!box) continue;
+    const region = REPLACES[slot];
+    if (region) replaced.add(region);
+    out.push(piece(`parts/${key}`, slot, false, box));
+  }
+  for (const region of REGIONS) {
+    const box = sheet.husk[region];
+    if (!replaced.has(region) && box) out.push(piece(`husk/${region}`, region, true, box));
   }
   return out.sort((a, b) => a.z - b.z);
+}
+
+/** Where tonight's part will go: the box of its first option on the current monster. */
+export function slotBox(
+  slot: SlotId,
+  parts: Partial<Record<SlotId, string>>,
+  sheet: LayerSheet,
+): Box | null {
+  if (slot === 'spark') return null;
+  const id = questionForSlot(slot).options[0].id;
+  return sheet.parts[layerKey(slot, id, parts)] ?? null;
 }

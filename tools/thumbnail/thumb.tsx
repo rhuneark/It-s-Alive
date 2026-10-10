@@ -30,7 +30,7 @@ css.textContent = `
   html, body { margin: 0; width: 512px; height: 512px; overflow: hidden; background: #0d0a10; }
   .thumb { position: relative; width: 512px; height: 512px; display: flex; justify-content: center; }
   .thumb .thumb-monster { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    width: 512px; height: auto; aspect-ratio: 160 / 224; border: none; border-radius: 0; box-shadow: none; }
+    width: 512px; height: auto; aspect-ratio: 150 / 200; border: none; border-radius: 0; box-shadow: none; }
   .thumb .thumb-monster .monster-bg { filter: brightness(0.75) saturate(0.95); object-position: 50% 30%; }
   .thumb .monster-flash { animation: none; }
   .thumb-title { position: absolute; bottom: 52px; width: 100%; text-align: center;

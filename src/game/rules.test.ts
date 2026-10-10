@@ -10,7 +10,7 @@ import {
   votingDays,
   type Season,
 } from './schedule';
-import SPRITES from './sprites.json';
+import LAYERS from './layers.json';
 import {
   MAX_AD_VOTES_PER_DAY,
   canEarnAdVote,
@@ -42,7 +42,12 @@ describe('catalog', () => {
 
   it('has art for every option', () => {
     for (const q of QUESTIONS) {
-      for (const o of q.options) expect(Object.hasOwn(SPRITES, o.id), o.id).toBe(true);
+      for (const o of q.options)
+        if (q.slot !== 'spark')
+          expect(
+            Object.keys(LAYERS.parts).some((k) => k === o.id || k.startsWith(`${o.id}@`)),
+            o.id,
+          ).toBe(true);
     }
   });
 });

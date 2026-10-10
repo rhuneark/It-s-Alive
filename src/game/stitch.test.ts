@@ -1,260 +1,220 @@
 /**
- * Cross-reference of the shipped art against the layout: for every torso x head
- * (and every host limb where it matters), every option of every slot must be
- * sewn onto its host. Uses the real pixels of public/art/parts, so a re-picked
- * sprite that would float off the body fails here.
+ * Cross-reference of the shipped layers: every option of every slot exists for
+ * every base it can be painted onto, joins the body it is sewn to, keeps its
+ * feet on the floor, and is not buried on a finished monster. Reads the real
+ * PNGs in public/art, so a re-picked painting that breaks any of this fails here.
  */
 import { readFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import { QUESTIONS, type SlotId } from './catalog';
 import {
-  CANVAS_H,
-  CANVAS_W,
+  BASE_OF,
   FLOOR_Y,
+  REGIONS,
+  SCENE_H,
+  SCENE_W,
+  layerKey,
   layoutMonster,
-  type Placed,
-  type SpriteSheet,
+  type LayerSheet,
+  type Piece,
 } from './layout';
-import SPRITES from './sprites.json';
+import LAYER_DATA from './layers.json';
 
-const SHEET: SpriteSheet = SPRITES;
+const SHEET: LayerSheet = LAYER_DATA;
 const ids = (slot: SlotId) => QUESTIONS.find((q) => q.slot === slot)!.options.map((o) => o.id);
+const SLOTS = QUESTIONS.map((q) => q.slot).filter((s) => s !== 'spark');
 
-const masks = new Map<string, { w: number; h: number; on: Uint8Array }>();
-function mask(id: string) {
-  let m = masks.get(id);
+/** A layer's opaque pixels as a scene-sized mask. */
+const masks = new Map<string, Uint8Array>();
+function maskOf(src: string): Uint8Array {
+  let m = masks.get(src);
   if (!m) {
-    const png = PNG.sync.read(readFileSync(`public/art/parts/${id}.png`));
-    const on = new Uint8Array(png.width * png.height);
-    for (let i = 0; i < on.length; i++) on[i] = png.data[i * 4 + 3]! > 127 ? 1 : 0;
-    m = { w: png.width, h: png.height, on };
-    masks.set(id, m);
+    const [group, key] = src.split('/') as ['husk' | 'parts', string];
+    const [x0, y0] = SHEET[group][key]!;
+    const png = PNG.sync.read(readFileSync(`public/art/${src}.png`));
+    m = new Uint8Array(SCENE_W * SCENE_H);
+    for (let y = 0; y < png.height; y++)
+      for (let x = 0; x < png.width; x++)
+        if (png.data[(y * png.width + x) * 4 + 3]! > 127) m[(y0! + y) * SCENE_W + x0! + x] = 1;
+    masks.set(src, m);
   }
   return m;
 }
 
-/** The part's opaque pixels on the canvas (optionally only one side of its anchor). */
-function paint(p: Placed, side?: 'left' | 'right'): Uint8Array {
-  const out = new Uint8Array(CANVAS_W * CANVAS_H);
-  const m = mask(p.id);
-  for (let y = 0; y < m.h; y++)
-    for (let x = 0; x < m.w; x++) {
-      if (!m.on[y * m.w + (p.flip ? m.w - 1 - x : x)]) continue;
-      const X = p.x + x;
-      const Y = p.y + y;
-      if (side === 'left' && X >= p.anchor.x) continue;
-      if (side === 'right' && X < p.anchor.x) continue;
-      if (X >= 0 && Y >= 0 && X < CANVAS_W && Y < CANVAS_H) out[Y * CANVAS_W + X] = 1;
-    }
-  return out;
-}
-
-function union(placed: Placed[], slots: SlotId[]): Uint8Array {
-  const out = new Uint8Array(CANVAS_W * CANVAS_H);
-  for (const p of placed) {
-    if (!slots.includes(p.slot)) continue;
-    const m = paint(p);
-    for (let i = 0; i < m.length; i++) out[i] = out[i]! | m[i]!;
-  }
-  return out;
-}
-
-/** The host's outline filled in row by row, so a hollow ribcage still counts as body. */
-function silhouette(a: Uint8Array): Uint8Array {
-  const out = new Uint8Array(a.length);
-  for (let y = 0; y < CANVAS_H; y++) {
-    const row = a.subarray(y * CANVAS_W, (y + 1) * CANVAS_W);
-    const l = row.indexOf(1);
-    if (l >= 0) out.fill(1, y * CANVAS_W + l, y * CANVAS_W + row.lastIndexOf(1) + 1);
-  }
-  return out;
-}
-
-const sum = (a: Uint8Array) => a.reduce((s, v) => s + v, 0);
-const shared = (a: Uint8Array, b: Uint8Array) => a.reduce((s, v, i) => s + (v & b[i]!), 0);
-
-/** What each part must be sewn onto. */
-const HOST: Record<Exclude<SlotId, 'torso' | 'spark'>, SlotId[]> = {
-  head: ['torso'],
-  armR: ['torso'],
-  armL: ['torso'],
-  legR: ['torso'],
-  legL: ['torso'],
-  browEye: ['head'],
-  chestEye: ['torso'],
-  heart: ['torso'],
-  maw: ['torso'],
-  tail: ['torso', 'legL'],
-  wings: ['torso'],
-  spine: ['torso', 'head'],
-  arm3: ['torso'],
-  head2: ['torso', 'armL'],
-  horns: ['head'],
-  ears: ['head'],
-  brain: ['head'],
-  jaw: ['head'],
-  hide: ['legR'],
-};
-/** Parts set into their host: (nearly) all of their pixels must lie inside its outline. */
-const INLAID: SlotId[] = ['browEye', 'chestEye', 'heart', 'maw'];
-/** Least number of pixels a part must share with its host. */
-const MIN_SHARED = 12;
-
-/** Least share of a part's pixels that must show on a finished monster (default 25%). */
-const LEAST_VISIBLE: Partial<Record<SlotId, number>> = { spine: 0.12, wings: 0.15 };
-
-/** All 21 slots filled, rotating through the options so each set differs. */
-function fullMonster(k: number): Partial<Record<SlotId, string>> {
-  const parts: Partial<Record<SlotId, string>> = {};
-  QUESTIONS.forEach((q, i) => (parts[q.slot] = q.options[(k + i) % q.options.length]!.id));
-  return parts;
-}
-
-function opaqueAt(p: Placed, X: number, Y: number): boolean {
-  const x = X - p.x;
-  const y = Y - p.y;
-  if (x < 0 || y < 0 || x >= p.w || y >= p.h) return false;
-  const m = mask(p.id);
-  return m.on[y * m.w + (p.flip ? m.w - 1 - x : x)] === 1;
-}
-
-/** Share of `t`'s pixels not covered by anything drawn in front of it. */
-function visibleShare(placed: Placed[], t: Placed): number {
-  const at = placed.indexOf(t);
-  const front = placed.filter((p, i) => p.z > t.z || (p.z === t.z && i > at));
-  let all = 0;
-  let shown = 0;
-  for (let y = 0; y < t.h; y++)
-    for (let x = 0; x < t.w; x++) {
-      if (!opaqueAt(t, t.x + x, t.y + y)) continue;
-      all++;
-      if (!front.some((p) => opaqueAt(p, t.x + x, t.y + y))) shown++;
-    }
-  return shown / all;
-}
-
-type Combo = { label: string; parts: Partial<Record<SlotId, string>> };
-
-/** Every option of `slot` on every torso x head, and on every option of a host limb. */
-function combos(slot: SlotId): Combo[] {
-  const out: Combo[] = [];
-  const limb = HOST[slot as keyof typeof HOST]?.find((h) => h !== 'torso' && h !== 'head');
-  for (const id of ids(slot))
-    for (const torso of ids('torso'))
-      for (const head of ids('head'))
-        for (const limbId of limb ? ids(limb) : [null]) {
-          const parts: Partial<Record<SlotId, string>> = { torso, head, [slot]: id };
-          if (limb && limbId) parts[limb] = limbId;
-          out.push({ label: `${id} on ${torso} + ${head}${limbId ? ` + ${limbId}` : ''}`, parts });
+/** Pixels of `a` that sit on or right beside `b` (one pixel apart counts: a seam). */
+function touching(a: Uint8Array, b: Uint8Array): number {
+  let n = 0;
+  for (let y = 0; y < SCENE_H; y++)
+    for (let x = 0; x < SCENE_W; x++) {
+      if (!a[y * SCENE_W + x]) continue;
+      let hit = false;
+      for (let dy = -1; dy <= 1 && !hit; dy++)
+        for (let dx = -1; dx <= 1 && !hit; dx++) {
+          const X = x + dx;
+          const Y = y + dy;
+          hit = X >= 0 && Y >= 0 && X < SCENE_W && Y < SCENE_H && b[Y * SCENE_W + X] === 1;
         }
+      if (hit) n++;
+    }
+  return n;
+}
+
+function union(...ms: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(SCENE_W * SCENE_H);
+  for (const m of ms) for (let i = 0; i < m.length; i++) out[i] = out[i]! | m[i]!;
   return out;
 }
 
-describe('every part is sewn onto its host', () => {
-  for (const q of QUESTIONS) {
-    const slot = q.slot;
-    if (slot === 'torso' || slot === 'spark') continue;
-    it(`${slot}: all options touch ${HOST[slot].join(' / ')}`, () => {
-      const problems: string[] = [];
-      for (const c of combos(slot)) {
-        const placed = layoutMonster(c.parts, SHEET);
-        const host = union(placed, HOST[slot]);
-        for (const p of placed.filter((x) => x.slot === slot)) {
-          const all = paint(p);
-          if (INLAID.includes(slot)) {
-            const inside = shared(all, silhouette(host));
-            if (inside < sum(all) * 0.95)
-              problems.push(`${c.label}: only ${inside}/${sum(all)} px inside the body`);
-            continue;
-          }
-          // a pair (wings, a wide pair of horns) must attach on both sides
-          const pair = slot === 'wings' || (slot === 'horns' && p.w > 30);
-          for (const side of pair ? (['left', 'right'] as const) : [undefined]) {
-            const k = shared(side ? paint(p, side) : all, host);
-            if (k < MIN_SHARED)
-              problems.push(`${c.label}${side ? ` (${side})` : ''}: ${k} px touch`);
-          }
-        }
-      }
-      expect(problems).toEqual([]);
-    });
-  }
+const part = (slot: SlotId, id: string, parts: Partial<Record<SlotId, string>> = {}) =>
+  `parts/${layerKey(slot, id, parts)}`;
+/** The husk region, or each option that can replace it. */
+const choices = (region: 'head' | 'torso' | 'armR' | 'armL' | 'legR' | 'legL') => [
+  `husk/${region}`,
+  ...ids(region).map((id) => `parts/${id}`),
+];
 
-  it('the chest eye, heart and belly mouth do not pile onto each other', () => {
-    const problems: string[] = [];
-    for (const torso of ids('torso'))
-      for (const chestEye of ids('chestEye'))
-        for (const heart of ids('heart'))
-          for (const maw of ids('maw')) {
-            const placed = layoutMonster({ torso, chestEye, heart, maw }, SHEET);
-            const organs = placed
-              .filter((p) => INLAID.includes(p.slot))
-              .map((p) => [p, paint(p)] as const);
-            for (let i = 0; i < organs.length; i++)
-              for (let j = i + 1; j < organs.length; j++) {
-                const [a, am] = organs[i]!;
-                const [b, bm] = organs[j]!;
-                const n = shared(am, bm);
-                if (n > Math.min(sum(am), sum(bm)) * 0.12)
-                  problems.push(`${a.id} and ${b.id} on ${torso}: ${n} px overlap`);
-              }
-          }
-    expect([...new Set(problems)]).toEqual([]);
+/** Least number of pixels where two sewn pieces meet. */
+const SEAM = 8;
+
+describe('the husk and its painted parts', () => {
+  it('has a layer for every option, on every base it can be painted onto', () => {
+    const missing: string[] = [];
+    for (const r of REGIONS) if (!SHEET.husk[r]) missing.push(`husk/${r}`);
+    for (const slot of SLOTS) {
+      const base = BASE_OF[slot];
+      for (const id of ids(slot))
+        for (const b of base ? ids(base) : [null]) {
+          const key = layerKey(slot, id, b && base ? { [base]: b } : {});
+          if (!SHEET.parts[key]) missing.push(key);
+        }
+    }
+    expect(missing).toEqual([]);
   });
 
-  it('no part is buried under the others on a finished monster', () => {
+  it('keeps every layer inside the scene', () => {
+    for (const group of ['husk', 'parts'] as const)
+      for (const [key, [x, y, w, h]] of Object.entries(SHEET[group])) {
+        expect(x! >= 0 && y! >= 0, key).toBe(true);
+        expect(x! + w! <= SCENE_W && y! + h! <= SCENE_H, key).toBe(true);
+      }
+  });
+
+  it('sews every head, arm and leg onto every torso it can meet', () => {
     const problems: string[] = [];
-    for (const q of QUESTIONS) {
-      if (q.slot === 'spark' || q.slot === 'torso' || q.slot === 'head') continue;
-      const least = LEAST_VISIBLE[q.slot] ?? 0.25;
-      for (const o of q.options)
-        for (const torso of ids('torso'))
-          for (const head of ids('head'))
-            for (let k = 0; k < 5; k++) {
-              const parts = fullMonster(k);
-              Object.assign(parts, { torso, head, [q.slot]: o.id });
-              const placed = layoutMonster(parts, SHEET);
-              for (const p of placed.filter((x) => x.slot === q.slot)) {
-                const v = visibleShare(placed, p);
-                if (v < least)
-                  problems.push(
-                    `${o.id} on ${torso} + ${head} (set ${k}): ${Math.round(v * 100)}% shows`,
-                  );
-              }
-            }
+    const loincloth = maskOf('husk/loincloth');
+    for (const torso of choices('torso')) {
+      const t = maskOf(torso);
+      for (const limb of ['head', 'armR', 'armL'] as const)
+        for (const src of choices(limb)) {
+          const n = touching(maskOf(src), t);
+          if (n < SEAM) problems.push(`${src} meets ${torso} along ${n} px`);
+        }
+      const n = touching(t, loincloth);
+      if (n < SEAM) problems.push(`${torso} meets the loincloth along ${n} px`);
+    }
+    for (const leg of [...choices('legR'), ...choices('legL')]) {
+      const n = touching(maskOf(leg), loincloth);
+      if (n < SEAM) problems.push(`${leg} meets the loincloth along ${n} px`);
     }
     expect(problems).toEqual([]);
   });
 
-  it('feet stand on the base plate', () => {
-    for (const torso of ids('torso'))
-      for (const slot of ['legR', 'legL'] as const)
-        for (const id of ids(slot)) {
-          const p = layoutMonster({ torso, [slot]: id }, SHEET).find((x) => x.slot === slot)!;
-          expect(p.y + p.h, `${id} on ${torso}`).toBe(FLOOR_Y + 1);
-        }
-  });
-
-  it('a full monster and its seams stay on the canvas', () => {
-    for (const torso of ids('torso'))
-      for (const head of ids('head'))
-        for (let k = 0; k < 5; k++) {
-          const parts = fullMonster(k);
-          Object.assign(parts, { torso, head });
-          for (const p of layoutMonster(parts, SHEET)) {
-            const where = `${p.id} on ${torso} + ${head}`;
-            expect(p.x, where).toBeGreaterThanOrEqual(0);
-            expect(p.y, where).toBeGreaterThanOrEqual(0);
-            expect(p.x + p.w, where).toBeLessThanOrEqual(CANVAS_W);
-            expect(p.y + p.h, where).toBeLessThanOrEqual(CANVAS_H);
-            for (const s of p.seams) {
-              expect(s.x, where).toBeGreaterThanOrEqual(0);
-              expect(s.y, where).toBeGreaterThanOrEqual(0);
-              expect((s.vertical ? s.x : s.x + s.len) + 2, where).toBeLessThanOrEqual(CANVAS_W);
-              expect((s.vertical ? s.y + s.len : s.y) + 2, where).toBeLessThanOrEqual(CANVAS_H);
-            }
+  it('sews every add-on onto the part it was painted for', () => {
+    const problems: string[] = [];
+    for (const slot of SLOTS) {
+      const baseSlot = BASE_OF[slot];
+      if (!baseSlot) continue;
+      for (const id of ids(slot))
+        for (const base of ids(baseSlot)) {
+          const src = part(slot, id, { [baseSlot]: base });
+          // a second head sits on the shoulder: torso, or the top of whichever arm is there
+          const hosts = slot === 'head2' ? choices('armL') : [null];
+          for (const arm of hosts) {
+            const host = arm
+              ? union(maskOf(`parts/${base}`), maskOf(arm))
+              : maskOf(`parts/${base}`);
+            const n = touching(maskOf(src), host);
+            if (n < SEAM)
+              problems.push(`${src} touches ${base}${arm ? ` + ${arm}` : ''} along ${n} px`);
           }
         }
+    }
+    expect(problems).toEqual([]);
+  });
+
+  it('roots wings, spine, tail and third arm in every body they can grow from', () => {
+    const problems: string[] = [];
+    for (const slot of ['wings', 'spine', 'tail', 'arm3'] as const)
+      for (const id of ids(slot))
+        for (const torso of choices('torso')) {
+          const body = union(
+            maskOf(torso),
+            maskOf('husk/armR'),
+            maskOf('husk/armL'),
+            maskOf('husk/legL'),
+            maskOf('husk/loincloth'),
+          );
+          const n = touching(maskOf(`parts/${id}`), body);
+          if (n < SEAM) problems.push(`${id} behind ${torso}: ${n} px`);
+        }
+    expect(problems).toEqual([]);
+  });
+
+  it('stands every leg on the floor', () => {
+    for (const leg of [...choices('legR'), ...choices('legL')]) {
+      const [group, key] = leg.split('/') as ['husk' | 'parts', string];
+      const [, y, , h] = SHEET[group][key]!;
+      expect(y! + h!, leg).toBeGreaterThanOrEqual(FLOOR_Y - 1);
+      expect(y! + h!, leg).toBeLessThanOrEqual(FLOOR_Y);
+    }
+  });
+
+  it('buries no part on a finished monster', () => {
+    const problems: string[] = [];
+    // Least share that must show. Painted add-ons carry a little of the redrawn body around them
+    // (a chest eye on a ribcage brings ribs), so their count is lower than the part itself.
+    const least: Partial<Record<SlotId, number>> = {
+      wings: 0.2,
+      spine: 0.15,
+      tail: 0.15,
+      chestEye: 0.15,
+    };
+    for (const slot of SLOTS) {
+      if (slot === 'torso' || slot === 'head') continue;
+      for (const id of ids(slot))
+        for (const torso of ids('torso'))
+          for (const head of ids('head'))
+            for (let k = 0; k < 2; k++) {
+              const parts: Partial<Record<SlotId, string>> = {};
+              QUESTIONS.forEach((q, i) => (parts[q.slot] = q.options[(k + i) % 5]!.id));
+              Object.assign(parts, { torso, head, [slot]: id });
+              const placed = layoutMonster(parts, SHEET);
+              const t = placed.find((p) => p.slot === slot);
+              if (!t) {
+                problems.push(`${layerKey(slot, id, parts)} has no layer`);
+                continue;
+              }
+              const v = shown(placed, t);
+              if (v < (least[slot] ?? 0.3))
+                problems.push(`${t.src} with ${torso} + ${head}: ${Math.round(v * 100)}% shows`);
+            }
+    }
+    expect([...new Set(problems)]).toEqual([]);
   });
 });
+
+/** Share of a layer's pixels not covered by layers drawn in front of it. */
+function shown(placed: Piece[], t: Piece): number {
+  const at = placed.indexOf(t);
+  const front = union(...placed.filter((_, i) => i > at).map((p) => maskOf(p.src)));
+  const own = maskOf(t.src);
+  let all = 0;
+  let seen = 0;
+  for (let i = 0; i < own.length; i++)
+    if (own[i]) {
+      all++;
+      if (!front[i]) seen++;
+    }
+  return seen / all;
+}

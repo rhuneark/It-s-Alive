@@ -386,8 +386,8 @@ b {
   display: flex;
   justify-content: center;
   align-self: center;
-  width: min(100%, 440px, calc(46vh * 240 / 224));
-  aspect-ratio: 240 / 224;
+  width: min(100%, 440px, calc(46vh * 224 / 200));
+  aspect-ratio: 224 / 200;
   overflow: hidden;
   border: 3px solid #3a3042;
   border-radius: 8px 8px 4px 4px;
@@ -399,18 +399,18 @@ b {
   isolation: isolate;
 }
 
-/* The 240x224 scene; narrower frames (cards, title) show its middle. */
+/* The 224x200 scene; narrower frames (cards, title) show its middle. */
 .monster > .monster-stage {
   position: relative;
   flex: none;
   height: 100%;
-  aspect-ratio: 240 / 224;
+  aspect-ratio: 224 / 200;
 }
 
 .monster-mini {
   flex: 0 0 58px;
   width: 58px;
-  aspect-ratio: 150 / 224;
+  aspect-ratio: 130 / 200;
   margin-left: auto;
   border-width: 2px;
   border-radius: 4px;
@@ -428,8 +428,8 @@ b {
 }
 
 .monster-title {
-  width: min(100%, 300px, calc(38vh * 200 / 224));
-  aspect-ratio: 200 / 224;
+  width: min(100%, 300px, calc(38vh * 170 / 200));
+  aspect-ratio: 170 / 200;
 }
 
 .monster > *,
@@ -439,8 +439,6 @@ b {
 }
 
 .monster-bg,
-.armature,
-.stitches,
 .monster-body,
 .monster-flash,
 .spark-fx {
@@ -487,46 +485,6 @@ b {
   }
 }
 
-.coil-spark {
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(225, 245, 255, 0.95) 0 12%,
-    rgba(120, 180, 255, 0.6) 30%,
-    transparent 68%
-  );
-  mix-blend-mode: screen;
-  opacity: 0;
-  pointer-events: none;
-  animation: coil-crackle 9s infinite;
-}
-
-/* the coil fizzes now and then, and flares with every lightning strike */
-@keyframes coil-crackle {
-  0%,
-  18%,
-  23%,
-  52%,
-  56%,
-  92%,
-  97%,
-  100% {
-    opacity: 0;
-  }
-  19%,
-  21%,
-  53%,
-  94%,
-  96% {
-    opacity: 0.9;
-  }
-  20%,
-  54%,
-  95% {
-    opacity: 0.3;
-  }
-}
-
 .monster-body {
   filter: drop-shadow(0 0 0 #000);
 }
@@ -547,12 +505,6 @@ b {
   50% {
     filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 8px rgba(155, 224, 106, 1));
   }
-}
-
-.cavity {
-  border-radius: 45%;
-  background: radial-gradient(circle, #2a0508 40%, #120204 75%);
-  box-shadow: 0 0 0 1px #000;
 }
 
 .ghost-slot {

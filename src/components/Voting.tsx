@@ -38,7 +38,7 @@ export function OptionGrid({
             data-option={o.id}
           >
             <span className="option-art">
-              <img src={iconUrl(o.id)} alt="" draggable={false} />
+              <img src={iconUrl(question.slot, o.id, parts)} alt="" draggable={false} />
             </span>
             <span className="option-text">
               <span className="option-name">{o.name}</span>
@@ -55,6 +55,8 @@ export function OptionGrid({
 
 interface ResultsProps {
   question: Question;
+  /** Parts stitched so far (picks the art painted onto this monster's head / torso / leg). */
+  parts: Partial<Record<SlotId, string>>;
   counts: number[] | null;
   loading: boolean;
   myVotes: CastVote[];
@@ -62,7 +64,7 @@ interface ResultsProps {
 }
 
 /** Revealed only after voting: each option's share of tonight's votes. */
-export function Results({ question, counts, loading, myVotes, onRefresh }: ResultsProps) {
+export function Results({ question, parts, counts, loading, myVotes, onRefresh }: ResultsProps) {
   if (!counts) {
     return (
       <div className="results">
@@ -90,7 +92,12 @@ export function Results({ question, counts, loading, myVotes, onRefresh }: Resul
             className={`result ${i === lead ? 'leading' : ''} ${mine ? 'mine' : ''}`}
             data-result={o.id}
           >
-            <img className="result-art" src={iconUrl(o.id)} alt="" draggable={false} />
+            <img
+              className="result-art"
+              src={iconUrl(question.slot, o.id, parts)}
+              alt=""
+              draggable={false}
+            />
             <div className="result-main">
               <div className="result-label">
                 <span className="result-name">{o.name}</span>

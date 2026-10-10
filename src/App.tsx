@@ -255,7 +255,7 @@ function Title({
       </button>
       <p className="muted small center-text">
         {built === 0
-          ? 'Nothing has been stitched yet.'
+          ? 'The husk lies waiting for its first part.'
           : `${built} part${built === 1 ? '' : 's'} stitched so far.`}
       </p>
       {onLab && (
@@ -337,6 +337,7 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
           <>
             <Results
               question={question}
+              parts={game.parts}
               counts={game.todayCounts}
               loading={game.countsLoading}
               myVotes={save.votes}
@@ -365,6 +366,7 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
           <p className="eyebrow">The tally so far</p>
           <Results
             question={question}
+            parts={game.parts}
             counts={game.todayCounts}
             loading={game.countsLoading}
             myVotes={save.votes}
