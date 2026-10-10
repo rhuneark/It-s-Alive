@@ -288,9 +288,14 @@ def husk_piece(region, R):
 
 
 def picked(option_id, base=None):
-    """The chosen inpainted image for an option (scene-sized), from art/picked/."""
-    path = os.path.join(PICKED, f"{key(option_id, base)}.png")
-    return Image.open(path).convert("RGBA")
+    """The chosen inpainted image for an option (scene-sized): the art/picks.json candidate when
+    art/raw still has it (a re-pick lands in art/picked/ only when process.py runs; add-ons must be
+    painted onto the NEW base), else art/picked/."""
+    k = key(option_id, base)
+    raw = json.load(open(PICKS)).get(k)
+    if raw and os.path.exists(os.path.join(RAW, raw)):
+        return Image.open(os.path.join(RAW, raw)).convert("RGBA")
+    return Image.open(os.path.join(PICKED, f"{k}.png")).convert("RGBA")
 
 
 def solid(img):
@@ -339,9 +344,15 @@ OVAL = {
     "spine_quills": (68, 18, 156, 96),
     "spine_tentacles": (68, 18, 156, 96),
     "tail_croc": (118, 92, 214, 200),
+    "head_werewolf": (92, 20, 131, 74),  # head-sized, with room for its pointed ears
     "tail_scorpion": (118, 90, 214, 200),
 }
 
+
+# Heads are painted inside a box the size of a human head (plus room for ears or hair), so they
+# keep the body's proportions and sit centred on the neck. The husk's own head is x 99..124, y 38..67.
+HEAD_BOX = (93, 28, 130, 67)
+SIZED = {"head_nobleman", "head_raven"}
 
 # Areas an option must not paint into when generated (x0, y0, x1, y1).
 KEEP_CLEAR = {"spine_shark": (84, 0, 142, 80)}
@@ -360,6 +371,8 @@ def generate(option_id, base=None, seed=7, lite=False):
     else:
         image, base_mask = compose({}, R), None
     mask = mask_for(slot, R, base_mask)
+    if option_id in SIZED:
+        mask = ImageChops.multiply(mask, rect(*HEAD_BOX))
     if option_id in KEEP_CLEAR:  # a narrow shape would hide behind the head: paint it beside
         mask = minus(mask, rect(*KEEP_CLEAR[option_id]))
     if option_id in OVAL:  # broad shapes fill a box to its edges; an oval leaves round tips

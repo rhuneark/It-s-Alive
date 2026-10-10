@@ -1123,3 +1123,125 @@ b {
     transition: none !important;
   }
 }
+
+/* ---------- sketchbook (design your own monster) ---------- */
+.modal.sketchbook {
+  max-height: 96dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* the sheet scrolls as a whole: its rows keep their own height */
+.modal.sketchbook > * {
+  flex-shrink: 0;
+}
+
+/* the preview stays in view while the player scrolls the parts: every tap shows its result */
+.sketch-stage {
+  position: sticky;
+  top: -16px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  margin: -6px -16px 0;
+  padding: 6px 16px 8px;
+  background: var(--stone-2);
+  border-bottom: 2px solid var(--stone-edge);
+  box-shadow: 0 8px 10px -6px rgba(0, 0, 0, 0.8);
+}
+
+.sketch-monster {
+  width: min(100%, calc(34vh * 224 / 200));
+}
+
+.sketch-parts {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.sketch-part {
+  flex: none;
+  min-height: 44px;
+  padding: 6px 10px;
+  font-family: var(--font-head);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--parchment);
+  background: #1c1623;
+  border: 2px solid var(--stone-edge);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sketch-part.filled {
+  border-color: #6d5a3a;
+}
+
+.sketch-part.active {
+  border-color: var(--brass);
+  background: #2c2233;
+  box-shadow: 0 0 0 2px #000 inset;
+}
+
+.sketch-night {
+  color: var(--brass);
+  margin-right: 2px;
+}
+
+.sketch-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sketch-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 6px 8px;
+  text-align: left;
+  font-family: var(--font-head);
+  font-size: 14px;
+  color: var(--parchment);
+  background: linear-gradient(180deg, #2a2133, #1c1623);
+  border: 2px solid var(--stone-edge);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.sketch-option img,
+.sketch-none {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.sketch-none {
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: var(--parchment-dim);
+}
+
+.sketch-option.selected {
+  border-color: var(--bile);
+  box-shadow:
+    0 0 0 2px #000 inset,
+    0 0 10px rgba(155, 224, 106, 0.35);
+}
+
+.sketch-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sketch-actions .btn {
+  min-height: 44px;
+}

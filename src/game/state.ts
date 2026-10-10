@@ -3,6 +3,7 @@
  * looking at, and a cache of already-resolved days. Pure reducers only; the
  * caller persists the result to appStorage after every step.
  */
+import { cleanSketch, type Parts } from './sketch';
 import type { WinReason } from './tally';
 
 /** Everyone gets one vote per day. */
@@ -46,6 +47,10 @@ export interface SaveState {
   musicOn: boolean;
   /** Main theme volume, 0..1. */
   musicVolume: number;
+  /** The option this player last voted for on each night (day index -> option id). */
+  myPicks: Record<string, string>;
+  /** The player's own design in the Sketchbook (slot -> option id). Never a vote. */
+  sketch: Parts | null;
 }
 
 export function newSave(season: string, day: number): SaveState {
@@ -61,6 +66,8 @@ export function newSave(season: string, day: number): SaveState {
     started: false,
     musicOn: true,
     musicVolume: DEFAULT_MUSIC_VOLUME,
+    myPicks: {},
+    sketch: null,
   };
 }
 
@@ -91,6 +98,14 @@ export function parseSave(raw: string | null, season: string, day: number): Save
         typeof data.musicVolume === 'number' && Number.isFinite(data.musicVolume)
           ? Math.max(0, Math.min(1, data.musicVolume))
           : DEFAULT_MUSIC_VOLUME,
+      myPicks: isRecord(data.myPicks)
+        ? Object.fromEntries(
+            Object.entries(data.myPicks).filter(
+              (e): e is [string, string] => /^\d+$/.test(e[0]) && typeof e[1] === 'string',
+            ),
+          )
+        : {},
+      sketch: data.sketch == null ? null : cleanSketch(data.sketch),
     };
     return rollToDay(save, day);
   } catch {
@@ -148,7 +163,18 @@ export function recordVote(save: SaveState, optionId: string): SaveState {
         streak: continuing ? save.stats.streak + 1 : 1,
       }
     : { ...save.stats, totalVotes: save.stats.totalVotes + 1 };
-  return { ...save, votes: [...save.votes, { optionId, kind }], pending: null, stats };
+  return {
+    ...save,
+    votes: [...save.votes, { optionId, kind }],
+    pending: null,
+    stats,
+    myPicks: { ...save.myPicks, [String(save.day)]: optionId },
+  };
+}
+
+/** Keep the player's Sketchbook design. */
+export function setSketch(save: SaveState, sketch: Parts): SaveState {
+  return { ...save, sketch };
 }
 
 export function rememberResolved(save: SaveState, day: number, result: ResolvedDay): SaveState {

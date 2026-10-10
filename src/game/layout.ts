@@ -130,6 +130,9 @@ export function layoutMonster(parts: Partial<Record<SlotId, string>>, sheet: Lay
   for (const slot of Object.keys(parts) as SlotId[]) {
     const id = parts[slot];
     if (!id || slot === 'spark') continue;
+    // an add-on was painted onto a chosen head / torso / leg: without one it has nothing to sit on
+    const baseSlot = BASE_OF[slot];
+    if (baseSlot && !parts[baseSlot]) continue;
     const key = layerKey(slot, id, parts);
     const box = sheet.parts[key];
     if (!box) continue;

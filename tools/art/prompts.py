@@ -4,9 +4,9 @@ description painted into the husk."""
 
 # option id -> (template slot, description)
 PARTS = {
-    "head_nobleman": ("head", "pale guillotined French nobleman with a white powdered wig, sneering, stitched neck"),
-    "head_werewolf": ("head", "snarling grey werewolf head, fangs, glowing red eyes"),
-    "head_raven": ("head", "giant black raven head with a sharp beak and beady eyes"),
+    "head_nobleman": ("head", "pale guillotined French nobleman's head with a small neat white powdered wig, sneering, facing straight forward"),
+    "head_werewolf": ("head", "snarling grey werewolf head with two pointed ears, fangs, glowing red eyes, facing straight forward"),
+    "head_raven": ("head", "black raven head facing straight forward at the viewer, symmetrical, sharp beak pointing down, beady eyes"),
     "head_croc": ("head", "green swamp crocodile head with jagged teeth, facing forward"),
     "head_mummy": ("head", "ancient Egyptian mummy head wrapped in rotting bandages, glowing eyes"),
     "torso_gravedigger": ("torso", "muscular pale human male chest with stitched scars"),

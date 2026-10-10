@@ -16,6 +16,11 @@ the HEAD; the season ends with the BRAIN and the SPARK of life, and on Halloween
 - One free vote per day, plus `MAX_AD_VOTES_PER_DAY` (`src/game/state.ts`) extra votes from rewarded ads.
   The cap is tuned by `npm run simulate`; re-run it if you change the cap or the voting model.
 - Percentages are hidden until the player has voted.
+- Sketchbook (every screen, every player): a private sandbox to try any option for any part and see the
+  creature it makes. Nothing in it is a vote. Rules in `src/game/sketch.ts`; the design is kept in the save
+  (`sketch`, saved 800 ms after the last change) and "My votes" rebuilds the monster from `myPicks`
+  (night -> the player's latest pick, recorded by `recordVote`) plus the real winners of nights they skipped.
+  An add-on without its base part (horns with no chosen head) is not drawn: `layoutMonster` skips it.
 - Main theme: "The Assembly" by the owner (`public/cdn-assets/audio/theme.mp3`, on RUN's CDN). `run.loadTheme()`
   tries cdn.fetchAsset, then fetching the resolved CDN URL, then the same-origin cdn-assets path (all as a
   same-origin blob URL), and last streams the CDN URL directly (no Web Audio routing then). Don't add a copy
@@ -33,11 +38,12 @@ the HEAD; the season ends with the BRAIN and the SPARK of life, and on Halloween
 ```
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
-               rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
+               sketch (Sketchbook designs), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
-               TestLab (owner-only sandbox controls), SoundPanel (music on/off + volume), Diagnostics
+               Sketchbook (players design their own monster), TestLab (owner-only sandbox controls),
+               SoundPanel (music on/off + volume), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, awakened
 public/art/    shipped art: husk/<region>.png, parts/<key>.png (painted layers, also the card art),
                icons/spark_*.png (the spark is an effect), lab.png (room with its props painted in)
@@ -79,6 +85,11 @@ husk's scale, pose, outline and light, and sit on the same neck, shoulders, wais
   `mask_for(slot)` says where each slot may paint (a head may grow above the neck, an arm outward, etc.).
 - The six big parts (head, torso, arms, legs) are Pro inpaints (`/inpaint-v3`, ~9 generations each) of
   the husk region. The loincloth is never replaced: it ties the waist together.
+- Heads must stay head-sized: about 24-36 px wide, centred on x 111.5 like the husk's own head. Heads the
+  model blows up (wig, beak) paint only inside `HEAD_BOX` (`SIZED`); the werewolf gets an oval with room
+  for its ears. Changing a head means repainting all 25 head add-ons on it:
+  `husk.py edit <slot> --on=<head> --seed=7` for horns, browEye, ears, jaw and brain, then re-pick.
+  husk.py paints onto the base named in picks.json (art/raw), not the stale art/picked/ copy.
 - Add-ons that sit on a chosen part (third eye, horns, ears, jaw, brain on each HEAD; chest eye, heart,
   belly mouth, second head on each TORSO; hide on each right LEG) are made with `edit-images-v2`: one job
   (~10 generations) paints an option onto all 5 bases; `added()` keeps only the new/clearly changed pixels
@@ -119,6 +130,7 @@ the props share its perspective. Never composite props onto the room: they float
   ("Open Test Lab", remembered as `unlocked`). Unlocking is safe for anyone: the Lab only touches a sandbox.
   The role check only matches when the player is signed in to RUN with the owner's account; Diagnostics has a
   Sign in button for guest sessions. While on, a red TEST MODE banner shows.
+- The Test Lab stays owner-only (night jumping, refills). Players get the Sketchbook instead.
 - Test mode = sandbox: own save key (`save_test`), fake crowd tallies plus fake votes (`testVotes`), any
   night via a day override (`-1` before launch … `21` Halloween), "Refill tonight's votes", wipe, leave.
   Real shared tallies (UGC), the real `save`, and analytics are never touched. Settings persist in `testLab`.

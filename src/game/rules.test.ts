@@ -11,6 +11,7 @@ import {
   type Season,
 } from './schedule';
 import LAYERS from './layers.json';
+import { cleanSketch, randomSketch, setSketchPart, sketchFromPicks, sketchSize } from './sketch';
 import {
   MAX_AD_VOTES_PER_DAY,
   canEarnAdVote,
@@ -22,6 +23,7 @@ import {
   serializeSave,
   setMusic,
   setMusicVolume,
+  setSketch,
   votesRemaining,
 } from './state';
 import { percentages, resolveDay } from './tally';
@@ -182,5 +184,50 @@ describe('votes and saves', () => {
     expect(parseSave('{nope', 'test', 4)).toEqual(newSave('test', 4));
     expect(parseSave(serializeSave(s), 'other-season', 4)).toEqual(newSave('other-season', 4));
     expect(parseSave(serializeSave(s), 'test', 5).votes).toEqual([]);
+  });
+});
+
+describe('sketchbook', () => {
+  const schedule = QUESTIONS.map((q) => q.slot);
+
+  it('keeps only real slot/option pairs', () => {
+    expect(
+      cleanSketch({ head: 'head_raven', torso: 'head_croc', armR: 'nope', legL: 3, x: 'eye_owl' }),
+    ).toEqual({ head: 'head_raven' });
+    expect(cleanSketch(null)).toEqual({});
+    expect(cleanSketch(['head_raven'])).toEqual({});
+  });
+
+  it('sets and clears a part', () => {
+    const s = setSketchPart({}, 'head', 'head_croc');
+    expect(s).toEqual({ head: 'head_croc' });
+    expect(setSketchPart(s, 'head', null)).toEqual({});
+    expect(setSketchPart(s, 'torso', 'head_croc')).toEqual(s); // wrong slot is ignored
+  });
+
+  it('builds the monster from my votes, the real winners filling the gaps', () => {
+    const history = {
+      '0': { winner: 'head_croc', counts: [], reason: 'votes' as const },
+      '1': { winner: 'torso_bear', counts: [], reason: 'votes' as const },
+    };
+    const s = sketchFromPicks({ '0': 'head_raven', '2': 'arm_crab' }, history, schedule);
+    expect(s).toEqual({ head: 'head_raven', torso: 'torso_bear', armR: 'arm_crab' });
+  });
+
+  it('randomises every part, the same way for the same seed', () => {
+    const a = randomSketch(42);
+    expect(sketchSize(a)).toBe(QUESTIONS.length);
+    expect(randomSketch(42)).toEqual(a);
+    expect(cleanSketch(a)).toEqual(a);
+  });
+
+  it('remembers my pick per night and the sketch across saves', () => {
+    let s = newSave('test', 3);
+    s = recordVote(s, 'eye_owl');
+    expect(s.myPicks).toEqual({ '3': 'eye_owl' });
+    s = setSketch(s, { head: 'head_mummy' });
+    const back = parseSave(serializeSave(s), 'test', 4);
+    expect(back.myPicks).toEqual({ '3': 'eye_owl' });
+    expect(back.sketch).toEqual({ head: 'head_mummy' });
   });
 });

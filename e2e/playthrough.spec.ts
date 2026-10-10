@@ -254,3 +254,64 @@ test('hidden diagnostics: tapping the build stamp 5 times shows device info and 
   await page.getByTestId('lab-start').click();
   await expect(page.getByTestId('test-banner')).toBeVisible();
 });
+
+test('Sketchbook: try any parts, keep the design, and rebuild the monster from my votes', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  // Night 5 is the third eye, which grows on the night-1 head.
+  await openDay(page, 4);
+  await page.getByTestId('sketch-open').click();
+  const book = page.getByTestId('sketchbook');
+  const painted = book.locator('.part[data-layer^="parts/"]');
+  const layer = (key: string) => book.locator(`.part[data-layer="parts/${key}"]`);
+  await expect(book).toContainText('Nothing here is a vote');
+  await expect(page.getByTestId('sketch-mine')).toBeDisabled(); // no votes yet
+  await noSidewaysScroll(page);
+  await framedButtons(page);
+
+  // From a bare husk: a head, horns painted onto that head, then a different head.
+  await page.getByTestId('sketch-clear').click();
+  await expect(painted).toHaveCount(0);
+  await book.locator('[data-sketch-part="horns"]').click();
+  await expect(book).toContainText('Choose a head first');
+  await book.locator('[data-sketch-part="head"]').click();
+  await book.locator('[data-sketch-option="head_raven"]').click();
+  await expect(layer('head_raven')).toHaveCount(1);
+  await book.locator('[data-sketch-part="horns"]').click();
+  await book.locator('[data-sketch-option="horns_ram"]').click();
+  await expect(layer('horns_ram@head_raven')).toHaveCount(1);
+  await book.locator('[data-sketch-part="head"]').click();
+  await book.locator('[data-sketch-option="head_croc"]').click();
+  await expect(layer('horns_ram@head_croc')).toHaveCount(1);
+  await expect(book).toContainText('2 of 21 parts');
+  await imagesLoaded(page);
+
+  // Random fills every part; nothing was voted.
+  await page.getByTestId('sketch-random').click();
+  await expect(book).toContainText('21 of 21 parts');
+  await imagesLoaded(page);
+  await noSidewaysScroll(page);
+  await book.getByRole('button', { name: 'Close' }).click();
+  await expect(page.locator('.result')).toHaveCount(0);
+  await page.waitForTimeout(900); // let the debounced save land
+
+  // The design is kept.
+  await page.reload();
+  await page.getByTestId('start').click();
+  await page.getByTestId('sketch-open').click();
+  await expect(book).toContainText('21 of 21 parts');
+  await book.getByRole('button', { name: 'Close' }).click();
+
+  // After voting, "My votes" shows my pick on the real monster's head.
+  const pick = await page.locator('.option').nth(3).getAttribute('data-option');
+  await voteFor(page, 3);
+  await page.getByTestId('sketch-open').click();
+  await page.getByTestId('sketch-mine').click();
+  await expect(book.locator(`.part[data-layer^="parts/${pick}@head_"]`)).toHaveCount(1);
+  await expect(book).toContainText('5 of 21 parts');
+  await imagesLoaded(page);
+  expect(errors).toEqual([]);
+});

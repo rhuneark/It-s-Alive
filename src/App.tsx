@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useGame, type GameModel } from './app/useGame';
 import { theme, useMusic } from './app/useMusic';
 import { Chronicle } from './components/Chronicle';
+import { Sketchbook } from './components/Sketchbook';
 import { Diagnostics } from './components/Diagnostics';
 import { SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
@@ -80,6 +81,11 @@ function Game({
 }) {
   const game = useGame();
   const [chronicle, setChronicle] = useState(false);
+  const [sketchOpen, setSketchOpen] = useState(false);
+  const openSketch = () => {
+    setSketchOpen(true);
+    run.track('sketchbook_open');
+  };
   const [labOpen, setLabOpen] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
 
@@ -116,12 +122,14 @@ function Game({
           onEnter();
         }}
         onLab={canLab ? openLab : undefined}
+        onSketch={openSketch}
       />
     );
   else if (game.phase.kind === 'awakened')
-    screen = <Awakened game={game} onChronicle={() => setChronicle(true)} />;
-  else if (game.phase.kind === 'preseason') screen = <Preseason game={game} />;
-  else screen = <Vote game={game} onChronicle={() => setChronicle(true)} />;
+    screen = <Awakened game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
+  else if (game.phase.kind === 'preseason')
+    screen = <Preseason game={game} onSketch={openSketch} />;
+  else screen = <Vote game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
 
   const today =
     game.phase.kind === 'voting' ? game.phase.day : game.phase.kind === 'awakened' ? 999 : -1;
@@ -161,6 +169,17 @@ function Game({
       </main>
       {chronicle && (
         <Chronicle save={game.save} today={today} onClose={() => setChronicle(false)} />
+      )}
+      {sketchOpen && (
+        <Sketchbook
+          sketch={game.save.sketch}
+          real={game.parts}
+          myPicks={game.save.myPicks}
+          history={game.save.history}
+          schedule={game.schedule}
+          onChange={game.setSketch}
+          onClose={() => setSketchOpen(false)}
+        />
       )}
       {labOpen && (
         <TestLab
@@ -226,10 +245,12 @@ function Title({
   game,
   onStart,
   onLab,
+  onSketch,
 }: {
   game: GameModel;
   onStart: () => void;
   onLab?: () => void;
+  onSketch: () => void;
 }) {
   const built = Object.keys(game.parts).length;
   return (
@@ -258,6 +279,7 @@ function Title({
           ? 'The husk lies waiting for its first part.'
           : `${built} part${built === 1 ? '' : 's'} stitched so far.`}
       </p>
+      <SketchButton onClick={onSketch} />
       {onLab && (
         <button className="btn btn-secondary btn-wide" onClick={onLab} data-testid="lab-open">
           Test Lab (owner only)
@@ -267,7 +289,15 @@ function Title({
   );
 }
 
-function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void }) {
+function Vote({
+  game,
+  onChronicle,
+  onSketch,
+}: {
+  game: GameModel;
+  onChronicle: () => void;
+  onSketch: () => void;
+}) {
   if (game.phase.kind !== 'voting') return null;
   const { question, day, dayCount, endsInMs } = game.phase;
   const { save } = game;
@@ -374,6 +404,7 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
           />
         </section>
       )}
+      <SketchButton onClick={onSketch} />
       {save.stats.streak > 1 && (
         <p className="muted small center-text">You've voted {save.stats.streak} nights in a row.</p>
       )}
@@ -466,7 +497,7 @@ function ProgressRail({ total, today, done }: { total: number; today: number; do
   );
 }
 
-function Preseason({ game }: { game: GameModel }) {
+function Preseason({ game, onSketch }: { game: GameModel; onSketch: () => void }) {
   if (game.phase.kind !== 'preseason') return null;
   return (
     <div className="screen center">
@@ -475,11 +506,20 @@ function Preseason({ game }: { game: GameModel }) {
       <p className="prompt">The laboratory opens in</p>
       <p className="big-count">{formatCountdown(game.phase.opensInMs)}</p>
       <p className="muted">The first question: whose head shall crown our creation?</p>
+      <SketchButton onClick={onSketch} />
     </div>
   );
 }
 
-function Awakened({ game, onChronicle }: { game: GameModel; onChronicle: () => void }) {
+function Awakened({
+  game,
+  onChronicle,
+  onSketch,
+}: {
+  game: GameModel;
+  onChronicle: () => void;
+  onSketch: () => void;
+}) {
   return (
     <div className="screen game">
       <TopBar game={game} onChronicle={onChronicle} />
@@ -497,6 +537,16 @@ function Awakened({ game, onChronicle }: { game: GameModel; onChronicle: () => v
         </p>
         <p className="muted">What it does next… you will soon discover.</p>
       </section>
+      <SketchButton onClick={onSketch} />
     </div>
+  );
+}
+
+/** Opens the Sketchbook, where a player can try any parts on their own monster. */
+function SketchButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button className="btn btn-secondary btn-wide" onClick={onClick} data-testid="sketch-open">
+      Sketchbook: try any parts
+    </button>
   );
 }

@@ -27,10 +27,12 @@ import {
   selectOption,
   setMusic,
   setMusicVolume,
+  setSketch as saveSketch,
   serializeSave,
   votesRemaining,
   type SaveState,
 } from '../game/state';
+import type { Parts } from '../game/sketch';
 import { resolveDay } from '../game/tally';
 import * as run from '../sdk/run';
 
@@ -64,9 +66,14 @@ export interface GameModel {
   setVolume: (v: number) => void;
   /** Test Lab only: hand back tonight's votes. */
   refillVotes: () => void;
+  /** Keep the player's Sketchbook design (debounced save). */
+  setSketch: (sketch: Parts) => void;
+  /** The slot voted on each night, for the Sketchbook's "my votes". */
+  schedule: readonly SlotId[];
 }
 
 const SCHEDULE = buildSchedule(votingDays(SEASON));
+const SLOTS = SCHEDULE.map((q) => q.slot);
 const TALLY_REFRESH_MS = 60_000;
 
 function currentDay(now: number): number {
@@ -330,6 +337,19 @@ export function useGame(): GameModel {
     setTodayCounts(null);
   }, [commit]);
 
+  const sketchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setSketch = useCallback(
+    (sketch: Parts) => {
+      const next = saveSketch(saveRef.current, sketch);
+      saveRef.current = next;
+      setSave(next);
+      if (sketchTimer.current) clearTimeout(sketchTimer.current);
+      // A burst of taps becomes one cloud write.
+      sketchTimer.current = setTimeout(() => void commit(saveRef.current), 800);
+    },
+    [commit],
+  );
+
   const parts = useMemo(() => partsFromHistory(save), [save]);
 
   return {
@@ -352,5 +372,7 @@ export function useGame(): GameModel {
     toggleMusic,
     setVolume,
     refillVotes: refill,
+    setSketch,
+    schedule: SLOTS,
   };
 }
