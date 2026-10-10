@@ -1,7 +1,18 @@
 import { Fragment, useMemo } from 'react';
 import { questionForSlot, type SlotId } from '../game/catalog';
-import { CANVAS_H, CANVAS_W, FLOOR_Y, frameFor, layoutMonster, type Placed } from '../game/layout';
-import SPRITES from '../game/sprites.json';
+import {
+  CANVAS_H,
+  CANVAS_W,
+  CX,
+  FLOOR_Y,
+  frameFor,
+  layoutMonster,
+  type Placed,
+  type SpriteSheet,
+} from '../game/layout';
+import SPRITE_DATA from '../game/sprites.json';
+
+const SPRITES: SpriteSheet = SPRITE_DATA;
 
 const BASE = import.meta.env.BASE_URL;
 export const partUrl = (id: string) => `${BASE}art/parts/${id}.png`;
@@ -24,6 +35,9 @@ interface Props {
 
 const pct = (v: number, of: number) => `${(v / of) * 100}%`;
 
+/** Crackle over the tesla coil's tip (its place in lab.png is set by SCENE in tools/art/process.py). */
+const COIL_SPARK = { x: 202, y: 150, w: 24, h: 24 };
+
 function boxStyle(p: { x: number; y: number; w: number; h: number }) {
   return {
     left: pct(p.x, CANVAS_W),
@@ -40,7 +54,6 @@ export function Monster({ parts, preview, nextSlot, spark, alive, mini, classNam
     [parts, preview],
   );
   const placed = useMemo(() => layoutMonster(all, SPRITES), [all]);
-  const frame = useMemo(() => frameFor(all, SPRITES), [all]);
 
   const ghost = useMemo(() => {
     if (!nextSlot || nextSlot === 'spark' || preview || parts[nextSlot]) return [];
@@ -59,30 +72,35 @@ export function Monster({ parts, preview, nextSlot, spark, alive, mini, classNam
       aria-label={mini ? undefined : 'The monster so far'}
       aria-hidden={mini ? true : undefined}
     >
-      {!mini && <img className="monster-bg" src={`${BASE}art/lab.png`} alt="" draggable={false} />}
-      {!mini && <div className="monster-flash" />}
-      <Armature parts={all} />
-      <div className="monster-body">
-        {placed.map((p, i) => (
-          <Fragment key={`${p.slot}-${p.id}-${i}`}>
-            {p.slot === 'heart' && <div className="cavity" style={boxStyle(grow(p, 3))} />}
-            <img
-              className={`part ${preview && p.slot === preview.slot ? 'previewing' : ''}`}
-              src={partUrl(p.id)}
-              alt=""
-              draggable={false}
-              style={{ ...boxStyle(p), transform: p.flip ? 'scaleX(-1)' : undefined }}
-            />
-          </Fragment>
-        ))}
-        <Stitches parts={all} frame={frame} />
-        {ghost.map((g, i) => (
-          <div key={i} className="ghost-slot" style={boxStyle(grow(g, 1))}>
-            <span>?</span>
-          </div>
-        ))}
+      <div className="monster-stage">
+        {!mini && (
+          <img className="monster-bg" src={`${BASE}art/lab.png`} alt="" draggable={false} />
+        )}
+        {!mini && <div className="monster-flash" />}
+        {!mini && <div className="coil-spark" style={boxStyle(COIL_SPARK)} />}
+        <Armature parts={all} />
+        <div className="monster-body">
+          {placed.map((p, i) => (
+            <Fragment key={`${p.slot}-${p.id}-${i}`}>
+              {p.slot === 'heart' && <div className="cavity" style={boxStyle(grow(p, 3))} />}
+              <img
+                className={`part ${preview && p.slot === preview.slot ? 'previewing' : ''}`}
+                src={partUrl(p.id)}
+                alt=""
+                draggable={false}
+                style={{ ...boxStyle(p), transform: p.flip ? 'scaleX(-1)' : undefined }}
+              />
+            </Fragment>
+          ))}
+          <Stitches placed={placed} />
+          {ghost.map((g, i) => (
+            <div key={i} className="ghost-slot" style={boxStyle(grow(g, 1))}>
+              <span>?</span>
+            </div>
+          ))}
+        </div>
+        {sparkKind && <div className={`spark-fx spark-${sparkKind}`} />}
       </div>
-      {sparkKind && <div className={`spark-fx spark-${sparkKind}`} />}
     </div>
   );
 }
@@ -97,6 +115,10 @@ function Armature({ parts }: { parts: Partial<Record<SlotId, string>> }) {
   const iron = '#3a3440';
   const hi = '#6b6170';
   const bolt = '#b08a3e';
+  const yokeY = Math.min(f.shoulderL.y, f.shoulderR.y) - 5;
+  const yokeL = f.shoulderL.x - 16;
+  const yokeR = f.shoulderR.x + 16;
+  const hipY = Math.max(f.hipL.y, f.hipR.y) - 2;
   return (
     <svg
       className="armature"
@@ -105,70 +127,41 @@ function Armature({ parts }: { parts: Partial<Record<SlotId, string>> }) {
       aria-hidden
     >
       {/* base plate and post */}
-      <rect x={52} y={FLOOR_Y} width={56} height={6} fill={iron} />
-      <rect x={52} y={FLOOR_Y} width={56} height={1} fill={hi} />
-      <rect x={78} y={20} width={4} height={FLOOR_Y - 20} fill={iron} />
-      <rect x={78} y={20} width={1} height={FLOOR_Y - 20} fill={hi} />
+      <rect x={CX - 28} y={FLOOR_Y} width={56} height={6} fill={iron} />
+      <rect x={CX - 28} y={FLOOR_Y} width={56} height={1} fill={hi} />
+      <rect x={CX - 2} y={20} width={4} height={FLOOR_Y - 20} fill={iron} />
+      <rect x={CX - 2} y={20} width={1} height={FLOOR_Y - 20} fill={hi} />
       {/* shoulder yoke with hooks */}
-      <rect
-        x={f.shoulderL - 18}
-        y={f.shoulderY - 6}
-        width={f.shoulderR - f.shoulderL + 36}
-        height={3}
-        fill={iron}
-      />
-      <rect
-        x={f.shoulderL - 18}
-        y={f.shoulderY - 6}
-        width={f.shoulderR - f.shoulderL + 36}
-        height={1}
-        fill={hi}
-      />
+      <rect x={yokeL} y={yokeY} width={yokeR - yokeL} height={3} fill={iron} />
+      <rect x={yokeL} y={yokeY} width={yokeR - yokeL} height={1} fill={hi} />
       {/* hip bar */}
-      <rect x={f.hipL - 10} y={f.hipY + 2} width={f.hipR - f.hipL + 20} height={3} fill={iron} />
+      <rect x={f.hipL.x - 8} y={hipY} width={f.hipR.x - f.hipL.x + 16} height={3} fill={iron} />
       {/* bare iron limbs where nothing is grafted yet */}
-      {!parts.armR && (
-        <rect x={f.shoulderL - 4} y={f.shoulderY - 4} width={3} height={54} fill={iron} />
-      )}
-      {!parts.armL && (
-        <rect x={f.shoulderR + 1} y={f.shoulderY - 4} width={3} height={54} fill={iron} />
-      )}
+      {!parts.armR && <rect x={f.shoulderL.x - 1} y={yokeY} width={3} height={58} fill={iron} />}
+      {!parts.armL && <rect x={f.shoulderR.x - 1} y={yokeY} width={3} height={58} fill={iron} />}
       {!parts.legR && (
-        <rect x={f.hipL - 1} y={f.hipY + 4} width={3} height={FLOOR_Y - f.hipY - 4} fill={iron} />
+        <rect x={f.hipL.x - 1} y={hipY} width={3} height={FLOOR_Y - hipY} fill={iron} />
       )}
       {!parts.legL && (
-        <rect x={f.hipR - 2} y={f.hipY + 4} width={3} height={FLOOR_Y - f.hipY - 4} fill={iron} />
+        <rect x={f.hipR.x - 1} y={hipY} width={3} height={FLOOR_Y - hipY} fill={iron} />
       )}
       {!parts.head && (
         <>
-          <rect x={68} y={f.head.y + 6} width={24} height={3} fill={iron} />
-          <rect x={68} y={f.head.y + 6} width={3} height={f.head.h - 4} fill={iron} />
-          <rect x={89} y={f.head.y + 6} width={3} height={f.head.h - 4} fill={iron} />
+          <rect x={f.neck.x - 12} y={f.head.y + 6} width={24} height={3} fill={iron} />
+          <rect x={f.neck.x - 12} y={f.head.y + 6} width={3} height={f.head.h - 4} fill={iron} />
+          <rect x={f.neck.x + 9} y={f.head.y + 6} width={3} height={f.head.h - 4} fill={iron} />
         </>
       )}
-      {[f.shoulderL - 16, f.shoulderR + 14, 80].map((x) => (
-        <rect key={x} x={x} y={f.shoulderY - 6} width={2} height={2} fill={bolt} />
+      {[yokeL + 2, yokeR - 4, CX - 1].map((x) => (
+        <rect key={x} x={x} y={yokeY} width={2} height={2} fill={bolt} />
       ))}
     </svg>
   );
 }
 
-/** Black thread across every seam where two grafted parts meet. */
-function Stitches({
-  parts,
-  frame: f,
-}: {
-  parts: Partial<Record<SlotId, string>>;
-  frame: ReturnType<typeof frameFor>;
-}) {
-  const seams: Array<{ x: number; y: number; len: number; vertical?: boolean }> = [];
-  if (parts.head && parts.torso) seams.push({ x: 72, y: f.torso.y + 3, len: 16 });
-  if (parts.torso && parts.armR)
-    seams.push({ x: f.shoulderL - 2, y: f.shoulderY - 1, len: 10, vertical: true });
-  if (parts.torso && parts.armL)
-    seams.push({ x: f.shoulderR + 1, y: f.shoulderY - 1, len: 10, vertical: true });
-  if (parts.torso && parts.legR) seams.push({ x: f.hipL - 6, y: f.hipY + 3, len: 12 });
-  if (parts.torso && parts.legL) seams.push({ x: f.hipR - 6, y: f.hipY + 3, len: 12 });
+/** Black thread across every seam where a grafted part is sewn on. */
+function Stitches({ placed }: { placed: Placed[] }) {
+  const seams = placed.flatMap((p) => p.seams);
   if (seams.length === 0) return null;
   return (
     <svg

@@ -7,7 +7,8 @@
 - every sprite is quantized (no dithering) to ONE shared palette, so parts that were
   generated separately still look like they belong to the same monster
 - output: public/art/parts/<id>.png (sized for the monster), public/art/icons/<id>.png
-  (full-size, for option cards) and src/game/sprites.json ({id: [w, h]})
+  (full-size, for option cards) and src/game/sprites.json ({id: {w, h, a, ...sockets}}: size
+  plus the attachment points from anchors.py, which src/game/layout.ts sews together)
 
 Usage: python3 tools/art/process.py
 """
@@ -16,9 +17,10 @@ import os
 import shutil
 import sys
 
-from PIL import Image
+from PIL import Image, ImageEnhance
 
 sys.path.insert(0, os.path.dirname(__file__))
+from anchors import points_for  # noqa: E402
 from prompts import PARTS  # noqa: E402
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -46,6 +48,20 @@ MAX_BOX = {
     "spine": (100, 44),
     "spark": (32, 32),
 }
+
+
+# Props set into the 240x224 laboratory (art/picks.json -> art/raw), drawn in order:
+# (id, left x, bottom y). The monster's rack stands in the middle, so props keep to the sides.
+SCENE = [
+    ("prop_jars", 158, 198),
+    ("prop_cart", 2, 222),
+    ("prop_coil", 192, 222),
+]
+SCENE_COLORS = 64
+PROP_LIFT = 1.35
+
+# Sprites turned before use (degrees, counter-clockwise): the rat tail was drawn standing up.
+ROTATE = {"tail_rat": -90}
 
 
 def load_pick(part_id, picks):
@@ -104,6 +120,8 @@ def main():
     icons = {}
     for part_id in PARTS:
         im = crop(binarize(load_pick(part_id, picks)))
+        if part_id in ROTATE:
+            im = im.rotate(ROTATE[part_id], expand=True)
         icons[part_id] = im
         box = MAX_BOX.get(PARTS[part_id][0])
         if box:
@@ -122,15 +140,21 @@ def main():
     for part_id, im in sprites.items():
         q = apply_palette(im, pal)
         q.save(os.path.join(OUT, f"{part_id}.png"), optimize=True)
-        meta[part_id] = [q.width, q.height]
+        meta[part_id] = {"w": q.width, "h": q.height, **points_for(part_id, PARTS[part_id][0], q)}
     with open(META, "w") as f:
-        rows = [f'  "{k}": [{w}, {h}]' for k, (w, h) in sorted(meta.items())]
+        rows = [f'  "{k}": {json.dumps(v, separators=(", ", ": "))}' for k, v in sorted(meta.items())]
         f.write("{\n" + ",\n".join(rows) + "\n}\n")
-    # The laboratory background gets its own palette (it is mostly stone and storm).
-    bg = load_pick("bg_lab", picks).convert("RGB")
-    bg.quantize(colors=48, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(
-        os.path.join(ROOT, "public", "art", "lab.png"), optimize=True
-    )
+    # The laboratory: the wide room with its props set on the floor, on its own palette.
+    scene = load_pick("bg_lab", picks).convert("RGBA")
+    for prop_id, x, bottom in SCENE:
+        prop = crop(binarize(load_pick(prop_id, picks)))
+        # lifted a little: the page dims the whole room behind the monster
+        rgb = ImageEnhance.Brightness(prop.convert("RGB")).enhance(PROP_LIFT)
+        prop = Image.merge("RGBA", (*rgb.split(), prop.split()[3]))
+        scene.alpha_composite(prop, (x, bottom - prop.height))
+    scene.convert("RGB").quantize(
+        colors=SCENE_COLORS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE
+    ).save(os.path.join(ROOT, "public", "art", "lab.png"), optimize=True)
     total = sum(os.path.getsize(os.path.join(OUT, f"{p}.png")) for p in meta)
     print(f"{len(meta)} sprites, {total / 1024:.1f} KB, palette {PALETTE_SIZE} colors")
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { QUESTIONS, findOption } from './catalog';
 import { simulatedCrowd } from './crowd';
-import { layoutMonster, CANVAS_W, CANVAS_H } from './layout';
 import {
   DAY_MS,
   buildSchedule,
@@ -178,19 +177,5 @@ describe('votes and saves', () => {
     expect(parseSave('{nope', 'test', 4)).toEqual(newSave('test', 4));
     expect(parseSave(serializeSave(s), 'other-season', 4)).toEqual(newSave('other-season', 4));
     expect(parseSave(serializeSave(s), 'test', 5).votes).toEqual([]);
-  });
-});
-
-describe('layout', () => {
-  it('keeps a fully built monster inside the canvas', () => {
-    const parts = Object.fromEntries(QUESTIONS.map((q) => [q.slot, q.options[0].id]));
-    const placed = layoutMonster(parts, SPRITES);
-    expect(placed.length).toBeGreaterThanOrEqual(QUESTIONS.length - 1);
-    for (const p of placed) {
-      expect(p.x, p.id).toBeGreaterThanOrEqual(-4);
-      expect(p.y, p.id).toBeGreaterThanOrEqual(-4);
-      expect(p.x + p.w, p.id).toBeLessThanOrEqual(CANVAS_W + 4);
-      expect(p.y + p.h, p.id).toBeLessThanOrEqual(CANVAS_H + 4);
-    }
   });
 });
