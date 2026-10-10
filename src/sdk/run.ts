@@ -155,7 +155,11 @@ export async function castVote(season: string, day: number, optionId: string): P
     warn('castVote', err);
     // ugc.create is login-gated: guests get RUN's sign-in prompt, and cancelling it lands here.
     const e = err as { name?: string; action?: string; code?: string };
-    if (e.name === 'AccessDeniedError' || e.action === 'prompt_login' || e.code === 'PROFILE_REQUIRED') {
+    if (
+      e.name === 'AccessDeniedError' ||
+      e.action === 'prompt_login' ||
+      e.code === 'PROFILE_REQUIRED'
+    ) {
       return { ok: false, reason: 'login' };
     }
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;

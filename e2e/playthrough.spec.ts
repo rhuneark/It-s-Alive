@@ -19,7 +19,8 @@ async function framedButtons(page: Page) {
         const problems: string[] = [];
         if (parseFloat(cs.borderTopWidth) < 2) problems.push(`${b.textContent} has no frame`);
         if (parseFloat(cs.fontSize) < 14) problems.push(`${b.textContent} text too small`);
-        if (b.getBoundingClientRect().height < 44) problems.push(`${b.textContent} too short to tap`);
+        if (b.getBoundingClientRect().height < 44)
+          problems.push(`${b.textContent} too short to tap`);
         return problems;
       }),
   );
@@ -49,7 +50,9 @@ async function voteFor(page: Page, nth: number) {
   return name;
 }
 
-test('a whole season: vote every night, extra vote via ad, continue, awaken on Halloween', async ({ page }, info) => {
+test('a whole season: vote every night, extra vote via ad, continue, awaken on Halloween', async ({
+  page,
+}, info) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const shot = async (name: string) => {
@@ -102,7 +105,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
     await expect(page.locator('.dayline')).toHaveText(`Night ${day + 1} of 21`);
     await expect(page.locator('.option')).toHaveCount(5);
     await expect(page.locator('.result')).toHaveCount(0);
-    await expect.poll(() => page.locator('.monster:not(.monster-mini) .part').count()).toBeGreaterThan(lastParts);
+    await expect
+      .poll(() => page.locator('.monster:not(.monster-mini) .part').count())
+      .toBeGreaterThan(lastParts);
     lastParts = await page.locator('.monster:not(.monster-mini) .part').count();
     await voteFor(page, day % 5);
     await percentagesSumTo100(page);

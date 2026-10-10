@@ -10,6 +10,8 @@ ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wake
 
 - **Share link (private):** _not deployed yet — add it here after the first deploy and end every update with it._
 - Season config: `SEASON` in `src/game/schedule.ts` (id, first day, Halloween). Changing `id` starts fresh tallies.
+  The first day must be the launch day so night 1 (HEAD) is playable; a later start drops middle questions
+  (`buildSchedule`), never the head, brain or spark.
 - One free vote per day, plus `MAX_AD_VOTES_PER_DAY` (`src/game/state.ts`) extra votes from rewarded ads.
   The cap is tuned by `npm run simulate`; re-run it if you change the cap or the voting model.
 - Percentages are hidden until the player has voted.

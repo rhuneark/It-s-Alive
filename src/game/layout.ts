@@ -157,7 +157,7 @@ export function layoutMonster(
         put(slot, p.id, CX - p.w / 2, f.torso.y + 20 - p.h / 2);
         break;
       case 'spine':
-        put(slot, p.id, CX - p.w / 2, f.torso.y + 24 - p.h);
+        put(slot, p.id, CX - p.w / 2, f.torso.y + 6 - p.h);
         break;
       case 'arm3':
         put(slot, p.id, f.shoulderL - 6 - p.w / 2, f.torso.y + 28 - p.h);
