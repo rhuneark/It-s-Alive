@@ -59,15 +59,15 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/${info.project.name}-${name}.png` });
   };
 
-  // Night 1: the head.
+  // Night 1: the head. The theme preloads on the title screen.
+  const theme = page.waitForResponse((r) => r.url().includes('theme.mp3') && r.ok());
   await page.goto('/?day=0');
   await expect(page.getByTestId('start')).toHaveText('Enter the Laboratory');
   await noSidewaysScroll(page);
   await framedButtons(page);
   await shot('title');
-  const theme = page.waitForResponse((r) => r.url().includes('theme.mp3') && r.ok());
   await page.getByTestId('start').click();
-  await theme; // the main theme loads from cdn-assets once the player enters
+  await theme;
   await expect(page.locator('.prompt')).toHaveText('Whose HEAD shall crown our creation?');
   await expect(page.locator('.option')).toHaveCount(5);
   await expect(page.locator('.result')).toHaveCount(0); // no peeking before voting
@@ -93,12 +93,17 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('ad-vote')).toHaveCount(0);
   await expect(page.getByText("You've cast all 2 of tonight's votes")).toBeVisible();
 
-  // Music toggle is framed, flips, and is remembered.
-  const music = page.getByTestId('music');
-  await expect(music).toHaveAttribute('aria-pressed', 'true');
-  await music.click();
-  await expect(music).toHaveAttribute('aria-pressed', 'false');
-  await page.waitForTimeout(400); // let the save land
+  // Sound panel: music toggle and volume slider, both remembered.
+  await page.getByTestId('music').click();
+  const toggle = page.getByTestId('music-toggle');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('music-volume').fill('20');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('music-volume')).toBeDisabled();
+  await page.locator('.sound-scrim').click();
+  await expect(page.locator('.sound-panel')).toHaveCount(0);
+  await page.waitForTimeout(900); // let the debounced save land
 
   // Continue where we left off.
   await page.reload();
@@ -106,9 +111,12 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await page.getByTestId('start').click();
   await expect(page.locator('.result')).toHaveCount(5);
   await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×2');
-  await expect(page.getByTestId('music')).toHaveAttribute('aria-pressed', 'false');
   await page.getByTestId('music').click();
-  await expect(page.getByTestId('music')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('music-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByTestId('music-volume')).toHaveValue('20');
+  await page.getByTestId('music-toggle').click();
+  await expect(page.getByTestId('music-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.sound-scrim').click();
 
   // Nights 2..21: a new part every night, the monster grows.
   let lastParts = await page.locator('.monster:not(.monster-mini) .part').count();
@@ -209,4 +217,21 @@ test('owner Test Lab: jump between nights, vote freely, then leave without touch
   await expect(page.getByTestId('test-banner')).toHaveCount(0);
   await expect(page.locator('.result')).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('hidden diagnostics: tapping the build stamp 5 times shows device info and opens the Test Lab', async ({
+  page,
+}) => {
+  await page.goto('/?day=2');
+  await page.getByTestId('start').click();
+  await expect(page.locator('.dayline')).toBeVisible();
+  for (let i = 0; i < 5; i++) await page.getByTestId('build-stamp').click();
+  const diag = page.getByTestId('diagnostics');
+  await expect(diag).toContainText('Build');
+  await expect(diag).toContainText('Owner check');
+  await expect(diag).toContainText('Music file');
+  await expect(diag).toContainText(/playing|paused/);
+  await page.getByTestId('diag-open-lab').click();
+  await page.getByTestId('lab-start').click();
+  await expect(page.getByTestId('test-banner')).toBeVisible();
 });

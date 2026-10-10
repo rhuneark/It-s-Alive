@@ -19,7 +19,7 @@ import { simulatedCrowd } from '../game/crowd';
 import { DAY_MS, SEASON } from '../game/schedule';
 
 const INIT_TIMEOUT_MS = 8000;
-const ROLE_TIMEOUT_MS = 4000;
+const ROLE_TIMEOUT_MS = 15_000;
 const LAB_KEY = 'testLab';
 
 let readyPromise: Promise<void> | null = null;
@@ -27,13 +27,15 @@ let clockOffsetMs = 0;
 let devDayOverride: number | null = null;
 let urlDayOverride: number | null = null;
 let labAllowed = false;
-let lab: LabState = { on: false, day: null };
+let lab: LabState = { on: false, day: null, unlocked: false };
 
 /** Owner-only Test Lab settings (persisted in appStorage under `testLab`). */
 export interface LabState {
   on: boolean;
   /** Night to pretend it is (0-based; -1 = before launch, 21 = Halloween). Null = real date. */
   day: number | null;
+  /** Opened via the hidden version-label tap, so keep offering it. */
+  unlocked?: boolean;
 }
 
 const saveKey = () => (lab.on ? 'save_test' : 'save');
@@ -83,7 +85,7 @@ export function sandboxed(): boolean {
   return lab.on || isMock();
 }
 
-/** Whether this player may open the Test Lab (game owner/editor, or local dev). */
+/** Whether this player may open the Test Lab (game owner/editor, local dev, or unlocked by hand). */
 export function canUseLab(): boolean {
   return labAllowed;
 }
@@ -92,50 +94,133 @@ export function labState(): LabState {
   return { ...lab };
 }
 
-/** The player's server-verified role for this game. */
-async function myRole(): Promise<'owner' | 'editor' | 'none'> {
+const labListeners = new Set<() => void>();
+
+/** Notified when Test Lab access changes (the owner check finishes after boot). */
+export function onLabAccess(cb: () => void): () => void {
+  labListeners.add(cb);
+  return () => labListeners.delete(cb);
+}
+
+function setLabAllowed(allowed: boolean): void {
+  if (labAllowed === allowed) return;
+  labAllowed = allowed;
+  labListeners.forEach((cb) => cb());
+}
+
+/** What the owner check said, for the diagnostics panel. */
+let roleDiag = 'not checked yet';
+
+/** The player's server-verified role for this game (owner/editor/none). */
+async function checkRole(): Promise<void> {
+  const started = Date.now();
+  roleDiag = 'checking…';
   try {
     const role = await Promise.race([
       RundotGameAPI.app.getMyRole(),
-      new Promise<'none'>((resolve) => setTimeout(() => resolve('none'), ROLE_TIMEOUT_MS)),
+      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), ROLE_TIMEOUT_MS)),
     ]);
-    return role === 'owner' || role === 'editor' ? role : 'none';
+    roleDiag = `${String(role)} (${Date.now() - started} ms)`;
+    if (role === 'owner' || role === 'editor') setLabAllowed(true);
   } catch (err) {
+    roleDiag = `error: ${err instanceof Error ? err.message : String(err)}`;
     warn('getMyRole', err);
-    return 'none';
   }
 }
 
 function applyLab(next: LabState): void {
-  lab = labAllowed ? next : { on: false, day: null };
+  lab = { on: next.on, day: next.on ? next.day : null, unlocked: next.unlocked === true };
   devDayOverride = lab.on ? lab.day : urlDayOverride;
 }
 
+/**
+ * Restore Test Lab settings, then check the owner role in the background so a
+ * slow check never delays the game. The Lab only ever touches a private sandbox,
+ * so honouring a saved "on" flag before the check finishes is harmless.
+ */
 async function loadLab(): Promise<void> {
-  labAllowed = isMock() || (await myRole()) !== 'none';
-  if (!labAllowed) return;
+  if (isMock()) setLabAllowed(true);
   try {
     const raw = await RundotGameAPI.appStorage.getItem(LAB_KEY);
     const data = raw ? (JSON.parse(raw) as Partial<LabState>) : {};
     applyLab({
       on: data.on === true,
       day: typeof data.day === 'number' && Number.isFinite(data.day) ? data.day : null,
+      unlocked: data.unlocked === true,
     });
+    if (lab.on || lab.unlocked) setLabAllowed(true);
   } catch (err) {
     warn('loadLab', err);
   }
+  if (isMock()) roleDiag = 'skipped (local dev mode)';
+  else void checkRole();
 }
 
-/** Change Test Lab settings (owner only). Callers remount the game afterwards. */
-export async function setLab(next: LabState): Promise<void> {
+/**
+ * Hidden way in (tap the version label 5 times) for when the owner check can't
+ * recognise the account. Safe for anyone: the Lab only uses a private sandbox.
+ */
+export async function unlockLab(): Promise<void> {
   await ready();
-  if (!labAllowed) return;
-  applyLab(next);
+  setLabAllowed(true);
+  await setLab({ ...lab, unlocked: true });
+}
+
+/** Ask RUN to sign the player in (owners on a guest session), then re-check the role. */
+export async function signIn(): Promise<boolean> {
+  await ready();
   try {
-    await RundotGameAPI.appStorage.setItem(LAB_KEY, JSON.stringify(lab));
+    const res = await RundotGameAPI.accessGate.promptLogin();
+    await checkRole();
+    return !!res && (res as { success?: boolean }).success !== false;
   } catch (err) {
-    warn('setLab', err);
+    warn('signIn', err);
+    return false;
   }
+}
+
+export interface Diagnostics {
+  mock: boolean;
+  role: string;
+  signedIn: string;
+  user: string;
+  lab: string;
+}
+
+export function diagnostics(): Diagnostics {
+  let signedIn = 'unknown';
+  let user = 'unknown';
+  try {
+    signedIn = RundotGameAPI.accessGate.isAnonymous() ? 'no (guest)' : 'yes';
+  } catch (err) {
+    signedIn = `error: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  try {
+    const p = RundotGameAPI.getProfile();
+    user = p?.username ? `${p.username}${p.isAnonymous ? ' (guest)' : ''}` : 'none';
+  } catch (err) {
+    user = `error: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  return {
+    mock: isMock(),
+    role: roleDiag,
+    signedIn,
+    user,
+    lab: `${labAllowed ? 'allowed' : 'hidden'}${lab.on ? ', test mode ON' : ''}${lab.unlocked ? ', unlocked by hand' : ''}`,
+  };
+}
+
+/**
+ * Change Test Lab settings. Applies immediately (synchronously) so the caller can
+ * remount the game in the same tick; the returned promise is just the save.
+ */
+export function setLab(next: LabState): Promise<void> {
+  if (!labAllowed) return Promise.resolve();
+  applyLab({ ...next, unlocked: next.unlocked ?? lab.unlocked });
+  const snapshot = JSON.stringify(lab);
+  return RundotGameAPI.appStorage.setItem(LAB_KEY, snapshot).catch((err: unknown) => {
+    warn('setLab', err);
+  });
 }
 
 /** Wipe the Test Lab's sandbox save and fake votes. */
@@ -324,19 +409,78 @@ export async function showRewardedAd(): Promise<boolean> {
 
 // ---------------------------------------------------------------- assets
 
+/** Where the theme came from, for the diagnostics panel. */
+export interface ThemeSource {
+  url: string;
+  from: 'cdn' | 'cdn-url' | 'same-origin' | 'stream';
+  bytes: number;
+  type: string;
+  /**
+   * True when `url` is a remote URL played directly (last resort). It must not be
+   * routed through Web Audio: a cross-origin stream without CORS would be silent.
+   */
+  direct: boolean;
+}
+
 /**
- * Object URL for the main theme (public/cdn-assets/audio/theme.mp3, served from RUN's CDN).
- * Null if it can't be fetched; the game is fully playable without music.
+ * The main theme (public/cdn-assets/audio/theme.mp3 on RUN's CDN). Prefers a
+ * same-origin blob URL, which Web Audio needs for the volume control on iOS:
+ * 1. cdn.fetchAsset (the SDK's normal path)
+ * 2. our own fetch of the resolved CDN URL
+ * 3. the same-origin cdn-assets path (when the host also serves the build's copy)
+ * 4. streaming the resolved CDN URL directly
+ * Throws if none works; the reasons go to the diagnostics panel.
  */
-export async function loadThemeUrl(): Promise<string | null> {
+export async function loadTheme(): Promise<ThemeSource> {
   await ready();
+  const errors: string[] = [];
+  const note = (step: string, err: unknown) => {
+    errors.push(`${step}: ${err instanceof Error ? err.message : String(err)}`);
+    warn(`loadTheme ${step}`, err);
+  };
+  const fromBlob = (blob: Blob, from: ThemeSource['from']): ThemeSource => {
+    if (!blob || blob.size < 1024) throw new Error(`only ${blob?.size ?? 0} bytes`);
+    const typed = blob.type.startsWith('audio/') ? blob : new Blob([blob], { type: 'audio/mpeg' });
+    return {
+      url: URL.createObjectURL(typed),
+      from,
+      bytes: blob.size,
+      type: blob.type || '(none)',
+      direct: false,
+    };
+  };
+  const fetchBlob = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.blob();
+  };
+
   try {
-    const blob = await RundotGameAPI.cdn.fetchAsset('audio/theme.mp3', { timeout: 60_000 });
-    return URL.createObjectURL(blob);
+    return fromBlob(
+      await RundotGameAPI.cdn.fetchAsset('audio/theme.mp3', { timeout: 60_000 }),
+      'cdn',
+    );
   } catch (err) {
-    warn('loadTheme', err);
-    return null;
+    note('cdn', err);
   }
+  let resolved: string | null = null;
+  try {
+    resolved = await RundotGameAPI.cdn.resolveAssetUrl('audio/theme.mp3');
+    return fromBlob(await fetchBlob(resolved), 'cdn-url');
+  } catch (err) {
+    note('cdn-url', err);
+  }
+  try {
+    return fromBlob(
+      await fetchBlob(`${import.meta.env.BASE_URL}cdn-assets/audio/theme.mp3`),
+      'same-origin',
+    );
+  } catch (err) {
+    note('same-origin', err);
+  }
+  if (resolved)
+    return { url: resolved, from: 'stream', bytes: 0, type: '(streamed)', direct: true };
+  throw new Error(errors.join(' | '));
 }
 
 // ---------------------------------------------------------------- misc

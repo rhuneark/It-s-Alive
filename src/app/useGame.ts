@@ -26,6 +26,7 @@ import {
   rollToDay,
   selectOption,
   setMusic,
+  setMusicVolume,
   serializeSave,
   votesRemaining,
   type SaveState,
@@ -59,6 +60,8 @@ export interface GameModel {
   watchAdForVote: () => Promise<void>;
   refreshCounts: () => Promise<void>;
   toggleMusic: () => void;
+  /** Live volume while dragging; saved shortly after the player lets go. */
+  setVolume: (v: number) => void;
   /** Test Lab only: hand back tonight's votes. */
   refillVotes: () => void;
 }
@@ -308,6 +311,19 @@ export function useGame(): GameModel {
     run.track('music_toggled', { on });
   }, [commit]);
 
+  const volumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setVolume = useCallback(
+    (v: number) => {
+      const next = setMusicVolume(saveRef.current, v);
+      saveRef.current = next;
+      setSave(next);
+      if (volumeTimer.current) clearTimeout(volumeTimer.current);
+      // Debounced so dragging the slider doesn't hammer cloud storage.
+      volumeTimer.current = setTimeout(() => void commit(saveRef.current), 600);
+    },
+    [commit],
+  );
+
   const refill = useCallback(() => {
     if (!run.sandboxed()) return;
     void commit(refillVotes(saveRef.current));
@@ -334,6 +350,7 @@ export function useGame(): GameModel {
     watchAdForVote,
     refreshCounts,
     toggleMusic,
+    setVolume,
     refillVotes: refill,
   };
 }

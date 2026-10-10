@@ -15,6 +15,7 @@ export const FREE_VOTES_PER_DAY = 1;
 export const MAX_AD_VOTES_PER_DAY = 1;
 
 export const SAVE_VERSION = 1;
+export const DEFAULT_MUSIC_VOLUME = 0.5;
 
 export interface CastVote {
   optionId: string;
@@ -43,6 +44,8 @@ export interface SaveState {
   started: boolean;
   /** Main theme on/off. */
   musicOn: boolean;
+  /** Main theme volume, 0..1. */
+  musicVolume: number;
 }
 
 export function newSave(season: string, day: number): SaveState {
@@ -57,6 +60,7 @@ export function newSave(season: string, day: number): SaveState {
     stats: { totalVotes: 0, daysVoted: 0, lastVotedDay: -999, streak: 0 },
     started: false,
     musicOn: true,
+    musicVolume: DEFAULT_MUSIC_VOLUME,
   };
 }
 
@@ -83,6 +87,10 @@ export function parseSave(raw: string | null, season: string, day: number): Save
       stats: { ...base.stats, ...(isRecord(data.stats) ? data.stats : {}) },
       started: data.started === true,
       musicOn: data.musicOn !== false,
+      musicVolume:
+        typeof data.musicVolume === 'number' && Number.isFinite(data.musicVolume)
+          ? Math.max(0, Math.min(1, data.musicVolume))
+          : DEFAULT_MUSIC_VOLUME,
     };
     return rollToDay(save, day);
   } catch {
@@ -154,6 +162,11 @@ export function refillVotes(save: SaveState): SaveState {
 
 export function setMusic(save: SaveState, on: boolean): SaveState {
   return save.musicOn === on ? save : { ...save, musicOn: on };
+}
+
+export function setMusicVolume(save: SaveState, volume: number): SaveState {
+  const v = Math.round(Math.max(0, Math.min(1, volume)) * 100) / 100;
+  return save.musicVolume === v ? save : { ...save, musicVolume: v };
 }
 
 export function markStarted(save: SaveState): SaveState {

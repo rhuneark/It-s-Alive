@@ -1,131 +1,240 @@
 /**
- * The main theme ("The Assembly"). Plays on a loop while `on` is true, fades in and
- * out, dips around the loop point so the restart isn't jarring, and goes quiet
- * whenever the host pauses/sleeps the game or the tab is hidden. The track is only
- * downloaded the first time music is actually wanted.
+ * The main theme ("The Assembly"): one shared player for the whole app.
+ *
+ * Mobile browsers and WebViews only let sound start from a tap, and a Web Audio
+ * context created outside a tap starts "suspended": an element routed through it
+ * plays in silence even though play() succeeds. So:
+ * - every tap anywhere (capture phase, before React's handler) calls unlock(),
+ *   which creates/resumes the AudioContext and starts playback inside the gesture;
+ * - the element plays on its own until the context is confirmed running, and only
+ *   then is routed through a GainNode (needed because iOS ignores audio.volume).
+ * The track loops with a soft fade across the seam, follows the player's volume,
+ * and goes quiet while the host pauses/sleeps the game or the tab is hidden.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect } from 'react';
 import * as run from '../sdk/run';
 
-const VOLUME = 0.45;
 /** Seconds of fade at each end of the track, so the loop seam is soft. */
 const SEAM_S = 2.5;
 const FADE_STEP = 0.06;
 const FADE_TICK_MS = 50;
 
-export function useMusic(on: boolean): void {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const wantRef = useRef(on);
-  const awayRef = useRef(false);
-  const masterRef = useRef(0);
-  const fadeRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const syncRef = useRef<() => void>(() => {});
-  const retryArmedRef = useRef(false);
-  /** Web Audio gain (iOS ignores HTMLAudioElement.volume); null falls back to audio.volume. */
-  const gainRef = useRef<GainNode | null>(null);
-  const ctxRef = useRef<AudioContext | null>(null);
-  const [armed, setArmed] = useState(on);
+export interface MusicDiagnostics {
+  source: string;
+  element: string;
+  context: string;
+  routed: boolean;
+  lastError: string;
+}
 
-  useEffect(() => {
-    if (on) setArmed(true);
-  }, [on]);
+class ThemePlayer {
+  private audio: HTMLAudioElement | null = null;
+  private ctx: AudioContext | null = null;
+  private gain: GainNode | null = null;
+  private routed = false;
+  /** Remote stream (last-resort source): never route through Web Audio. */
+  private direct = false;
+  private loading: Promise<void> | null = null;
+  private wanted = false;
+  private away = false;
+  private volume = 0.5;
+  private master = 0;
+  private fade: ReturnType<typeof setInterval> | null = null;
+  private source = 'not loaded';
+  private lastError = 'none';
 
-  useEffect(() => {
-    if (!armed) return;
-    const seam = (a: HTMLAudioElement) => {
-      const d = Number.isFinite(a.duration) ? a.duration : 0;
-      const t = a.currentTime;
-      return d > SEAM_S * 2 ? Math.max(0, Math.min(1, t / SEAM_S, (d - t) / SEAM_S)) : 1;
-    };
-    const apply = () => {
-      const a = audioRef.current;
-      if (!a) return;
-      const level = Math.max(0, Math.min(1, VOLUME * masterRef.current * seam(a)));
-      if (gainRef.current) gainRef.current.gain.value = level;
-      else a.volume = level;
-    };
-    const retryOnGesture = () => {
-      if (retryArmedRef.current) return;
-      retryArmedRef.current = true;
-      const retry = () => {
-        retryArmedRef.current = false;
-        syncRef.current();
-      };
-      document.addEventListener('pointerdown', retry, { once: true });
-    };
-    const fadeTo = (target: number) => {
-      if (fadeRef.current) clearInterval(fadeRef.current);
-      fadeRef.current = setInterval(() => {
-        const m = masterRef.current;
-        masterRef.current =
-          target > m ? Math.min(target, m + FADE_STEP) : Math.max(target, m - FADE_STEP);
-        apply();
-        if (masterRef.current === target) {
-          if (fadeRef.current) clearInterval(fadeRef.current);
-          fadeRef.current = null;
-          if (target === 0) audioRef.current?.pause();
-        }
-      }, FADE_TICK_MS);
-    };
-    syncRef.current = () => {
-      const a = audioRef.current;
-      if (!a) return;
-      if (wantRef.current && !awayRef.current) {
-        if (a.paused) {
-          void ctxRef.current?.resume().catch(() => {});
-          a.play().then(
-            // The wish may have changed while play() was pending.
-            () => fadeTo(wantRef.current && !awayRef.current ? 1 : 0),
-            // Browsers can block audio until the player interacts; try again on the next tap.
-            () => retryOnGesture(),
-          );
-        } else {
-          fadeTo(1);
-        }
-      } else if (!a.paused) {
-        fadeTo(0);
-      }
-    };
+  /** Download the track (once). Safe to call before the player has tapped anything. */
+  prefetch(): void {
+    if (this.loading) return;
+    this.source = 'loading…';
+    this.loading = run.loadTheme().then(
+      (src) => {
+        const a = new Audio();
+        a.loop = true;
+        a.preload = 'auto';
+        if (src.direct) a.crossOrigin = 'anonymous';
+        a.src = src.url;
+        this.direct = src.direct;
+        a.volume = 0;
+        a.addEventListener('timeupdate', () => this.apply());
+        a.addEventListener('error', () => this.fail(`element error ${a.error?.code ?? '?'}`));
+        this.audio = a;
+        this.source = src.direct
+          ? 'streaming from CDN (no volume control on iPhone)'
+          : `${src.from}, ${Math.round(src.bytes / 1024)} KB, ${src.type}`;
+        this.sync();
+      },
+      (err: unknown) => {
+        this.loading = null; // allow a retry later
+        this.source = 'failed';
+        this.fail(err);
+      },
+    );
+  }
 
-    let url: string | null = null;
-    let cancelled = false;
-    void run.loadThemeUrl().then((u) => {
-      if (!u) return;
-      if (cancelled) {
-        URL.revokeObjectURL(u);
-        return;
-      }
-      url = u;
-      const a = new Audio(u);
-      a.loop = true;
-      a.preload = 'auto';
-      a.volume = 0;
-      a.addEventListener('timeupdate', apply);
-      try {
+  /** Call from inside a user gesture: unlocks audio output and starts playback if wanted. */
+  unlock(): void {
+    try {
+      if (!this.ctx) {
         const AC =
           window.AudioContext ??
           (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (AC) {
-          const ctx = new AC();
-          const gain = ctx.createGain();
-          gain.gain.value = 0;
-          ctx.createMediaElementSource(a).connect(gain);
-          gain.connect(ctx.destination);
-          ctxRef.current = ctx;
-          gainRef.current = gain;
+          this.ctx = new AC();
+          this.ctx.onstatechange = () => this.route();
         }
-      } catch {
-        ctxRef.current = null;
-        gainRef.current = null;
       }
-      audioRef.current = a;
-      syncRef.current();
-    });
+      if (this.ctx && this.ctx.state !== 'running') {
+        this.ctx.resume().then(
+          () => this.route(),
+          (err: unknown) => this.fail(err),
+        );
+      }
+    } catch (err) {
+      this.fail(err);
+    }
+    this.route();
+    if (this.audio && this.wanted && !this.away && this.audio.paused) this.play();
+  }
 
-    const setAway = (away: boolean) => {
-      awayRef.current = away;
-      syncRef.current();
+  setWanted(on: boolean): void {
+    this.wanted = on;
+    if (on) this.prefetch();
+    this.sync();
+  }
+
+  setAway(away: boolean): void {
+    this.away = away;
+    if (!away) void this.ctx?.resume().catch(() => {});
+    this.sync();
+  }
+
+  setVolume(v: number): void {
+    this.volume = Math.max(0, Math.min(1, v));
+    this.apply();
+  }
+
+  diagnostics(): MusicDiagnostics {
+    const a = this.audio;
+    return {
+      source: this.source,
+      element: a
+        ? `${a.paused ? 'paused' : 'playing'} at ${a.currentTime.toFixed(1)}s, ready ${a.readyState}`
+        : 'none',
+      context: this.ctx ? this.ctx.state : 'not created (no tap yet)',
+      routed: this.routed,
+      lastError: this.lastError,
     };
+  }
+
+  private fail(err: unknown): void {
+    this.lastError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.warn('[music]', err);
+  }
+
+  /** Route through Web Audio only once the context is really running (else it would be silent). */
+  private route(): void {
+    const { ctx, audio } = this;
+    if (this.routed || this.direct || !ctx || !audio || ctx.state !== 'running') return;
+    try {
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      ctx.createMediaElementSource(audio).connect(gain);
+      gain.connect(ctx.destination);
+      this.gain = gain;
+      this.routed = true;
+      audio.volume = 1;
+      this.apply();
+    } catch (err) {
+      this.fail(err);
+    }
+  }
+
+  private seam(a: HTMLAudioElement): number {
+    const d = Number.isFinite(a.duration) ? a.duration : 0;
+    const t = a.currentTime;
+    return d > SEAM_S * 2 ? Math.max(0, Math.min(1, t / SEAM_S, (d - t) / SEAM_S)) : 1;
+  }
+
+  private apply(): void {
+    const a = this.audio;
+    if (!a) return;
+    const level = Math.max(0, Math.min(1, this.volume * this.master * this.seam(a)));
+    if (this.routed && this.gain) this.gain.gain.value = level;
+    else a.volume = level;
+  }
+
+  private fadeTo(target: number): void {
+    if (this.fade) clearInterval(this.fade);
+    this.fade = setInterval(() => {
+      const m = this.master;
+      this.master = target > m ? Math.min(target, m + FADE_STEP) : Math.max(target, m - FADE_STEP);
+      this.apply();
+      if (this.master === target) {
+        if (this.fade) clearInterval(this.fade);
+        this.fade = null;
+        if (target === 0) this.audio?.pause();
+      }
+    }, FADE_TICK_MS);
+  }
+
+  private play(): void {
+    const a = this.audio;
+    if (!a) return;
+    try {
+      a.play().then(
+        () => {
+          this.route();
+          this.fadeTo(this.wanted && !this.away ? 1 : 0);
+        },
+        // Blocked until the player taps; unlock() on the next tap tries again.
+        (err: unknown) => this.fail(err),
+      );
+    } catch (err) {
+      this.fail(err);
+    }
+  }
+
+  private sync(): void {
+    const a = this.audio;
+    if (!a) return;
+    if (this.wanted && !this.away) {
+      if (a.paused) this.play();
+      else this.fadeTo(1);
+    } else if (!a.paused) {
+      this.fadeTo(0);
+    }
+  }
+}
+
+export const theme = new ThemePlayer();
+
+let gestureHooked = false;
+function hookGestures(): void {
+  if (gestureHooked) return;
+  gestureHooked = true;
+  const unlock = () => theme.unlock();
+  for (const type of ['pointerdown', 'touchend', 'click', 'keydown'] as const) {
+    document.addEventListener(type, unlock, { capture: true, passive: true });
+  }
+}
+
+/**
+ * Keep the shared player in step with the app. `prefetch` starts the download
+ * (title screen, music on); `on` is whether it should be audible right now.
+ */
+export function useMusic({
+  prefetch,
+  on,
+  volume,
+}: {
+  prefetch: boolean;
+  on: boolean;
+  volume: number;
+}) {
+  useEffect(() => {
+    hookGestures();
+    const setAway = (away: boolean) => theme.setAway(away);
     const onVisibility = () => setAway(document.visibilityState === 'hidden');
     document.addEventListener('visibilitychange', onVisibility);
     const unsubscribe = run.onLifecycle({
@@ -134,23 +243,21 @@ export function useMusic(on: boolean): void {
       onResume: () => setAway(false),
       onAwake: () => setAway(false),
     });
-
     return () => {
-      cancelled = true;
       unsubscribe();
       document.removeEventListener('visibilitychange', onVisibility);
-      if (fadeRef.current) clearInterval(fadeRef.current);
-      audioRef.current?.pause();
-      audioRef.current = null;
-      gainRef.current = null;
-      void ctxRef.current?.close().catch(() => {});
-      ctxRef.current = null;
-      if (url) URL.revokeObjectURL(url);
     };
-  }, [armed]);
+  }, []);
 
   useEffect(() => {
-    wantRef.current = on;
-    syncRef.current();
+    if (prefetch) theme.prefetch();
+  }, [prefetch]);
+
+  useEffect(() => {
+    theme.setWanted(on);
   }, [on]);
+
+  useEffect(() => {
+    theme.setVolume(volume);
+  }, [volume]);
 }

@@ -22,6 +22,7 @@ import {
   rollToDay,
   serializeSave,
   setMusic,
+  setMusicVolume,
   votesRemaining,
 } from './state';
 import { percentages, resolveDay } from './tally';
@@ -157,6 +158,18 @@ describe('votes and saves', () => {
     const legacy = JSON.parse(serializeSave(newSave('test', 0))) as Record<string, unknown>;
     delete legacy['musicOn'];
     expect(parseSave(JSON.stringify(legacy), 'test', 0).musicOn).toBe(true);
+  });
+
+  it('remembers the music volume, clamped to 0..1', () => {
+    expect(newSave('test', 0).musicVolume).toBe(0.5);
+    const quiet = setMusicVolume(newSave('test', 0), 0.234);
+    expect(quiet.musicVolume).toBe(0.23);
+    expect(parseSave(serializeSave(quiet), 'test', 2).musicVolume).toBe(0.23);
+    expect(setMusicVolume(quiet, 7).musicVolume).toBe(1);
+    expect(setMusicVolume(quiet, -1).musicVolume).toBe(0);
+    const legacy = JSON.parse(serializeSave(newSave('test', 0))) as Record<string, unknown>;
+    delete legacy['musicVolume'];
+    expect(parseSave(JSON.stringify(legacy), 'test', 0).musicVolume).toBe(0.5);
   });
 
   it('round-trips through storage and survives garbage', () => {

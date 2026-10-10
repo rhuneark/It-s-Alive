@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useGame, type GameModel } from './app/useGame';
-import { useMusic } from './app/useMusic';
+import { theme, useMusic } from './app/useMusic';
 import { Chronicle } from './components/Chronicle';
+import { Diagnostics } from './components/Diagnostics';
+import { SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
 import { TestLab } from './components/TestLab';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption } from './game/catalog';
 import { formatCountdown } from './game/schedule';
 import {
+  DEFAULT_MUSIC_VOLUME,
   FREE_VOTES_PER_DAY,
   MAX_AD_VOTES_PER_DAY,
   canEarnAdVote,
@@ -19,9 +22,13 @@ export default function App() {
   // Bumped whenever Test Lab settings change, to remount the game on the new save/clock.
   const [labKey, setLabKey] = useState(0);
   const [inGame, setInGame] = useState(false);
-  const [musicWanted, setMusicWanted] = useState(false);
-  // The theme starts with the first tap into the laboratory (a user gesture, so browsers allow it).
-  useMusic(inGame && musicWanted);
+  const [music, setMusic] = useState<MusicPrefs>({
+    loaded: false,
+    on: false,
+    volume: DEFAULT_MUSIC_VOLUME,
+  });
+  // Downloaded on the title screen; audible from the first tap into the laboratory.
+  useMusic({ prefetch: music.loaded && music.on, on: inGame && music.on, volume: music.volume });
 
   // Keep content clear of the host toolbar and device notches.
   useEffect(() => {
@@ -41,10 +48,23 @@ export default function App() {
       key={labKey}
       inGame={inGame}
       onEnter={onEnter}
-      onMusic={setMusicWanted}
+      onMusic={setMusic}
       onLabChanged={onLabChanged}
     />
   );
+}
+
+interface MusicPrefs {
+  loaded: boolean;
+  on: boolean;
+  volume: number;
+}
+
+/** Re-renders when Test Lab access changes (the owner check finishes after boot). */
+function useLabAccess(): boolean {
+  const [, bump] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => run.onLabAccess(bump), []);
+  return run.canUseLab();
 }
 
 function Game({
@@ -55,22 +75,24 @@ function Game({
 }: {
   inGame: boolean;
   onEnter: () => void;
-  onMusic: (on: boolean) => void;
+  onMusic: (prefs: MusicPrefs) => void;
   onLabChanged: () => void;
 }) {
   const game = useGame();
   const [chronicle, setChronicle] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
+  const [diagOpen, setDiagOpen] = useState(false);
 
   useEffect(() => {
-    if (!game.loading) onMusic(game.save.musicOn);
-  }, [game.loading, game.save.musicOn, onMusic]);
+    if (!game.loading)
+      onMusic({ loaded: true, on: game.save.musicOn, volume: game.save.musicVolume });
+  }, [game.loading, game.save.musicOn, game.save.musicVolume, onMusic]);
 
   const lab = run.labState();
-  const canLab = !game.loading && run.canUseLab();
-  const applyLab = async (next: run.LabState) => {
+  const canLab = useLabAccess() && !game.loading;
+  const applyLab = (next: run.LabState) => {
     setLabOpen(false);
-    await run.setLab(next);
+    void run.setLab(next); // applies now, saves in the background
     onEnter(); // land in the game on the chosen night
     onLabChanged();
   };
@@ -88,6 +110,8 @@ function Game({
       <Title
         game={game}
         onStart={() => {
+          // Start the theme inside this tap: phones only allow sound to begin from a gesture.
+          if (game.save.musicOn) theme.setWanted(true);
           game.begin();
           onEnter();
         }}
@@ -133,6 +157,7 @@ function Game({
             Test Lab (owner only)
           </button>
         )}
+        <BuildStamp onSecret={() => setDiagOpen(true)} />
       </main>
       {chronicle && (
         <Chronicle save={game.save} today={today} onClose={() => setChronicle(false)} />
@@ -140,7 +165,7 @@ function Game({
       {labOpen && (
         <TestLab
           lab={lab}
-          onApply={(next) => void applyLab(next)}
+          onApply={applyLab}
           onRefill={() => {
             game.refillVotes();
             setLabOpen(false);
@@ -149,12 +174,42 @@ function Game({
           onClose={() => setLabOpen(false)}
         />
       )}
+      {diagOpen && (
+        <Diagnostics
+          onOpenLab={() => {
+            setDiagOpen(false);
+            setLabOpen(true);
+          }}
+          onClose={() => setDiagOpen(false)}
+        />
+      )}
       {game.toast && (
         <div key={game.toast.id} className={`toast toast-${game.toast.tone}`} role="status">
           {game.toast.text}
         </div>
       )}
     </>
+  );
+}
+
+/** Build stamp; tapping it 5 times quickly opens the hidden diagnostics panel. */
+function BuildStamp({ onSecret }: { onSecret: () => void }) {
+  const taps = useRef<number[]>([]);
+  return (
+    <p
+      className="build-stamp"
+      onClick={() => {
+        const now = Date.now();
+        taps.current = [...taps.current.filter((t) => now - t < 3000), now];
+        if (taps.current.length >= 5) {
+          taps.current = [];
+          onSecret();
+        }
+      }}
+      data-testid="build-stamp"
+    >
+      build {__BUILD__}
+    </p>
   );
 }
 
@@ -334,6 +389,7 @@ function TopBar({
   subtitle?: string;
 }) {
   const on = game.save.musicOn;
+  const [sound, setSound] = useState(false);
   return (
     <header className="topbar">
       <div>
@@ -343,9 +399,9 @@ function TopBar({
       <div className="topbar-actions">
         <button
           className={`btn btn-secondary btn-icon ${on ? '' : 'muted-icon'}`}
-          onClick={game.toggleMusic}
-          aria-pressed={on}
-          aria-label={on ? 'Music on. Tap to mute.' : 'Music off. Tap to play.'}
+          onClick={() => setSound((v) => !v)}
+          aria-expanded={sound}
+          aria-label={`Sound settings (music ${on ? 'on' : 'off'})`}
           data-testid="music"
         >
           <svg
@@ -367,6 +423,19 @@ function TopBar({
           Chronicle
         </button>
       </div>
+      {sound && (
+        <SoundPanel
+          on={on}
+          volume={game.save.musicVolume}
+          onToggle={() => {
+            // Turning music on is a tap, so start it right here.
+            if (!on) theme.setWanted(true);
+            game.toggleMusic();
+          }}
+          onVolume={game.setVolume}
+          onClose={() => setSound(false)}
+        />
+      )}
     </header>
   );
 }

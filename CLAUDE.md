@@ -16,11 +16,18 @@ ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wake
 - One free vote per day, plus `MAX_AD_VOTES_PER_DAY` (`src/game/state.ts`) extra votes from rewarded ads.
   The cap is tuned by `npm run simulate`; re-run it if you change the cap or the voting model.
 - Percentages are hidden until the player has voted.
-- Main theme: "The Assembly" by the owner (`public/cdn-assets/audio/theme.mp3`, served from RUN's CDN via
-  `run.loadThemeUrl()`). `src/app/useMusic.ts` downloads it only once the player enters with music on, loops it
-  with a soft fade at the seam, plays through a Web Audio gain (iOS ignores `audio.volume`), and goes quiet on
-  host pause/sleep or a hidden tab. The on/off toggle lives in the top bar and is saved as `musicOn`.
-
+- Main theme: "The Assembly" by the owner (`public/cdn-assets/audio/theme.mp3`, on RUN's CDN). `run.loadTheme()`
+  tries cdn.fetchAsset, then fetching the resolved CDN URL, then the same-origin cdn-assets path (all as a
+  same-origin blob URL), and last streams the CDN URL directly (no Web Audio routing then). Don't add a copy
+  outside cdn-assets: preflight warns (asset-unhosted-cdn). `src/app/useMusic.ts` holds ONE shared `ThemePlayer`: it preloads on the title screen
+  (music on), unlocks audio on every tap (capture-phase listener, plus "Enter the Laboratory" starts it inside
+  the tap), plays the element directly until the Web Audio context is confirmed `running`, then routes it
+  through a GainNode (iOS ignores `audio.volume`; a suspended context would play silence). Loops with a soft
+  fade at the seam, follows the saved volume (`musicVolume`, 0..1, slider in the ♫ sound panel) and on/off
+  (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
+- Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
+  opens the hidden Diagnostics panel: sign-in, owner check result, Test Lab access, music file/player/output and
+  the last music error, plus Sign in / Try music again / Open Test Lab buttons. Use it to debug on a phone.
 ## Layout
 
 ```
@@ -29,7 +36,7 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
 src/components Monster (layered pixel art + iron rack + stitches), Voting (options + results), Chronicle,
-               TestLab (owner-only sandbox controls)
+               TestLab (owner-only sandbox controls), SoundPanel (music on/off + volume), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, awakened
 public/art/    shipped art: parts/<id>.png (fitted for the monster), icons/<id>.png (cards), lab.png
 public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audio/theme.mp3
@@ -71,12 +78,16 @@ Prompts live in `tools/art/prompts.py` (keys match option ids in `src/game/catal
 
 ## Test Lab (owner/editor only, works on the deployed build)
 
-- Shown only when `app.getMyRole()` says owner/editor (server-verified), or in local mock mode.
-  Entry: "Test Lab (owner only)" on the title screen / bottom of the game; while on, a red TEST MODE banner.
+- The "Test Lab (owner only)" button shows when `app.getMyRole()` says owner/editor (checked in the background
+  after boot, 15 s timeout; result in Diagnostics), in local mock mode, or once unlocked from Diagnostics
+  ("Open Test Lab", remembered as `unlocked`). Unlocking is safe for anyone: the Lab only touches a sandbox.
+  The role check only matches when the player is signed in to RUN with the owner's account; Diagnostics has a
+  Sign in button for guest sessions. While on, a red TEST MODE banner shows.
 - Test mode = sandbox: own save key (`save_test`), fake crowd tallies plus fake votes (`testVotes`), any
   night via a day override (`-1` before launch … `21` Halloween), "Refill tonight's votes", wipe, leave.
   Real shared tallies (UGC), the real `save`, and analytics are never touched. Settings persist in `testLab`.
-- Switching Test Lab settings remounts `<Game key>`; music lives outside it so it keeps playing.
+- Switching Test Lab settings applies synchronously (`run.setLab`) and remounts `<Game key>` in the same tick
+  (an async gap let taps land on the stale screen); music lives outside it so it keeps playing.
 
 ## Dev
 

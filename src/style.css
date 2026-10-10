@@ -219,6 +219,7 @@ b {
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -876,6 +877,132 @@ b {
 .chron-note {
   font-size: 14px;
   color: var(--parchment-dim);
+}
+
+/* ---------- sound panel ---------- */
+.sound-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+}
+
+.sound-panel.panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: min(300px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.sound-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sound-label {
+  flex: 0 0 64px;
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.sound-row .btn {
+  margin-left: auto;
+  min-width: 72px;
+}
+
+.sound-pct {
+  flex: 0 0 44px;
+  text-align: right;
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.slider {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  background: transparent;
+  accent-color: var(--brass);
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider:disabled {
+  opacity: 0.45;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 8px;
+  background: linear-gradient(90deg, var(--brass-dark), var(--brass));
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.slider::-moz-range-track {
+  height: 8px;
+  background: linear-gradient(90deg, var(--brass-dark), var(--brass));
+  border: 2px solid #000;
+  border-radius: 4px;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -10px;
+  background: var(--parchment);
+  border: 3px solid var(--blood);
+  border-radius: 50%;
+  box-shadow: 0 2px 0 #000;
+}
+
+.slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  background: var(--parchment);
+  border: 3px solid var(--blood);
+  border-radius: 50%;
+}
+
+.build-stamp {
+  margin-top: 18px;
+  padding: 8px 0;
+  text-align: center;
+  font-size: 14px;
+  color: #6f6377;
+  user-select: none;
+}
+
+.diag {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.diag-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.diag-row dt {
+  font-family: var(--font-head);
+  font-weight: 800;
+  color: var(--brass);
+}
+
+.diag-row dd {
+  word-break: break-word;
 }
 
 /* ---------- test lab (owner only) ---------- */
