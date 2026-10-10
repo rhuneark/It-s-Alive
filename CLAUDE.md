@@ -39,7 +39,8 @@ e2e/           Playwright full-season playthrough at 375x667 and 390x844
   (key `save`) after every step via `commit()` in `useGame`; await it when it must land (votes, ad rewards).
 - Rewarded ads grant a vote only when `showRewardedAd()` resolves true (the SDK's "reward earned").
 - Shared tallies: each vote is a UGC entry with `contentType = v_<season>_d<day>_<optionId>`; a tally is
-  `ugc.count({ contentType })`. UGC needs the backend, so in mock mode (`npm run dev`) `run.ts` serves a
+  `ugc.count({ contentType })`. Voting (`ugc.create`) needs a signed-in player — RUN prompts guests to log in;
+  counting works for everyone. UGC needs the backend, so in mock mode (`npm run dev`) `run.ts` serves a
   seeded stand-in crowd plus your own votes (stored in appStorage). That fallback never runs when deployed.
 - Past days are tallied once (5 count calls per day), resolved with `resolveDay` (seeded tie-break; empty
   days are picked at random) and cached in the save's `history`.

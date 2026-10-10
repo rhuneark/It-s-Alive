@@ -5,7 +5,12 @@ import { Monster } from './components/Monster';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption } from './game/catalog';
 import { formatCountdown } from './game/schedule';
-import { MAX_AD_VOTES_PER_DAY, canEarnAdVote, votesRemaining } from './game/state';
+import {
+  FREE_VOTES_PER_DAY,
+  MAX_AD_VOTES_PER_DAY,
+  canEarnAdVote,
+  votesRemaining,
+} from './game/state';
 import * as run from './sdk/run';
 
 export default function App() {
@@ -84,8 +89,8 @@ function Title({ game, onStart }: { game: GameModel; onStart: () => void }) {
       />
       <div className="panel lore">
         <p>
-          Each night the village votes on <b>one body part</b>. At midnight the most wanted part is
-          stitched onto the creature.
+          Each night the village votes on <b>one body part</b>. At midnight (UTC) the most wanted
+          part is stitched onto the creature.
         </p>
         <p>
           On <b>Halloween</b>, lightning will strike… and it will wake.
@@ -142,7 +147,8 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
       <ProgressRail total={dayCount} today={day} done={Object.keys(save.history).length} />
 
       <div className="countdown" aria-label="Time until the next stitching">
-        <span className="muted">Stitched on at midnight in</span> <b>{formatCountdown(endsInMs)}</b>
+        <span className="muted">Tonight's part is stitched on in</span>{' '}
+        <b>{formatCountdown(endsInMs)}</b>
       </div>
       {game.resolving && (
         <p className="muted small center-text">
@@ -202,8 +208,8 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
               </button>
             ) : (
               <p className="muted center-text small">
-                You've cast all {1 + MAX_AD_VOTES_PER_DAY} of tonight's votes. Return tomorrow for a
-                new part.
+                You've cast all {FREE_VOTES_PER_DAY + MAX_AD_VOTES_PER_DAY} of tonight's votes.
+                Return tomorrow for a new part.
               </p>
             )}
           </>

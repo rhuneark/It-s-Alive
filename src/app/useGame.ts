@@ -59,7 +59,7 @@ export interface GameModel {
 }
 
 const SCHEDULE = buildSchedule(votingDays(SEASON));
-const TALLY_REFRESH_MS = 30_000;
+const TALLY_REFRESH_MS = 60_000;
 
 function currentDay(now: number): number {
   return Math.max(0, Math.min(dayIndexAt(now, SEASON), SCHEDULE.length));
@@ -214,7 +214,7 @@ export function useGame(): GameModel {
   }, [loading, save.votes.length, day, refreshCounts]);
 
   useEffect(() => {
-    run.onLifecycle({
+    return run.onLifecycle({
       onResume: () => {
         void run.syncClock().then(() => {
           setNow(run.now());
@@ -253,9 +253,11 @@ export function useGame(): GameModel {
     setCasting(false);
     if (!res.ok) {
       notify(
-        res.reason === 'offline'
-          ? 'No connection. Your vote was not cast.'
-          : 'A storm scrambled the telegraph. Your vote was not cast. Try again.',
+        res.reason === 'login'
+          ? 'Sign in to RUN to cast your vote. One soul, one vote!'
+          : res.reason === 'offline'
+            ? 'No connection. Your vote was not cast.'
+            : 'A storm scrambled the telegraph. Your vote was not cast. Try again.',
         'error',
       );
       return;

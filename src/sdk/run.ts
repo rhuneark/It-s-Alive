@@ -5,7 +5,8 @@
  *
  * Shared vote tallies use UGC entries: each vote is one entry whose contentType
  * names the season, day and option (`v_<season>_d<day>_<option>`), and a
- * tally is `ugc.count({ contentType })`. UGC needs the real backend, so in
+ * tally is `ugc.count({ contentType })`. Creating an entry needs a signed-in
+ * player (RUN prompts guests to log in); counting works for everyone. UGC needs the real backend, so in
  * local mock mode (npm run dev) votes and tallies come from a stand-in crowd
  * stored in appStorage instead. That fallback is never used in a deployed build.
  */
@@ -126,7 +127,7 @@ async function readDevVotes(): Promise<DevVotes> {
   }
 }
 
-export type CastResult = { ok: true } | { ok: false; reason: 'offline' | 'error' };
+export type CastResult = { ok: true } | { ok: false; reason: 'login' | 'offline' | 'error' };
 
 /** Record one vote in the shared tally. Callers must check the player has a vote left first. */
 export async function castVote(season: string, day: number, optionId: string): Promise<CastResult> {
@@ -152,6 +153,11 @@ export async function castVote(season: string, day: number, optionId: string): P
     return { ok: true };
   } catch (err) {
     warn('castVote', err);
+    // ugc.create is login-gated: guests get RUN's sign-in prompt, and cancelling it lands here.
+    const e = err as { name?: string; action?: string; code?: string };
+    if (e.name === 'AccessDeniedError' || e.action === 'prompt_login' || e.code === 'PROFILE_REQUIRED') {
+      return { ok: false, reason: 'login' };
+    }
     const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
     return { ok: false, reason: offline ? 'offline' : 'error' };
   }
@@ -265,14 +271,27 @@ export function safeArea(): Insets {
   }
 }
 
-/** Calls `onResume` whenever the host brings the game back to the foreground. */
-export function onLifecycle(handlers: { onResume?: () => void; onPause?: () => void }): void {
+/** Subscribes to host pause/resume. Returns an unsubscribe function. */
+export function onLifecycle(handlers: { onResume?: () => void; onPause?: () => void }): () => void {
+  const subs: Array<{ unsubscribe: () => void }> = [];
+  let cancelled = false;
   void ready().then(() => {
+    if (cancelled) return;
     try {
-      if (handlers.onResume) RundotGameAPI.lifecycles.onResume(handlers.onResume);
-      if (handlers.onPause) RundotGameAPI.lifecycles.onPause(handlers.onPause);
+      if (handlers.onResume) subs.push(RundotGameAPI.lifecycles.onResume(handlers.onResume));
+      if (handlers.onPause) subs.push(RundotGameAPI.lifecycles.onPause(handlers.onPause));
     } catch (err) {
       warn('lifecycles', err);
     }
   });
+  return () => {
+    cancelled = true;
+    for (const s of subs) {
+      try {
+        s.unsubscribe();
+      } catch (err) {
+        warn('lifecycles unsubscribe', err);
+      }
+    }
+  };
 }
