@@ -1,0 +1,51 @@
+{
+  "name": "its-alive",
+  "version": "1.0.0",
+  "description": "It's Alive! A daily community vote to stitch together a monster that wakes on Halloween.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "_build": "tsc && vite build",
+    "build": "npm run _build",
+    "build:bundled": "cross-env RUNDOT_GAME_DISABLE_EMBEDDED_LIBS=true npm run _build",
+    "preview": "vite preview",
+    "deploy": "npm run build && rundot deploy",
+    "format": "prettier \"{src,public}/**/*.{ts,tsx,js,jsx,json,css,html}\" --write",
+    "format:check": "prettier \"{src,public}/**/*.{ts,tsx,js,jsx,json,css,html}\" --check",
+    "test": "vitest run",
+    "simulate": "tsx scripts/simulate.ts",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "keywords": [
+    "react",
+    "vite",
+    "typescript",
+    "RUN.game"
+  ],
+  "author": "",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "cross-env": "^7.0.3",
+    "firebase": "^12.12.1",
+    "prettier": "^3.4.2",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "@series-inc/rundot-game-sdk": "5.28.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@series-inc/rundot-game-sdk"
+    ]
+  }
+}

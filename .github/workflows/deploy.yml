@@ -1,0 +1,82 @@
+name: Deploy to RUN
+
+# Every push to the game branch builds and deploys a new private (unlisted) version.
+# Docs-only changes are skipped. Making a version public is a separate, hand-run
+# workflow (publish.yml).
+on:
+  push:
+    branches: [claude/blissful-keller-ybbygh]
+    paths-ignore:
+      - '**/*.md'
+      - 'LICENSE.txt'
+      - '.github/workflows/publish.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: rundot-deploy
+  cancel-in-progress: false
+
+env:
+  # Tags drive RUN search and recommendations; set-keywords replaces the whole list.
+  GAME_KEYWORDS: 'halloween,monster,frankenstein,voting,community,daily,gothic,horror,pixel-art,creature-builder,spooky,multiplayer'
+  GAME_DESCRIPTION: "Every night the whole community votes on one body part, and at midnight the winner is stitched onto a gothic monster. Choose its head, limbs, eyes and heart, then watch it wake on Halloween. It's alive!"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Check the game is registered with RUN
+        id: check
+        env:
+          RUNDOT_API_KEY: ${{ secrets.RUNDOT_API_KEY }}
+        run: |
+          if [ ! -f game.config.prod.json ]; then
+            echo "::warning::Skipping deploy: game.config.prod.json is missing. Run 'rundot init' locally and commit it (see CLAUDE.md)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$RUNDOT_API_KEY" ]; then
+            echo "::error::The RUNDOT_API_KEY repository secret is not set (see CLAUDE.md)."
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install the RUN CLI
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          curl -fsSL https://github.com/series-ai/rundot-cli-releases/releases/latest/download/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Log in to RUN
+        if: steps.check.outputs.ready == 'true'
+        env:
+          RUNDOT_API_KEY: ${{ secrets.RUNDOT_API_KEY }}
+        run: printf '%s' "$RUNDOT_API_KEY" | rundot login --api-key-stdin
+
+      - name: Build
+        if: steps.check.outputs.ready == 'true'
+        run: npm run build
+
+      - name: Deploy
+        if: steps.check.outputs.ready == 'true'
+        run: rundot deploy --orientation Portrait
+
+      - name: Set search keywords
+        if: steps.check.outputs.ready == 'true'
+        run: rundot game set-keywords "$GAME_KEYWORDS"
+
+      - name: Set description
+        if: steps.check.outputs.ready == 'true'
+        run: rundot game set-description "$GAME_DESCRIPTION"

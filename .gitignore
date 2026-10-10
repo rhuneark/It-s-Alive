@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-ssr/
+*.log
+.env*
+.DS_Store
+.vscode/
+.idea/
+coverage/
+rundot/docs/
+.rundot-docs/
+test-results/
+playwright-report/
+art/raw/
+__pycache__/

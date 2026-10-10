@@ -1,0 +1,54 @@
+name: Publish or unpublish on RUN
+
+# Hand-run only. "publish" makes a version visible on RUN's Explore page;
+# "unpublish" hides the game again (its share link keeps working).
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'publish or unpublish'
+        type: choice
+        options: [publish, unpublish]
+        default: publish
+      version:
+        description: 'Version to publish, X.Y.Z (leave blank for the newest deployed version)'
+        required: false
+        default: ''
+
+jobs:
+  visibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the RUN CLI
+        run: |
+          curl -fsSL https://github.com/series-ai/rundot-cli-releases/releases/latest/download/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Log in to RUN
+        env:
+          RUNDOT_API_KEY: ${{ secrets.RUNDOT_API_KEY }}
+        run: printf '%s' "$RUNDOT_API_KEY" | rundot login --api-key-stdin
+
+      - name: Publish
+        if: inputs.action == 'publish'
+        env:
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          VERSION="$REQUESTED"
+          if [ -z "$VERSION" ]; then
+            # The CLI rejects "latest", so find the newest X.Y.Z it knows about.
+            rundot game list-versions | tee versions.txt
+            VERSION=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+' versions.txt | sort -V | tail -n 1)
+          fi
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Could not determine a version to publish (got '$VERSION')."
+            exit 1
+          fi
+          echo "Publishing version $VERSION"
+          rundot game set-public --version "$VERSION"
+
+      - name: Unpublish
+        if: inputs.action == 'unpublish'
+        run: rundot game set-private
