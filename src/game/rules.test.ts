@@ -21,6 +21,7 @@ import {
   recordVote,
   rollToDay,
   serializeSave,
+  setMusic,
   votesRemaining,
 } from './state';
 import { percentages, resolveDay } from './tally';
@@ -146,6 +147,16 @@ describe('votes and saves', () => {
     expect(s.stats.streak).toBe(2);
     s = recordVote(grantAdVote(rollToDay(s, 3)), 'arm_crab');
     expect(s.stats.streak).toBe(1);
+  });
+
+  it('remembers the music setting, defaulting to on', () => {
+    expect(newSave('test', 0).musicOn).toBe(true);
+    const off = setMusic(newSave('test', 0), false);
+    expect(parseSave(serializeSave(off), 'test', 0).musicOn).toBe(false);
+    expect(parseSave(serializeSave(off), 'test', 3).musicOn).toBe(false);
+    const legacy = JSON.parse(serializeSave(newSave('test', 0))) as Record<string, unknown>;
+    delete legacy['musicOn'];
+    expect(parseSave(JSON.stringify(legacy), 'test', 0).musicOn).toBe(true);
   });
 
   it('round-trips through storage and survives garbage', () => {

@@ -16,6 +16,10 @@ ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wake
 - One free vote per day, plus `MAX_AD_VOTES_PER_DAY` (`src/game/state.ts`) extra votes from rewarded ads.
   The cap is tuned by `npm run simulate`; re-run it if you change the cap or the voting model.
 - Percentages are hidden until the player has voted.
+- Main theme: "The Assembly" by the owner (`public/cdn-assets/audio/theme.mp3`, served from RUN's CDN via
+  `run.loadThemeUrl()`). `src/app/useMusic.ts` downloads it only once the player enters with music on, loops it
+  with a soft fade at the seam, plays through a Web Audio gain (iOS ignores `audio.volume`), and goes quiet on
+  host pause/sleep or a hidden tab. The on/off toggle lives in the top bar and is saved as `musicOn`.
 
 ## Layout
 
@@ -23,10 +27,11 @@ ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wake
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
                layout (where parts sit on the 160x224 canvas), crowd (stand-in tallies), rng; rules.test.ts
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
-src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change
+src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
 src/components Monster (layered pixel art + iron rack + stitches), Voting (options + results), Chronicle
 src/App.tsx    screens: title/continue, vote, preseason, awakened
 public/art/    shipped art: parts/<id>.png (fitted for the monster), icons/<id>.png (cards), lab.png
+public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audio/theme.mp3
 art/           NOT shipped: picks.json, picked/ (chosen raw sprites), raw/ (git-ignored candidates), palette.png
 tools/art/     PixelLab generation + processing scripts (python3)
 scripts/       simulate.ts (Monte-Carlo checks), shot.mjs (dev screenshots)

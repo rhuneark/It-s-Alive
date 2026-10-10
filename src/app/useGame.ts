@@ -24,6 +24,7 @@ import {
   rememberResolved,
   rollToDay,
   selectOption,
+  setMusic,
   serializeSave,
   votesRemaining,
   type SaveState,
@@ -56,6 +57,7 @@ export interface GameModel {
   cast: () => Promise<void>;
   watchAdForVote: () => Promise<void>;
   refreshCounts: () => Promise<void>;
+  toggleMusic: () => void;
 }
 
 const SCHEDULE = buildSchedule(votingDays(SEASON));
@@ -297,6 +299,12 @@ export function useGame(): GameModel {
     notify('Another vote is yours. Choose wisely.', 'success');
   }, [adBusy, commit, day, notify]);
 
+  const toggleMusic = useCallback(() => {
+    const on = !saveRef.current.musicOn;
+    void commit(setMusic(saveRef.current, on));
+    run.track('music_toggled', { on });
+  }, [commit]);
+
   const parts = useMemo(() => partsFromHistory(save), [save]);
 
   return {
@@ -316,5 +324,6 @@ export function useGame(): GameModel {
     cast,
     watchAdForVote,
     refreshCounts,
+    toggleMusic,
   };
 }

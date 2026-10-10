@@ -65,7 +65,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await noSidewaysScroll(page);
   await framedButtons(page);
   await shot('title');
+  const theme = page.waitForResponse((r) => r.url().includes('theme.mp3') && r.ok());
   await page.getByTestId('start').click();
+  await theme; // the main theme loads from cdn-assets once the player enters
   await expect(page.locator('.prompt')).toHaveText('Whose HEAD shall crown our creation?');
   await expect(page.locator('.option')).toHaveCount(5);
   await expect(page.locator('.result')).toHaveCount(0); // no peeking before voting
@@ -91,12 +93,22 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('ad-vote')).toHaveCount(0);
   await expect(page.getByText("You've cast all 2 of tonight's votes")).toBeVisible();
 
+  // Music toggle is framed, flips, and is remembered.
+  const music = page.getByTestId('music');
+  await expect(music).toHaveAttribute('aria-pressed', 'true');
+  await music.click();
+  await expect(music).toHaveAttribute('aria-pressed', 'false');
+  await page.waitForTimeout(400); // let the save land
+
   // Continue where we left off.
   await page.reload();
   await expect(page.getByTestId('start')).toHaveText('Continue');
   await page.getByTestId('start').click();
   await expect(page.locator('.result')).toHaveCount(5);
   await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×2');
+  await expect(page.getByTestId('music')).toHaveAttribute('aria-pressed', 'false');
+  await page.getByTestId('music').click();
+  await expect(page.getByTestId('music')).toHaveAttribute('aria-pressed', 'true');
 
   // Nights 2..21: a new part every night, the monster grows.
   let lastParts = await page.locator('.monster:not(.monster-mini) .part').count();

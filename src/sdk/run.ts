@@ -234,6 +234,23 @@ export async function showRewardedAd(): Promise<boolean> {
   }
 }
 
+// ---------------------------------------------------------------- assets
+
+/**
+ * Object URL for the main theme (public/cdn-assets/audio/theme.mp3, served from RUN's CDN).
+ * Null if it can't be fetched; the game is fully playable without music.
+ */
+export async function loadThemeUrl(): Promise<string | null> {
+  await ready();
+  try {
+    const blob = await RundotGameAPI.cdn.fetchAsset('audio/theme.mp3', { timeout: 60_000 });
+    return URL.createObjectURL(blob);
+  } catch (err) {
+    warn('loadTheme', err);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- misc
 
 export function track(event: string, payload?: Record<string, unknown>): void {
@@ -275,15 +292,23 @@ export function safeArea(): Insets {
   }
 }
 
-/** Subscribes to host pause/resume. Returns an unsubscribe function. */
-export function onLifecycle(handlers: { onResume?: () => void; onPause?: () => void }): () => void {
+/** Subscribes to host lifecycle events. Returns an unsubscribe function. */
+export function onLifecycle(handlers: {
+  onResume?: () => void;
+  onPause?: () => void;
+  onSleep?: () => void;
+  onAwake?: () => void;
+}): () => void {
   const subs: Array<{ unsubscribe: () => void }> = [];
   let cancelled = false;
   void ready().then(() => {
     if (cancelled) return;
     try {
-      if (handlers.onResume) subs.push(RundotGameAPI.lifecycles.onResume(handlers.onResume));
-      if (handlers.onPause) subs.push(RundotGameAPI.lifecycles.onPause(handlers.onPause));
+      const l = RundotGameAPI.lifecycles;
+      if (handlers.onResume) subs.push(l.onResume(handlers.onResume));
+      if (handlers.onPause) subs.push(l.onPause(handlers.onPause));
+      if (handlers.onSleep) subs.push(l.onSleep(handlers.onSleep));
+      if (handlers.onAwake) subs.push(l.onAwake(handlers.onAwake));
     } catch (err) {
       warn('lifecycles', err);
     }

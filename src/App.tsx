@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useGame, type GameModel } from './app/useGame';
+import { useMusic } from './app/useMusic';
 import { Chronicle } from './components/Chronicle';
 import { Monster } from './components/Monster';
 import { OptionGrid, Results } from './components/Voting';
@@ -17,6 +18,8 @@ export default function App() {
   const game = useGame();
   const [inGame, setInGame] = useState(false);
   const [chronicle, setChronicle] = useState(false);
+  // The theme starts with the first tap into the laboratory (a user gesture, so browsers allow it).
+  useMusic(inGame && !game.loading && game.save.musicOn);
 
   // Keep content clear of the host toolbar and device notches.
   useEffect(() => {
@@ -121,21 +124,7 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
 
   return (
     <div className="screen game">
-      <header className="topbar">
-        <div>
-          <div className="brand">It's Alive!</div>
-          <div className="dayline">
-            Night {day + 1} of {dayCount}
-          </div>
-        </div>
-        <button
-          className="btn btn-secondary btn-small"
-          onClick={onChronicle}
-          data-testid="chronicle"
-        >
-          Chronicle
-        </button>
-      </header>
+      <TopBar game={game} onChronicle={onChronicle} subtitle={`Night ${day + 1} of ${dayCount}`} />
 
       <Monster
         parts={game.parts}
@@ -234,6 +223,53 @@ function Vote({ game, onChronicle }: { game: GameModel; onChronicle: () => void 
   );
 }
 
+function TopBar({
+  game,
+  onChronicle,
+  subtitle,
+}: {
+  game: GameModel;
+  onChronicle: () => void;
+  subtitle?: string;
+}) {
+  const on = game.save.musicOn;
+  return (
+    <header className="topbar">
+      <div>
+        <div className="brand">It's Alive!</div>
+        {subtitle && <div className="dayline">{subtitle}</div>}
+      </div>
+      <div className="topbar-actions">
+        <button
+          className={`btn btn-secondary btn-icon ${on ? '' : 'muted-icon'}`}
+          onClick={game.toggleMusic}
+          aria-pressed={on}
+          aria-label={on ? 'Music on. Tap to mute.' : 'Music off. Tap to play.'}
+          data-testid="music"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            aria-hidden="true"
+            fill="currentColor"
+            style={{ flex: 'none' }}
+          >
+            <path d="M9 4.5 20 2v13.2a3 3 0 1 1-2-2.83V6.6l-7 1.6v9a3 3 0 1 1-2-2.83Z" />
+          </svg>
+        </button>
+        <button
+          className="btn btn-secondary btn-small"
+          onClick={onChronicle}
+          data-testid="chronicle"
+        >
+          Chronicle
+        </button>
+      </div>
+    </header>
+  );
+}
+
 /** One notch per night: stitched, tonight, and still to come. */
 function ProgressRail({ total, today, done }: { total: number; today: number; done: number }) {
   return (
@@ -274,12 +310,7 @@ function Preseason({ game }: { game: GameModel }) {
 function Awakened({ game, onChronicle }: { game: GameModel; onChronicle: () => void }) {
   return (
     <div className="screen game">
-      <header className="topbar">
-        <div className="brand">It's Alive!</div>
-        <button className="btn btn-secondary btn-small" onClick={onChronicle}>
-          Chronicle
-        </button>
-      </header>
+      <TopBar game={game} onChronicle={onChronicle} />
       <h1 className="logo logo-alive">IT'S ALIVE!</h1>
       <Monster parts={game.parts} spark={game.parts.spark ?? 'spark_lightning'} alive />
       {game.resolving && (

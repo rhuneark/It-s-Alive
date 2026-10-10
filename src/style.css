@@ -225,6 +225,36 @@ b {
   gap: 12px;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn.btn-icon {
+  position: relative;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--parchment);
+}
+
+.btn.btn-icon.muted-icon {
+  color: var(--parchment-dim);
+}
+
+.btn.btn-icon.muted-icon::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 50%;
+  height: 3px;
+  background: var(--blood-bright);
+  border: 1px solid #000;
+  transform: rotate(-45deg);
+}
+
 .countdown {
   text-align: center;
   font-size: 16px;

@@ -41,6 +41,8 @@ export interface SaveState {
   stats: { totalVotes: number; daysVoted: number; lastVotedDay: number; streak: number };
   /** Player has seen the intro at least once (shows "Continue" instead of "Begin"). */
   started: boolean;
+  /** Main theme on/off. */
+  musicOn: boolean;
 }
 
 export function newSave(season: string, day: number): SaveState {
@@ -54,6 +56,7 @@ export function newSave(season: string, day: number): SaveState {
     history: {},
     stats: { totalVotes: 0, daysVoted: 0, lastVotedDay: -999, streak: 0 },
     started: false,
+    musicOn: true,
   };
 }
 
@@ -79,6 +82,7 @@ export function parseSave(raw: string | null, season: string, day: number): Save
       history: isRecord(data.history) ? (data.history as Record<string, ResolvedDay>) : {},
       stats: { ...base.stats, ...(isRecord(data.stats) ? data.stats : {}) },
       started: data.started === true,
+      musicOn: data.musicOn !== false,
     };
     return rollToDay(save, day);
   } catch {
@@ -141,6 +145,10 @@ export function recordVote(save: SaveState, optionId: string): SaveState {
 
 export function rememberResolved(save: SaveState, day: number, result: ResolvedDay): SaveState {
   return { ...save, history: { ...save.history, [String(day)]: result } };
+}
+
+export function setMusic(save: SaveState, on: boolean): SaveState {
+  return save.musicOn === on ? save : { ...save, musicOn: on };
 }
 
 export function markStarted(save: SaveState): SaveState {
