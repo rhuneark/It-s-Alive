@@ -21,6 +21,7 @@ import {
   newSave,
   parseSave,
   recordVote,
+  refillVotes,
   rememberResolved,
   rollToDay,
   selectOption,
@@ -58,6 +59,8 @@ export interface GameModel {
   watchAdForVote: () => Promise<void>;
   refreshCounts: () => Promise<void>;
   toggleMusic: () => void;
+  /** Test Lab only: hand back tonight's votes. */
+  refillVotes: () => void;
 }
 
 const SCHEDULE = buildSchedule(votingDays(SEASON));
@@ -305,6 +308,12 @@ export function useGame(): GameModel {
     run.track('music_toggled', { on });
   }, [commit]);
 
+  const refill = useCallback(() => {
+    if (!run.sandboxed()) return;
+    void commit(refillVotes(saveRef.current));
+    setTodayCounts(null);
+  }, [commit]);
+
   const parts = useMemo(() => partsFromHistory(save), [save]);
 
   return {
@@ -325,5 +334,6 @@ export function useGame(): GameModel {
     watchAdForVote,
     refreshCounts,
     toggleMusic,
+    refillVotes: refill,
   };
 }

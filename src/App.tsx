@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useGame, type GameModel } from './app/useGame';
 import { useMusic } from './app/useMusic';
 import { Chronicle } from './components/Chronicle';
 import { Monster } from './components/Monster';
+import { TestLab } from './components/TestLab';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption } from './game/catalog';
 import { formatCountdown } from './game/schedule';
@@ -15,11 +16,12 @@ import {
 import * as run from './sdk/run';
 
 export default function App() {
-  const game = useGame();
+  // Bumped whenever Test Lab settings change, to remount the game on the new save/clock.
+  const [labKey, setLabKey] = useState(0);
   const [inGame, setInGame] = useState(false);
-  const [chronicle, setChronicle] = useState(false);
+  const [musicWanted, setMusicWanted] = useState(false);
   // The theme starts with the first tap into the laboratory (a user gesture, so browsers allow it).
-  useMusic(inGame && !game.loading && game.save.musicOn);
+  useMusic(inGame && musicWanted);
 
   // Keep content clear of the host toolbar and device notches.
   useEffect(() => {
@@ -31,6 +33,54 @@ export default function App() {
     });
   }, []);
 
+  const onLabChanged = useCallback(() => setLabKey((k) => k + 1), []);
+  const onEnter = useCallback(() => setInGame(true), []);
+
+  return (
+    <Game
+      key={labKey}
+      inGame={inGame}
+      onEnter={onEnter}
+      onMusic={setMusicWanted}
+      onLabChanged={onLabChanged}
+    />
+  );
+}
+
+function Game({
+  inGame,
+  onEnter,
+  onMusic,
+  onLabChanged,
+}: {
+  inGame: boolean;
+  onEnter: () => void;
+  onMusic: (on: boolean) => void;
+  onLabChanged: () => void;
+}) {
+  const game = useGame();
+  const [chronicle, setChronicle] = useState(false);
+  const [labOpen, setLabOpen] = useState(false);
+
+  useEffect(() => {
+    if (!game.loading) onMusic(game.save.musicOn);
+  }, [game.loading, game.save.musicOn, onMusic]);
+
+  const lab = run.labState();
+  const canLab = !game.loading && run.canUseLab();
+  const applyLab = async (next: run.LabState) => {
+    setLabOpen(false);
+    await run.setLab(next);
+    onEnter(); // land in the game on the chosen night
+    onLabChanged();
+  };
+  const wipeLab = async () => {
+    setLabOpen(false);
+    await run.resetLab();
+    onLabChanged();
+  };
+  const openLab = () => setLabOpen(true);
+
   let screen;
   if (game.loading) screen = <Loading />;
   else if (!inGame)
@@ -39,8 +89,9 @@ export default function App() {
         game={game}
         onStart={() => {
           game.begin();
-          setInGame(true);
+          onEnter();
         }}
+        onLab={canLab ? openLab : undefined}
       />
     );
   else if (game.phase.kind === 'awakened')
@@ -57,9 +108,46 @@ export default function App() {
         <p className="title-sm">Turn your device upright</p>
         <p className="muted">The laboratory only fits in portrait.</p>
       </div>
-      <main className="app">{screen}</main>
+      {lab.on && !game.loading && (
+        <div className="test-banner" role="status" data-testid="test-banner">
+          <span>
+            <b>TEST MODE</b> · fake votes, private save
+          </span>
+          <button
+            className="btn btn-secondary btn-small"
+            onClick={openLab}
+            data-testid="lab-banner-open"
+          >
+            Lab
+          </button>
+        </div>
+      )}
+      <main className="app">
+        {screen}
+        {inGame && canLab && !lab.on && !game.loading && (
+          <button
+            className="btn btn-secondary btn-wide lab-entry"
+            onClick={openLab}
+            data-testid="lab-open"
+          >
+            Test Lab (owner only)
+          </button>
+        )}
+      </main>
       {chronicle && (
         <Chronicle save={game.save} today={today} onClose={() => setChronicle(false)} />
+      )}
+      {labOpen && (
+        <TestLab
+          lab={lab}
+          onApply={(next) => void applyLab(next)}
+          onRefill={() => {
+            game.refillVotes();
+            setLabOpen(false);
+          }}
+          onReset={() => void wipeLab()}
+          onClose={() => setLabOpen(false)}
+        />
       )}
       {game.toast && (
         <div key={game.toast.id} className={`toast toast-${game.toast.tone}`} role="status">
@@ -79,7 +167,15 @@ function Loading() {
   );
 }
 
-function Title({ game, onStart }: { game: GameModel; onStart: () => void }) {
+function Title({
+  game,
+  onStart,
+  onLab,
+}: {
+  game: GameModel;
+  onStart: () => void;
+  onLab?: () => void;
+}) {
   const built = Object.keys(game.parts).length;
   return (
     <div className="screen title-screen">
@@ -107,6 +203,11 @@ function Title({ game, onStart }: { game: GameModel; onStart: () => void }) {
           ? 'Nothing has been stitched yet.'
           : `${built} part${built === 1 ? '' : 's'} stitched so far.`}
       </p>
+      {onLab && (
+        <button className="btn btn-secondary btn-wide" onClick={onLab} data-testid="lab-open">
+          Test Lab (owner only)
+        </button>
+      )}
     </div>
   );
 }

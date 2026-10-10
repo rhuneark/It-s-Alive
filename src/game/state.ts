@@ -147,6 +147,11 @@ export function rememberResolved(save: SaveState, day: number, result: ResolvedD
   return { ...save, history: { ...save.history, [String(day)]: result } };
 }
 
+/** Test Lab only: give back tonight's votes (the fake tally keeps the earlier ones). */
+export function refillVotes(save: SaveState): SaveState {
+  return { ...save, votes: [], adVotesEarned: 0, pending: null };
+}
+
 export function setMusic(save: SaveState, on: boolean): SaveState {
   return save.musicOn === on ? save : { ...save, musicOn: on };
 }

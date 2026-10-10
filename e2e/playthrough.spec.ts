@@ -156,3 +156,57 @@ test('every night of the season fits the phone without sideways scrolling', asyn
     await framedButtons(page);
   }
 });
+
+test('owner Test Lab: jump between nights, vote freely, then leave without touching the real save', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+
+  await page.goto('/');
+  await page.getByTestId('lab-open').click();
+  await page.getByTestId('lab-start').click();
+  await expect(page.getByTestId('test-banner')).toBeVisible();
+  await expect(page.locator('.dayline')).toBeVisible(); // straight into the game
+
+  // Jump to night 5 and vote as much as we like.
+  await page.getByTestId('lab-banner-open').click();
+  await page.getByTestId('lab-night-5').click();
+  await expect(page.locator('.dayline')).toHaveText('Night 5 of 21');
+  await voteFor(page, 2);
+  await percentagesSumTo100(page);
+  await page.getByTestId('lab-banner-open').click();
+  await page.getByTestId('lab-refill').click();
+  await expect(page.locator('.option')).toHaveCount(5);
+  await voteFor(page, 2);
+  await expect(page.locator('.result')).toHaveCount(5);
+  await noSidewaysScroll(page);
+  await framedButtons(page);
+
+  // Next night: night 5's winner is stitched on.
+  const before = await page.locator('.monster:not(.monster-mini) .part').count();
+  await page.getByTestId('lab-banner-open').click();
+  await page.getByTestId('lab-next').click();
+  await expect(page.locator('.dayline')).toHaveText('Night 6 of 21');
+  await expect
+    .poll(() => page.locator('.monster:not(.monster-mini) .part').count())
+    .toBeGreaterThan(before);
+
+  // Test mode survives a reload.
+  await page.reload();
+  await expect(page.getByTestId('test-banner')).toBeVisible();
+  await page.getByTestId('start').click();
+  await expect(page.locator('.dayline')).toHaveText('Night 6 of 21');
+
+  // Halloween.
+  await page.getByTestId('lab-banner-open').click();
+  await page.getByTestId('lab-halloween').click();
+  await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
+
+  // Leaving test mode returns to the real save, which never voted.
+  await page.getByTestId('lab-banner-open').click();
+  await page.getByTestId('lab-exit').click();
+  await expect(page.getByTestId('test-banner')).toHaveCount(0);
+  await expect(page.locator('.result')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

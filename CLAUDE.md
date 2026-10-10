@@ -28,7 +28,8 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
                layout (where parts sit on the 160x224 canvas), crowd (stand-in tallies), rng; rules.test.ts
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
-src/components Monster (layered pixel art + iron rack + stitches), Voting (options + results), Chronicle
+src/components Monster (layered pixel art + iron rack + stitches), Voting (options + results), Chronicle,
+               TestLab (owner-only sandbox controls)
 src/App.tsx    screens: title/continue, vote, preseason, awakened
 public/art/    shipped art: parts/<id>.png (fitted for the monster), icons/<id>.png (cards), lab.png
 public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audio/theme.mp3
@@ -67,6 +68,15 @@ python3 tools/art/contact.py <prefix> out.png 3         # contact sheet to revie
 python3 tools/art/process.py                            # crop, fit, quantize -> public/art + src/game/sprites.json
 ```
 Prompts live in `tools/art/prompts.py` (keys match option ids in `src/game/catalog.ts`).
+
+## Test Lab (owner/editor only, works on the deployed build)
+
+- Shown only when `app.getMyRole()` says owner/editor (server-verified), or in local mock mode.
+  Entry: "Test Lab (owner only)" on the title screen / bottom of the game; while on, a red TEST MODE banner.
+- Test mode = sandbox: own save key (`save_test`), fake crowd tallies plus fake votes (`testVotes`), any
+  night via a day override (`-1` before launch … `21` Halloween), "Refill tonight's votes", wipe, leave.
+  Real shared tallies (UGC), the real `save`, and analytics are never touched. Settings persist in `testLab`.
+- Switching Test Lab settings remounts `<Game key>`; music lives outside it so it keeps playing.
 
 ## Dev
 

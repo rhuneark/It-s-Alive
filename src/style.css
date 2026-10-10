@@ -878,6 +878,60 @@ b {
   color: var(--parchment-dim);
 }
 
+/* ---------- test lab (owner only) ---------- */
+.test-banner {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: calc(var(--safe-top) + 6px) 16px 6px;
+  font-size: 15px;
+  color: #fff;
+  background: repeating-linear-gradient(-45deg, #7a1418 0 12px, #5a0e12 12px 24px);
+  border-bottom: 2px solid #000;
+}
+
+.lab-entry {
+  margin-top: 16px;
+}
+
+.lab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.btn.lab-night {
+  min-height: 44px;
+  padding: 0;
+  font-size: 16px;
+}
+
+.lab .current {
+  border-color: var(--bile);
+  color: var(--bile);
+}
+
+.lab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lab-row .btn {
+  flex: 1 1 auto;
+}
+
 /* ---------- toast & guards ---------- */
 .toast {
   position: fixed;
