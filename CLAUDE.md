@@ -183,6 +183,10 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
 
 - `.github/workflows/deploy.yml`: every push to `claude/blissful-keller-ybbygh` (except docs-only) runs tests,
   builds and `rundot deploy --orientation Portrait`, then sets keywords/description from the env lines at the top.
+- Public: version 1.12.0 (commit dcbe8d1, the Oct 11 season) was submitted with the publish workflow on
+  Oct 11, 10:08 UTC; RUN reviews it and makes it public on approval. Pushes after that deploy NEW private
+  versions only: a fix reaches public players only when the owner asks to publish again (each
+  submission must be a higher version and goes through review).
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`
   (newest from `rundot game list-versions` when blank — the CLI rejects "latest"); `unpublish` runs
   `rundot game set-private`. Only run it when the owner asks.
