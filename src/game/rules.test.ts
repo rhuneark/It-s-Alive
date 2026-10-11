@@ -55,13 +55,22 @@ describe('catalog', () => {
 });
 
 describe('schedule', () => {
-  it('runs 21 voting days from Oct 10 to Oct 30, head first, spark last', () => {
+  it('asks 20 parts from Oct 10 to Oct 29, head first, spark last, then keeps a vigil on Oct 30', () => {
     expect(votingDays(SEASON)).toBe(21);
     const s = buildSchedule(21);
-    expect(s).toHaveLength(21);
+    expect(s).toHaveLength(20);
     expect(s[0]!.slot).toBe('head');
-    expect(s[19]!.slot).toBe('brain');
-    expect(s[20]!.slot).toBe('spark');
+    expect(s[18]!.slot).toBe('brain');
+    expect(s[19]!.slot).toBe('spark');
+  });
+
+  it('keeps the nights already played (the season is live) on the same parts', () => {
+    const launched = ['head', 'torso', 'armR', 'legL', 'browEye', 'armL', 'legR', 'heart', 'tail'];
+    expect(
+      buildSchedule(21)
+        .map((q) => q.slot)
+        .slice(0, launched.length),
+    ).toEqual(launched);
   });
 
   it('drops middle questions for shorter seasons but keeps head, brain and spark', () => {
@@ -75,16 +84,21 @@ describe('schedule', () => {
     }
   });
 
-  it('moves through preseason, voting and awakening', () => {
+  it('moves through preseason, voting, the vigil and awakening', () => {
     expect(phaseAt(SEASON.startMs - 1, SEASON).kind).toBe('preseason');
     const first = phaseAt(SEASON.startMs + 5, SEASON);
     expect(first.kind === 'voting' && first.day === 0 && first.question.slot === 'head').toBe(true);
-    const last = phaseAt(SEASON.awakenMs - 1, SEASON);
-    expect(last.kind === 'voting' && last.day === 20).toBe(true);
+    const last = phaseAt(SEASON.startMs + 19 * DAY_MS + 5, SEASON);
+    expect(last.kind === 'voting' && last.day === 19 && last.question.slot === 'spark').toBe(true);
+    const vigil = phaseAt(SEASON.awakenMs - 1, SEASON);
+    expect(vigil).toEqual({ kind: 'vigil', wakesInMs: 1, dayCount: 20 });
+    expect(phaseAt(SEASON.startMs + 20 * DAY_MS, SEASON).kind).toBe('vigil');
     expect(phaseAt(SEASON.awakenMs, SEASON).kind).toBe('awakened');
     expect(dayIndexAt(SEASON.startMs + 3 * DAY_MS + 10, SEASON)).toBe(3);
     expect(closedDays(SEASON.startMs + 3 * DAY_MS + 10, SEASON)).toEqual([0, 1, 2]);
-    expect(closedDays(SEASON.awakenMs + 9 * DAY_MS, SEASON)).toHaveLength(21);
+    // on the vigil every night is closed, so the spark is resolved and shown
+    expect(closedDays(SEASON.awakenMs - 1, SEASON)).toHaveLength(20);
+    expect(closedDays(SEASON.awakenMs + 9 * DAY_MS, SEASON)).toHaveLength(20);
   });
 });
 

@@ -127,12 +127,18 @@ function Game({
     );
   else if (game.phase.kind === 'awakened')
     screen = <Awakened game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
+  else if (game.phase.kind === 'vigil')
+    screen = <Vigil game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
   else if (game.phase.kind === 'preseason')
     screen = <Preseason game={game} onSketch={openSketch} />;
   else screen = <Vote game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
 
   const today =
-    game.phase.kind === 'voting' ? game.phase.day : game.phase.kind === 'awakened' ? 999 : -1;
+    game.phase.kind === 'voting'
+      ? game.phase.day
+      : game.phase.kind === 'vigil' || game.phase.kind === 'awakened'
+        ? 999
+        : -1;
 
   return (
     <>
@@ -506,6 +512,44 @@ function Preseason({ game, onSketch }: { game: GameModel; onSketch: () => void }
       <p className="prompt">The laboratory opens in</p>
       <p className="big-count">{formatCountdown(game.phase.opensInMs)}</p>
       <p className="muted">The first question: whose head shall crown our creation?</p>
+      <SketchButton onClick={onSketch} />
+    </div>
+  );
+}
+
+/** The night before Halloween: every part is chosen, nothing to vote on, the creature waits. */
+function Vigil({
+  game,
+  onChronicle,
+  onSketch,
+}: {
+  game: GameModel;
+  onChronicle: () => void;
+  onSketch: () => void;
+}) {
+  if (game.phase.kind !== 'vigil') return null;
+  const { dayCount, wakesInMs } = game.phase;
+  const done = Object.keys(game.save.history).length;
+  return (
+    <div className="screen game">
+      <TopBar game={game} onChronicle={onChronicle} subtitle="The vigil" />
+      <Monster parts={game.parts} spark={game.parts.spark ?? null} />
+      <ProgressRail total={dayCount} today={dayCount} done={done} />
+      <div className="countdown" aria-label="Time until it wakes">
+        <span className="muted">It wakes in</span> <b>{formatCountdown(wakesInMs)}</b>
+      </div>
+      {game.resolving && (
+        <p className="muted small center-text">
+          Exhuming past nights… {game.resolving.done}/{game.resolving.total}
+        </p>
+      )}
+      <section className="panel lore" data-testid="vigil">
+        <p className="eyebrow">The night before Halloween</p>
+        <p>
+          Every part is stitched. There is no vote tonight: keep watch over the slab. When midnight
+          (UTC) strikes and <b>Halloween</b> begins, the lightning comes, and it wakes.
+        </p>
+      </section>
       <SketchButton onClick={onSketch} />
     </div>
   );

@@ -129,13 +129,13 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('music-toggle')).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.sound-scrim').click();
 
-  // Nights 2..21: a new part painted in every night (husk regions give way to parts).
+  // Nights 2..20: a new part painted in every night (husk regions give way to parts).
   let lastParts = await page
     .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
     .count();
-  for (let day = 1; day <= 20; day++) {
+  for (let day = 1; day <= 19; day++) {
     await openDay(page, day);
-    await expect(page.locator('.dayline')).toHaveText(`Night ${day + 1} of 21`);
+    await expect(page.locator('.dayline')).toHaveText(`Night ${day + 1} of 20`);
     await expect(page.locator('.option')).toHaveCount(5);
     await expect(page.locator('.result')).toHaveCount(0);
     await expect
@@ -154,9 +154,30 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
 
   // Chronicle lists every resolved night.
   await page.getByTestId('chronicle').click();
-  await expect(page.locator('.chron-done')).toHaveCount(20);
+  await expect(page.locator('.chron-done')).toHaveCount(19);
   await expect(page.locator('.chron-now')).toHaveCount(1);
   await shot('chronicle');
+  await page.getByRole('button', { name: 'Close chronicle' }).click();
+
+  // The vigil (Oct 30): every part is chosen, nothing to vote on, it waits for midnight.
+  await openDay(page, 20);
+  await expect(page.locator('.dayline')).toHaveText('The vigil');
+  await expect(page.getByTestId('vigil')).toBeVisible();
+  await expect(page.locator('.option')).toHaveCount(0);
+  await expect(page.locator('.countdown')).toContainText('It wakes in');
+  await expect(page.locator('.monster.alive')).toHaveCount(0);
+  // the spark chosen on the last night is an effect, not a layer: its aura now plays
+  await expect(page.locator('.monster:not(.monster-mini).aura')).toBeVisible();
+  await expect(page.locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')).toHaveCount(
+    lastParts,
+  );
+  await imagesLoaded(page);
+  await noSidewaysScroll(page);
+  await framedButtons(page);
+  await shot('vigil');
+  await page.getByTestId('chronicle').click();
+  await expect(page.locator('.chron-done')).toHaveCount(20);
+  await expect(page.locator('.chron-now')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close chronicle' }).click();
 
   // Halloween: it wakes.
@@ -167,13 +188,13 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await noSidewaysScroll(page);
   await shot('alive');
   await page.getByRole('button', { name: 'Chronicle' }).click();
-  await expect(page.locator('.chron-done')).toHaveCount(21);
+  await expect(page.locator('.chron-done')).toHaveCount(20);
 
   expect(errors).toEqual([]);
 });
 
 test('every night of the season fits the phone without sideways scrolling', async ({ page }) => {
-  for (const day of [0, 4, 9, 13, 18, 20]) {
+  for (const day of [0, 4, 9, 13, 17, 19]) {
     await openDay(page, day);
     await expect(page.locator('.option')).toHaveCount(5);
     await page.locator('.option').first().click();
@@ -197,7 +218,7 @@ test('owner Test Lab: jump between nights, vote freely, then leave without touch
   // Jump to night 5 and vote as much as we like.
   await page.getByTestId('lab-banner-open').click();
   await page.getByTestId('lab-night-5').click();
-  await expect(page.locator('.dayline')).toHaveText('Night 5 of 21');
+  await expect(page.locator('.dayline')).toHaveText('Night 5 of 20');
   await voteFor(page, 2);
   await percentagesSumTo100(page);
   await page.getByTestId('lab-banner-open').click();
@@ -214,7 +235,7 @@ test('owner Test Lab: jump between nights, vote freely, then leave without touch
     .count();
   await page.getByTestId('lab-banner-open').click();
   await page.getByTestId('lab-next').click();
-  await expect(page.locator('.dayline')).toHaveText('Night 6 of 21');
+  await expect(page.locator('.dayline')).toHaveText('Night 6 of 20');
   await expect
     .poll(() => page.locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]').count())
     .toBeGreaterThan(before);
@@ -223,9 +244,12 @@ test('owner Test Lab: jump between nights, vote freely, then leave without touch
   await page.reload();
   await expect(page.getByTestId('test-banner')).toBeVisible();
   await page.getByTestId('start').click();
-  await expect(page.locator('.dayline')).toHaveText('Night 6 of 21');
+  await expect(page.locator('.dayline')).toHaveText('Night 6 of 20');
 
-  // Halloween.
+  // The vigil, then Halloween.
+  await page.getByTestId('lab-banner-open').click();
+  await page.getByTestId('lab-vigil').click();
+  await expect(page.getByTestId('vigil')).toBeVisible();
   await page.getByTestId('lab-banner-open').click();
   await page.getByTestId('lab-halloween').click();
   await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
@@ -286,12 +310,12 @@ test('Sketchbook: try any parts, keep the design, and rebuild the monster from m
   await book.locator('[data-sketch-part="head"]').click();
   await book.locator('[data-sketch-option="head_croc"]').click();
   await expect(layer('horns_ram@head_croc')).toHaveCount(1);
-  await expect(book).toContainText('2 of 21 parts');
+  await expect(book).toContainText('2 of 20 parts');
   await imagesLoaded(page);
 
   // Random fills every part; nothing was voted.
   await page.getByTestId('sketch-random').click();
-  await expect(book).toContainText('21 of 21 parts');
+  await expect(book).toContainText('20 of 20 parts');
   await imagesLoaded(page);
   await noSidewaysScroll(page);
   await book.getByRole('button', { name: 'Close' }).click();
@@ -302,7 +326,7 @@ test('Sketchbook: try any parts, keep the design, and rebuild the monster from m
   await page.reload();
   await page.getByTestId('start').click();
   await page.getByTestId('sketch-open').click();
-  await expect(book).toContainText('21 of 21 parts');
+  await expect(book).toContainText('20 of 20 parts');
   await book.getByRole('button', { name: 'Close' }).click();
 
   // After voting, "My votes" shows my pick on the real monster's head.
@@ -311,7 +335,7 @@ test('Sketchbook: try any parts, keep the design, and rebuild the monster from m
   await page.getByTestId('sketch-open').click();
   await page.getByTestId('sketch-mine').click();
   await expect(book.locator(`.part[data-layer^="parts/${pick}@head_"]`)).toHaveCount(1);
-  await expect(book).toContainText('5 of 21 parts');
+  await expect(book).toContainText('5 of 20 parts');
   await imagesLoaded(page);
   expect(errors).toEqual([]);
 });

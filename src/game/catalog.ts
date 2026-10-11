@@ -22,7 +22,6 @@ export type SlotId =
   | 'spine'
   | 'arm3'
   | 'ears'
-  | 'hide'
   | 'jaw'
   | 'brain'
   | 'spark';
@@ -227,7 +226,11 @@ export const QUESTIONS: readonly Question[] = [
     options: [
       { id: 'spine_quills', name: 'Porcupine Quills', blurb: 'Bristle when frightened.' },
       { id: 'spine_dragon', name: 'Dragon Spines', blurb: 'Jagged and scorched.' },
-      { id: 'spine_shark', name: 'Shark Fin', blurb: 'Cuts through the fog.' },
+      {
+        id: 'spine_rods',
+        name: 'Lightning Rods',
+        blurb: 'Copper, crackling, begging for the storm.',
+      },
       { id: 'spine_tentacles', name: 'Squid Tentacles', blurb: 'They wriggle on their own.' },
       { id: 'spine_bone', name: 'Bone Spurs', blurb: 'Vertebrae grown wild.' },
     ],
@@ -254,18 +257,6 @@ export const QUESTIONS: readonly Question[] = [
       { id: 'ears_donkey', name: 'Donkey Ears', blurb: 'Long, floppy, insulting.' },
       { id: 'ears_hare', name: 'Hare Ears', blurb: 'Twitch at every creak.' },
       { id: 'ears_fin', name: 'Fish Fins', blurb: 'Listens under water.' },
-    ],
-  },
-  {
-    slot: 'hide',
-    part: 'Hide Patch',
-    prompt: 'What HIDE shall patch its wounds?',
-    options: [
-      { id: 'hide_croc', name: 'Crocodile Scales', blurb: 'Tough as a coffin lid.' },
-      { id: 'hide_bear', name: 'Black Bear Fur', blurb: 'Warm on cold crypt nights.' },
-      { id: 'hide_carp', name: 'Golden Carp Scales', blurb: 'Shimmers in candlelight.' },
-      { id: 'hide_armadillo', name: 'Armadillo Plates', blurb: 'Rolls into a ball.' },
-      { id: 'hide_raven', name: 'Raven Feathers', blurb: 'Rustles when it moves.' },
     ],
   },
   {

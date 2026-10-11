@@ -56,7 +56,6 @@ export const BASE_OF: Partial<Record<SlotId, SlotId>> = {
   heart: 'torso',
   maw: 'torso',
   head2: 'torso',
-  hide: 'legR',
 };
 
 /** Draw order, back to front (matches Z in tools/art/husk.py). */
@@ -67,7 +66,6 @@ const Z: Record<SlotId | Region, number> = {
   tail: 3,
   legR: 4,
   legL: 4,
-  hide: 5,
   torso: 6,
   chestEye: 7,
   maw: 8,
@@ -84,6 +82,9 @@ const Z: Record<SlotId | Region, number> = {
   head2: 18,
   spark: 19,
 };
+
+/** Options drawn out of their slot's order: the unicorn's single spike rises through the brain. */
+const Z_OF_OPTION: Record<string, number> = { horns_unicorn: 15.5 };
 
 export interface Piece {
   /** Image path under art/: husk/<region> or parts/<key>. */
@@ -109,7 +110,7 @@ export function layerKey(slot: SlotId, id: string, parts: Partial<Record<SlotId,
   return `${id}@${base}`;
 }
 
-const piece = (src: string, slot: SlotId | Region, isHusk: boolean, b: Box): Piece => ({
+const piece = (src: string, slot: SlotId | Region, isHusk: boolean, b: Box, id = ''): Piece => ({
   src,
   slot,
   husk: isHusk,
@@ -117,7 +118,7 @@ const piece = (src: string, slot: SlotId | Region, isHusk: boolean, b: Box): Pie
   y: b[1]!,
   w: b[2]!,
   h: b[3]!,
-  z: Z[slot],
+  z: Z_OF_OPTION[id] ?? Z[slot],
 });
 
 /**
@@ -138,7 +139,7 @@ export function layoutMonster(parts: Partial<Record<SlotId, string>>, sheet: Lay
     if (!box) continue;
     const region = REPLACES[slot];
     if (region) replaced.add(region);
-    out.push(piece(`parts/${key}`, slot, false, box));
+    out.push(piece(`parts/${key}`, slot, false, box, id));
   }
   for (const region of REGIONS) {
     const box = sheet.husk[region];

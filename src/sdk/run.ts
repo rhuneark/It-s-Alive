@@ -32,7 +32,7 @@ let lab: LabState = { on: false, day: null, unlocked: false };
 /** Owner-only Test Lab settings (persisted in appStorage under `testLab`). */
 export interface LabState {
   on: boolean;
-  /** Night to pretend it is (0-based; -1 = before launch, 21 = Halloween). Null = real date. */
+  /** Night to pretend it is (0-based; -1 = before launch, 20 = the vigil, 21 = Halloween). Null = real date. */
   day: number | null;
   /** Opened via the hidden version-label tap, so keep offering it. */
   unlocked?: boolean;

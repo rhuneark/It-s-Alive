@@ -13,6 +13,7 @@ image cut to the part's mask, cropped, and placed back at its scene offset.
     python3 tools/art/husk.py sheet <slot> out.png    # contact sheet of candidates
 """
 import json
+import math
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -176,22 +177,22 @@ TEMPLATES = {
     "wings": "{d} spread wide behind the body",
     "spine": "{d} sprouting from the back behind the shoulders and neck",
     "tail": "{d} growing from behind the hips and curling out to the right side",
-    "hide": "a square patch of {d} sewn onto the shin of the leg on the left of the picture with black stitches",
 }
 
 # Which picked part each add-on is painted onto (its layer only fits that base).
 BASE_OF = {
     "browEye": "head", "horns": "head", "ears": "head", "jaw": "head", "brain": "head",
     "chestEye": "torso", "heart": "torso", "maw": "torso", "head2": "torso",
-    "hide": "legR",
 }
 
 # Draw order, back to front. Behind-the-body parts first; the loincloth ties the waist.
 Z = {
-    "wings": 0, "arm3": 1, "spine": 2, "tail": 3, "legR": 4, "legL": 4, "hide": 5, "torso": 6,
+    "wings": 0, "arm3": 1, "spine": 2, "tail": 3, "legR": 4, "legL": 4, "torso": 6,
     "chestEye": 7, "maw": 8, "heart": 9, "loincloth": 10, "armR": 11, "armL": 11, "head": 12,
     "ears": 13, "horns": 14, "brain": 15, "jaw": 16, "browEye": 17, "head2": 18,
 }
+# Options drawn out of their slot's order (layout.ts Z_OF_OPTION): the unicorn's spike rises through the brain.
+Z_OF_OPTION = {"horns_unicorn": 15.5}
 
 
 def _body(R, *names):
@@ -209,7 +210,7 @@ def mask_for(slot, R, base=None):
         return minus(dilate(R["torso"], 6), _body(R, "head", "armR", "armL", "loincloth", "legR", "legL"))
     if slot in ("armR", "armL"):
         x0, y0, x1, y1 = b[slot]
-        area = rect(x0 - 30, y0 - 2, x1, y1 + 24) if slot == "armR" else rect(x0 - 1, y0 - 2, x1 + 29, y1 + 24)
+        area = rect(x0 - 42, y0 - 2, x1, y1 + 32) if slot == "armR" else rect(x0 - 1, y0 - 2, x1 + 29, y1 + 24)
         other = "armL" if slot == "armR" else "armR"
         return minus(area, _body(R, "head", "torso", "loincloth", "legR", "legL", other))
     if slot in ("legR", "legL"):
@@ -221,18 +222,19 @@ def mask_for(slot, R, base=None):
     hx = (hb[0] + hb[2]) // 2
     if slot == "browEye":  # the forehead: below a wig's crown, above the eyes
         return rect(hx - 9, hb[1] + 4, hx + 9, hb[1] + (hb[3] - hb[1]) * 3 // 5)
-    if slot == "horns":
-        return rect(hb[0] - 16, hb[1] - 24, hb[2] + 15, hb[1] + 8)
-    if slot == "brain":
-        return rect(hx - 13, hb[1] - 8, hx + 13, hb[1] + 10)
+    if slot == "horns":  # room for horns that curl down beside the head
+        return rect(hb[0] - 20, hb[1] - 24, hb[2] + 19, hb[1] + 16)
+    if slot == "brain":  # room for a brain that bulges well above a wide head
+        return rect(hx - 18, hb[1] - 22, hx + 18, hb[1] + 12)
     if slot == "ears":
         # beside the head at ear height (a mummy's wraps or a wig can be wider lower down)
         ey = hb[1] + (hb[3] - hb[1]) * 2 // 5
         band = (base or R["head"]).crop((0, ey - 4, SCENE[0], ey + 5)).getbbox()
         l, r = (band[0], band[2]) if band else (hb[0], hb[2])
-        return union(rect(l - 15, ey - 18, l + 6, ey + 22), rect(r - 7, ey - 18, r + 14, ey + 22))
-    if slot == "jaw":
-        return rect(hx - 11, hb[3] - 14, hx + 11, hb[3] + 10)
+        # tall enough for ears that stand up (bat, hare) or hang down (donkey)
+        return union(rect(l - 20, ey - 28, l + 6, ey + 30), rect(r - 7, ey - 28, r + 20, ey + 30))
+    if slot == "jaw":  # room for tusks and beards that hang well below the chin
+        return rect(hx - 14, hb[3] - 14, hx + 14, hb[3] + 18)
     # chest add-ons: the edit model picks the side itself, so the whole upper chest is allowed
     if slot == "chestEye":
         return rect(97, 69, 131, 93)
@@ -242,12 +244,8 @@ def mask_for(slot, R, base=None):
         return rect(98, 86, 128, 112)
     if slot == "head2":
         return minus(rect(126, 40, 154, 74), _body(R, "head"))
-    if slot == "hide":
-        lb = (base or R["legR"]).getbbox()
-        lx = (lb[0] + lb[2]) // 2 - 2
-        return rect(lx - 9, 150, lx + 9, 170)
     if slot == "arm3":
-        return minus(rect(58, 14, 100, 80), _body(R, "head", "torso", "armR"))
+        return minus(rect(40, 2, 100, 80), _body(R, "head", "torso", "armR"))
     if slot == "wings":
         return minus(rect(18, 20, 206, 154), every)
     if slot == "spine":
@@ -315,7 +313,7 @@ def compose(parts, R):
     out = Image.new("RGBA", SCENE, (0, 0, 0, 0))
     items = [(Z[r], "husk", r) for r in REGIONS if r not in parts]
     for slot, oid in parts.items():
-        items.append((Z[slot], "part", slot))
+        items.append((Z_OF_OPTION.get(oid, Z[slot]), "part", slot))
     for _, kind, name in sorted(items, key=lambda t: t[0]):
         if kind == "husk":
             out.alpha_composite(husk_piece(name, R))
@@ -339,9 +337,6 @@ def window_of(mask, margin=28):
 WING_OVAL = (20, 22, 204, 152)
 OVAL = {
     **{w: WING_OVAL for w in ("wings_angel", "wings_bat", "wings_raven")},
-    "wings_moth": (28, 26, 196, 148),
-    "wings_dragonfly": (28, 26, 196, 148),
-    "spine_quills": (68, 18, 156, 96),
     "spine_tentacles": (68, 18, 156, 96),
     "tail_croc": (118, 92, 214, 200),
     "head_werewolf": (92, 20, 131, 74),  # head-sized, with room for its pointed ears
@@ -355,7 +350,82 @@ HEAD_BOX = (93, 28, 130, 67)
 SIZED = {"head_nobleman", "head_raven"}
 
 # Areas an option must not paint into when generated (x0, y0, x1, y1).
-KEEP_CLEAR = {"spine_shark": (84, 0, 142, 80)}
+KEEP_CLEAR = {}
+
+
+def _ellipse(root, tip, width, n=40):
+    """Polygon of a long ellipse from `root` to `tip` (a wing, a blade)."""
+    (x0, y0), (x1, y1) = root, tip
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    a, b = math.hypot(x1 - x0, y1 - y0) / 2, width / 2
+    th = math.atan2(y1 - y0, x1 - x0)
+    return [(cx + a * math.cos(t) * math.cos(th) - b * math.sin(t) * math.sin(th),
+             cy + a * math.cos(t) * math.sin(th) + b * math.sin(t) * math.cos(th))
+            for t in (2 * math.pi * i / n for i in range(n))]
+
+
+def _fan(cx, cy, rays):
+    """Spiky fan above (cx, cy): rays = [(degrees above horizontal, length)], valleys between."""
+    pts = [(cx + 22, cy)]
+    for i, (deg, r) in enumerate(rays):
+        t = math.radians(deg)
+        pts.append((cx + r * math.cos(t), cy - r * math.sin(t)))
+        if i + 1 < len(rays):
+            m = math.radians((deg + rays[i + 1][0]) / 2)
+            pts.append((cx + 24 * math.cos(m), cy - 24 * math.sin(m)))
+    return pts + [(cx - 22, cy)]
+
+
+def _rod(x, top, bottom, w=8, tip=12):
+    """A rod standing on the shoulders with a ball on top."""
+    return [("rectangle", (x - w // 2, top + tip // 2, x + w // 2, bottom)),
+            ("ellipse", (x - tip // 2, top, x + tip // 2, top + tip))]
+
+
+# Painting area drawn as the part's own outline, for shapes a box or an oval would cut off: the
+# model fills the area it is given to the edge, so the edge must be the shape's natural outline.
+SHAPES = {
+    "wings_dragonfly": [("polygon", _ellipse(r, t, w)) for r, t, w in (
+        ((100, 74), (22, 50), 22), ((100, 84), (30, 108), 18),
+        ((126, 74), (204, 50), 22), ((126, 84), (196, 108), 18))],
+    "spine_quills": [("polygon", _fan(112, 76, [
+        (14, 40), (30, 50), (46, 56), (62, 58), (78, 60), (94, 60),
+        (110, 58), (126, 58), (142, 54), (158, 48), (172, 40)]))],
+    "spine_rods": _rod(90, 18, 74) + _rod(112, 2, 44) + _rod(134, 18, 74),
+    "wings_moth": [("polygon", _ellipse(r, t, w)) for r, t, w in (
+        ((106, 76), (28, 54), 46), ((106, 90), (50, 124), 38),
+        ((119, 76), (197, 54), 46), ((119, 90), (175, 124), 38))],
+    # an upper arm down from the shoulder and a big pincer below it
+    "arm_crab": [("polygon", _ellipse((90, 70), (66, 116), 22)),
+                 ("polygon", _ellipse((70, 104), (50, 168), 34))],
+    # reaching up from behind the shoulder, the digging claw held high
+    "arm3_mole": [("polygon", _ellipse((94, 78), (62, 34), 22)),
+                  ("ellipse", (42, 6, 84, 46))],
+}
+
+
+def shape_mask(parts):
+    m = Image.new("L", SCENE, 0)
+    d = ImageDraw.Draw(m)
+    for kind, geo in parts:
+        getattr(d, kind)(geo, fill=255)
+    return m
+
+
+def paint_mask(option_id, R, base_mask=None):
+    """Where a Pro inpaint of this option may paint: its slot's mask, narrowed for some options."""
+    mask = mask_for(slot_of(option_id), R, base_mask)
+    if option_id in SIZED:
+        mask = ImageChops.multiply(mask, rect(*HEAD_BOX))
+    if option_id in KEEP_CLEAR:  # a narrow shape would hide behind the head: paint it beside
+        mask = minus(mask, rect(*KEEP_CLEAR[option_id]))
+    if option_id in OVAL:  # broad shapes fill a box to its edges; an oval leaves round tips
+        oval = Image.new("L", SCENE, 0)
+        ImageDraw.Draw(oval).ellipse(OVAL[option_id], fill=255)
+        mask = ImageChops.multiply(mask, oval)
+    if option_id in SHAPES:
+        mask = ImageChops.multiply(mask, shape_mask(SHAPES[option_id]))
+    return mask
 
 
 def generate(option_id, base=None, seed=7, lite=False):
@@ -370,15 +440,7 @@ def generate(option_id, base=None, seed=7, lite=False):
         base_mask = layer_of(base, R).split()[3]
     else:
         image, base_mask = compose({}, R), None
-    mask = mask_for(slot, R, base_mask)
-    if option_id in SIZED:
-        mask = ImageChops.multiply(mask, rect(*HEAD_BOX))
-    if option_id in KEEP_CLEAR:  # a narrow shape would hide behind the head: paint it beside
-        mask = minus(mask, rect(*KEEP_CLEAR[option_id]))
-    if option_id in OVAL:  # broad shapes fill a box to its edges; an oval leaves round tips
-        oval = Image.new("L", SCENE, 0)
-        ImageDraw.Draw(oval).ellipse(OVAL[option_id], fill=255)
-        mask = ImageChops.multiply(mask, oval)
+    mask = paint_mask(option_id, R, base_mask)
     win = window_of(mask)
     desc = f"{TEMPLATES[slot].format(d=PARTS[option_id][1])}. {STYLE}"
     if lite:  # /inpaint: 1 generation instead of ~9, a little rougher
@@ -409,7 +471,6 @@ EDITS = {
     "heart": "add an open stitched wound in the chest on the right of the picture showing {d}",
     "maw": "add {d} gaping in the middle of the belly, ringed with black stitches",
     "head2": "add a second small head, {d}, growing out of the shoulder on the right of the picture on a short stitched neck",
-    "hide": "add a square patch of {d} sewn onto the shin with black stitches",
 }
 
 

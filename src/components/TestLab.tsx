@@ -2,7 +2,9 @@ import { SEASON, buildSchedule, votingDays } from '../game/schedule';
 import type { LabState } from '../sdk/run';
 
 const SCHEDULE = buildSchedule(votingDays(SEASON));
-const HALLOWEEN = SCHEDULE.length;
+const HALLOWEEN = votingDays(SEASON);
+/** The day after the last vote, when there are fewer parts than days (null when there is none). */
+const VIGIL = SCHEDULE.length < HALLOWEEN ? SCHEDULE.length : null;
 const BEFORE_LAUNCH = -1;
 
 interface Props {
@@ -71,6 +73,15 @@ export function TestLab({ lab, onApply, onRefill, onReset, onClose }: Props) {
               >
                 Before launch
               </button>
+              {VIGIL !== null && (
+                <button
+                  className={`btn btn-secondary btn-small ${lab.day === VIGIL ? 'current' : ''}`}
+                  onClick={() => jump(VIGIL)}
+                  data-testid="lab-vigil"
+                >
+                  Vigil
+                </button>
+              )}
               <button
                 className={`btn btn-secondary btn-small ${lab.day === HALLOWEEN ? 'current' : ''}`}
                 onClick={() => jump(HALLOWEEN)}
@@ -85,7 +96,7 @@ export function TestLab({ lab, onApply, onRefill, onReset, onClose }: Props) {
                 Today
               </button>
             </div>
-            {lab.day !== null && lab.day >= 0 && lab.day < HALLOWEEN - 1 && (
+            {lab.day !== null && lab.day >= 0 && lab.day < SCHEDULE.length - 1 && (
               <button
                 className="btn btn-primary btn-wide"
                 onClick={() => jump((lab.day ?? 0) + 1)}

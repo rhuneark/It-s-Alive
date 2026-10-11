@@ -79,22 +79,80 @@ def rooted(layer, anchor, reach=2, min_blob=8):
     return out
 
 
-# An add-on pixel lying on its base must differ from the base by more than this (sum of RGB
-# differences), or it is the edit model's re-rendering of the base (a greyer croc, a shifted wig).
-STRONG = 110
+# An add-on pixel lying on its base must differ from the base pixel beneath it by more than this
+# (sum of RGB differences), or it is the edit model's re-rendering of the base (a greyer croc, a
+# shifted wig). Strict on heads; on torsos dark add-ons (a heart in a black beetle shell) differ
+# from the base by less, so they keep the generator's own threshold (husk.added, 70).
+STRONG = {"head": 110, "torso": 70}
 
 
-def only_new(layer, base_img):
+def only_new(layer, base_img, strong):
     """Drop add-on pixels that merely repaint the base underneath them."""
     out = layer.copy()
-    a, lp, bp = out.split()[3].load(), layer.load(), base_img.load()
+    alpha = out.split()[3]  # a copy: edit it, then put it back
+    a, lp, bp = alpha.load(), layer.load(), base_img.load()
     w, h = layer.size
     for y in range(h):
         for x in range(w):
             if a[x, y] and bp[x, y][3] >= 128:
-                if sum(abs(c - d) for c, d in zip(lp[x, y][:3], bp[x, y][:3])) <= STRONG:
+                if sum(abs(c - d) for c, d in zip(lp[x, y][:3], bp[x, y][:3])) <= strong:
                     a[x, y] = 0
+    out.putalpha(alpha)
     return out
+
+
+# Add-ons that sit ON TOP of their base keep, where they lie on the base, only this many rows below
+# the base's top edge (per column): the edit model also redraws the face lower down, slightly
+# shifted, and those pixels would show as a second pair of eyes over the head.
+TOP_BAND = {"brain": 5}
+
+
+def top_band(layer, base_mask, rows):
+    out = layer.copy()
+    alpha = out.split()[3]
+    a, b = alpha.load(), base_mask.load()
+    w, h = layer.size
+    for x in range(w):
+        top = next((y for y in range(h) if b[x, y] >= 128), None)
+        if top is None:
+            continue
+        for y in range(top + rows, h):
+            if b[x, y] >= 128:
+                a[x, y] = 0
+    out.putalpha(alpha)
+    return out
+
+
+# A layer may meet the edge of the area it was painted in (away from the body it grows from) along
+# a straight line at most this long: a longer cut means the painting ran out of room (a blacksmith's
+# arm sliced flat down its side). Parts painted inside their own outline (husk.SHAPES) are exempt.
+CUT_RUN = 12
+
+
+def cut_off(layer, area, anchor):
+    """Longest straight run of `layer`'s outline lying on an edge of `area` that is not `anchor`."""
+    a, m, n = layer.split()[3].load(), area.load(), anchor.load()
+    w, h = layer.size
+    cut = set()
+    for y in range(h):
+        for x in range(w):
+            if a[x, y] < 128:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                qx, qy = x + dx, y + dy
+                if qy >= husk.FLOOR_Y:  # feet stand on the floor
+                    continue
+                inside = 0 <= qx < w and 0 <= qy < h
+                if inside and (a[qx, qy] >= 128 or m[qx, qy] >= 128 or n[qx, qy] >= 128):
+                    continue
+                cut.add((x, y, dx != 0))
+    best = 0
+    for x, y, side in cut:
+        run = 1
+        while (x, y + run, True) in cut if side else (x + run, y, False) in cut:
+            run += 1
+        best = max(best, run)
+    return best
 
 
 def all_keys():
@@ -152,12 +210,22 @@ def main(partial=False):
             bm = base_masks[base].split()[3]
         lay = binarize(husk.cut(husk.placed(slot, img), husk.mask_for(slot, R, bm)))
         if base:
-            lay = only_new(lay, base_masks[base])
+            lay = only_new(lay, base_masks[base], STRONG.get(husk.slot_of(base), 70))
+            if slot in TOP_BAND:
+                lay = top_band(lay, bm, TOP_BAND[slot])
         # what it must grow from: its base part, or the husk body for parts behind / replacing it
         anchor = body if bm is None else bm
         if slot == "head2":  # it grows from the shoulder, which may be torso or arm
             anchor = husk.union(bm, R["armL"], R["armR"])
         layers[f"parts/{key}"] = rooted(lay, anchor)
+        if oid not in husk.SHAPES:
+            area = husk.mask_for(slot, R, bm) if base else husk.paint_mask(oid, R)
+            run = cut_off(layers[f"parts/{key}"], area, husk.union(body, anchor))
+            if run > CUT_RUN:
+                msg = f"parts/{key}: cut off along {run} px at the edge of its painting area"
+                if not partial:
+                    raise ValueError(msg + " (repaint it with more room, see husk.SHAPES)")
+                print("warning:", msg)
 
     # one palette for every layer
     strip_px = []

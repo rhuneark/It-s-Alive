@@ -54,5 +54,5 @@ export function randomSketch(seed: number): Parts {
   return out;
 }
 
-/** How many parts the sketch has (of the 21). */
+/** How many parts the sketch has. */
 export const sketchSize = (sketch: Parts) => Object.keys(sketch).length;

@@ -180,6 +180,8 @@ describe('the husk and its painted parts', () => {
       tail: 0.15,
       chestEye: 0.15,
     };
+    // Thin rods behind ears and horns: their glowing tips still stand clear above the shoulders.
+    const leastOf: Record<string, number> = { spine_rods: 0.08 };
     for (const slot of SLOTS) {
       if (slot === 'torso' || slot === 'head') continue;
       for (const id of ids(slot))
@@ -196,7 +198,7 @@ describe('the husk and its painted parts', () => {
                 continue;
               }
               const v = shown(placed, t);
-              if (v < (least[slot] ?? 0.3))
+              if (v < (leastOf[id] ?? least[slot] ?? 0.3))
                 problems.push(`${t.src} with ${torso} + ${head}: ${Math.round(v * 100)}% shows`);
             }
     }

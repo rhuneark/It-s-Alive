@@ -7,6 +7,9 @@ A RUN.world game (React + Vite + TypeScript, from series-ai/run-template-2d-reac
 The monster starts as a whole human husk standing in the lab. Every UTC day all players vote
 on one body part; at midnight the most-voted option is painted into the husk. Night 1 is always
 the HEAD; the season ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wakes.
+The 2026 season has 20 parts for 21 days (Oct 10-29 vote); Oct 30 is the VIGIL: no vote, the finished
+creature waits with a countdown (phase `vigil` in schedule.ts, `Vigil` screen in App.tsx). The season is
+live: never reorder the parts already played (rules.test.ts pins them); only later nights may change.
 
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
@@ -91,20 +94,31 @@ husk's scale, pose, outline and light, and sit on the same neck, shoulders, wais
   `husk.py edit <slot> --on=<head> --seed=7` for horns, browEye, ears, jaw and brain, then re-pick.
   husk.py paints onto the base named in picks.json (art/raw), not the stale art/picked/ copy.
 - Add-ons that sit on a chosen part (third eye, horns, ears, jaw, brain on each HEAD; chest eye, heart,
-  belly mouth, second head on each TORSO; hide on each right LEG) are made with `edit-images-v2`: one job
+  belly mouth, second head on each TORSO) are made with `edit-images-v2`: one job
   (~10 generations) paints an option onto all 5 bases; `added()` keeps only the new/clearly changed pixels
   inside the slot mask, so the base keeps its own colours. Their layer key is `<option>@<base>`.
 - Behind-the-body parts (wings, spine, tail, third arm) are Pro inpaints around the husk, drawn behind it.
 - The cheap `/inpaint` (1 generation) was tried and is too weak for add-ons (lost horns, no third eye).
-- Shapes that fill a box to its edges get an oval painting area (`OVAL`); a fin that would hide behind
-  the head keeps clear of it (`KEEP_CLEAR`); chest eyes are mirrored to the other pectoral (`MIRROR`,
-  the edit model puts them where the heart goes). Faint generator pixels are dropped (`solid`).
+- The inpaint model fills the area it is given right to its edge, so a part bigger than its area comes
+  out sliced flat (the old blacksmith's arm, dragonfly wings). Parts with a telling outline are painted
+  inside that outline (`SHAPES`: dragonfly and moth wings as long ellipses, the quills as a spiky fan,
+  the lightning rods as three rods with ball tips, the crab's arm and pincer, the mole's arm and claw);
+  other broad shapes get an oval (`OVAL`). `paint_mask()` is the exact area a Pro inpaint paints in.
+  `process.py` refuses a layer cut along a straight edge of its area for more than `CUT_RUN` px
+  (feet on the floor and `SHAPES` parts excepted). It checks against the CURRENT areas, so after
+  widening one, look at the older parts painted in it by eye.
+- Chest eyes are mirrored to the other pectoral (`MIRROR`, the edit model puts them where the heart
+  goes). Faint generator pixels are dropped (`solid`).
 - Nothing floats, by construction: `process.py rooted()` keeps only the pieces of a layer that touch
   what it grows from (its base part, the shoulder for a second head, the body for the rest).
-- An add-on keeps only pixels that are really new (`only_new`, `STRONG`): where it lies on its base it
-  must differ clearly from the base, otherwise it is the edit model re-rendering the base (greyer croc).
+- An add-on keeps only pixels that are really new (`only_new`, `STRONG` per base: 110 on heads, 70 on
+  torsos where dark add-ons sit on dark chests): where it lies on its base it must differ clearly from
+  the base, otherwise it is the edit model re-rendering the base (greyer croc). A brain keeps only the
+  top rows of the head under it (`TOP_BAND`): the edit model also redraws the face lower down, which
+  showed as a second pair of eyes. (Until Oct 2026 `only_new` silently did nothing: it edited a copy.)
 - Draw order (`Z` in husk.py and layout.ts, keep them equal): heart over chest eye and mouth; third eye
-  over brain over horns (their layers carry a little redrawn skull); spine over the third arm.
+  over brain over horns (their layers carry a little redrawn skull); spine over the third arm. One
+  option breaks its slot's order (`Z_OF_OPTION`, both files): the unicorn horn rises through the brain.
 
 ```
 python3 tools/art/husk.py gen <slot> [ids] [--seed=7,21] [--par=4]     # Pro inpaints -> art/raw/<key>__iN.png
@@ -117,7 +131,8 @@ Option descriptions live in `tools/art/prompts.py` (`PARTS`); slot wording in `T
 `layout.ts` mirrors husk.py's `Z` (draw order) and `BASE_OF` (which add-ons are painted per base).
 `src/game/stitch.test.ts` reads the real PNGs and fails if a layer is missing for any option x base, a
 head/arm/leg/torso does not meet its neighbours, an add-on does not touch its base, a behind part is not
-rooted in the body, a foot misses the floor, or a part is buried on a finished monster.
+rooted in the body, a foot misses the floor, or a part is buried on a finished monster (thin
+lightning rods may show as little as 8%: their glowing tips stand clear).
 
 The lab (`public/art/lab.png`, 224x200) is one painting: room `bg_lab__s14` (upright blood-stained
 operating slab behind the husk) with the surgical cart and the generator INPAINTED onto its floor, so
@@ -132,14 +147,16 @@ the props share its perspective. Never composite props onto the room: they float
   Sign in button for guest sessions. While on, a red TEST MODE banner shows.
 - The Test Lab stays owner-only (night jumping, refills). Players get the Sketchbook instead.
 - Test mode = sandbox: own save key (`save_test`), fake crowd tallies plus fake votes (`testVotes`), any
-  night via a day override (`-1` before launch … `21` Halloween), "Refill tonight's votes", wipe, leave.
+  night via a day override (`-1` before launch … `20` the vigil, `21` Halloween), "Refill tonight's votes",
+  wipe, leave.
   Real shared tallies (UGC), the real `save`, and analytics are never touched. Settings persist in `testLab`.
 - Switching Test Lab settings applies synchronously (`run.setLab`) and remounts `<Game key>` in the same tick
   (an async gap let taps land on the stale screen); music lives outside it so it keeps playing.
 
 ## Dev
 
-- `npm run dev` — mock SDK. Add `?day=N` to time-travel to voting day N (`?day=21` = Halloween); mock only.
+- `npm run dev` — mock SDK. Add `?day=N` to time-travel to voting day N (`?day=20` = the vigil,
+  `?day=21` = Halloween); mock only.
 - `node scripts/shot.mjs "?day=5" out.png 375 667 start` — screenshot with the dev server on :5173.
 
 ## Checks — run ALL before every push, fix every warning

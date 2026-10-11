@@ -27,7 +27,6 @@ export const SEASON: Season = {
  */
 const DROP_ORDER: readonly SlotId[] = [
   'jaw',
-  'hide',
   'ears',
   'arm3',
   'chestEye',
@@ -70,6 +69,8 @@ export function buildSchedule(days: number): Question[] {
 export type Phase =
   | { kind: 'preseason'; opensInMs: number }
   | { kind: 'voting'; day: number; question: Question; endsInMs: number; dayCount: number }
+  /** Every part is chosen but Halloween has not come: no vote, the creature waits for midnight. */
+  | { kind: 'vigil'; wakesInMs: number; dayCount: number }
   | { kind: 'awakened'; daysSinceAwakening: number };
 
 /** UTC day index relative to the season start (negative before it starts). */
@@ -81,11 +82,14 @@ export function phaseAt(nowMs: number, season: Season): Phase {
   const schedule = buildSchedule(votingDays(season));
   if (nowMs < season.startMs) return { kind: 'preseason', opensInMs: season.startMs - nowMs };
   const day = dayIndexAt(nowMs, season);
-  if (nowMs >= season.awakenMs || day >= schedule.length) {
+  if (nowMs >= season.awakenMs) {
     return {
       kind: 'awakened',
       daysSinceAwakening: Math.max(0, Math.floor((nowMs - season.awakenMs) / DAY_MS)),
     };
+  }
+  if (day >= schedule.length) {
+    return { kind: 'vigil', wakesInMs: season.awakenMs - nowMs, dayCount: schedule.length };
   }
   const endsAt = season.startMs + (day + 1) * DAY_MS;
   return {
