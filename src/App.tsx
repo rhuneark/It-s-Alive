@@ -6,8 +6,9 @@ import { Sketchbook } from './components/Sketchbook';
 import { Diagnostics } from './components/Diagnostics';
 import { MusicBar, SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
+import { Reveal } from './components/Reveal';
 import { OptionGrid, Results } from './components/Voting';
-import { findOption } from './game/catalog';
+import { findOption, questionForSlot } from './game/catalog';
 import { formatCountdown } from './game/schedule';
 import {
   DEFAULT_MUSIC_VOLUME,
@@ -136,6 +137,18 @@ function Game({
           onClose={() => setSketchOpen(false)}
         />
       )}
+      {inGame && game.reveal && !game.resolving && !chronicle && !sketchOpen && (
+        <Reveal
+          reveal={game.reveal}
+          parts={game.parts}
+          phase={game.phase}
+          onChronicle={() => {
+            game.dismissReveal();
+            setChronicle(true);
+          }}
+          onClose={game.dismissReveal}
+        />
+      )}
       {diagOpen && <Diagnostics onClose={() => setDiagOpen(false)} />}
       {game.toast && (
         <div key={game.toast.id} className={`toast toast-${game.toast.tone}`} role="status">
@@ -187,40 +200,42 @@ function Title({
   onSketch: () => void;
   onListen: () => void;
 }) {
-  const built = Object.keys(game.parts).length;
+  const { phase, save } = game;
+  const returning = save.started;
   return (
     <div className="screen title-screen">
       <h1 className="logo">It's Alive!</h1>
-      <p className="tagline">A monster stitched together by everyone, one vote a night.</p>
+      {!returning && (
+        <p className="tagline">A monster stitched together by everyone, one vote a night.</p>
+      )}
       <Monster
         parts={game.parts}
-        alive={game.phase.kind === 'awakened'}
+        spark={phase.kind === 'voting' ? null : (game.parts.spark ?? null)}
+        alive={phase.kind === 'awakened'}
         className="monster-title"
       />
-      <div className="panel lore">
-        <p>
-          Each night the village votes on <b>one body part</b>. At midnight (Central time) the most
-          wanted part is stitched onto the creature.
-        </p>
-        <p>
-          On <b>Halloween</b>, lightning will strike… and it will wake.
-        </p>
-      </div>
+      <Tonight game={game} />
+      {!returning && (
+        <div className="panel lore">
+          <p>
+            Each night the village votes on <b>one body part</b>. At midnight (Central time) the
+            most wanted part is stitched onto the creature.
+          </p>
+          <p>
+            On <b>Halloween</b>, lightning will strike… and it will wake.
+          </p>
+        </div>
+      )}
       <button className="btn btn-primary btn-wide" onClick={onStart} data-testid="start">
-        {game.save.started ? 'Continue' : 'Enter the Laboratory'}
+        {returning ? 'Continue' : 'Enter the Laboratory'}
       </button>
-      <p className="muted small center-text">
-        {built === 0
-          ? 'The husk lies waiting for its first part.'
-          : `${built} part${built === 1 ? '' : 's'} stitched so far.`}
-      </p>
       <SketchButton onClick={onSketch} />
       <MusicBar
-        on={game.save.musicOn}
-        volume={game.save.musicVolume}
+        on={save.musicOn}
+        volume={save.musicVolume}
         onToggle={() => {
           // A tap: phones allow the theme to start right here.
-          if (!game.save.musicOn) theme.setWanted(true);
+          if (!save.musicOn) theme.setWanted(true);
           onListen();
           game.toggleMusic();
         }}
@@ -230,6 +245,69 @@ function Title({
         }}
       />
     </div>
+  );
+}
+
+/** Where the creature stands tonight: the part being chosen, the clock, and the player's vote. */
+function Tonight({ game }: { game: GameModel }) {
+  const { phase, save } = game;
+  const built = Object.keys(game.parts).length;
+  const streak =
+    phase.kind === 'voting' && save.stats.lastVotedDay >= phase.day - 1 ? save.stats.streak : 0;
+  let body;
+  if (phase.kind === 'voting') {
+    const mine = save.votes.at(-1);
+    body = (
+      <>
+        <p className="eyebrow">
+          Night {phase.day + 1} of {phase.dayCount} · {built} stitched
+        </p>
+        <p className="tonight-part">
+          Tonight: the <b>{phase.question.part}</b>
+        </p>
+        <p className="tonight-clock">
+          Stitched on in <b>{formatCountdown(phase.endsInMs)}</b>
+        </p>
+        <p className={`tonight-status ${mine ? 'done' : 'todo'}`}>
+          {mine
+            ? `✓ You voted: ${findOption(mine.optionId)?.option.name ?? mine.optionId}`
+            : 'Your vote is waiting.'}
+        </p>
+        {streak > 1 && <p className="streak">{streak} nights in a row</p>}
+      </>
+    );
+  } else if (phase.kind === 'vigil') {
+    body = (
+      <>
+        <p className="eyebrow">The vigil · all {built} parts stitched</p>
+        <p className="tonight-clock">
+          It wakes in <b>{formatCountdown(phase.wakesInMs)}</b>
+        </p>
+      </>
+    );
+  } else if (phase.kind === 'awakened') {
+    body = (
+      <>
+        <p className="eyebrow">All Hallows' Eve</p>
+        <p className="tonight-part">
+          <b>It's alive.</b> {built} parts, chosen by everyone.
+        </p>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        <p className="eyebrow">The first night: the head</p>
+        <p className="tonight-clock">
+          The laboratory opens in <b>{formatCountdown(phase.opensInMs)}</b>
+        </p>
+      </>
+    );
+  }
+  return (
+    <section className="panel tonight" data-testid="tonight">
+      {body}
+    </section>
   );
 }
 
@@ -251,6 +329,8 @@ function Vote({
     save.pending && question.options.some((o) => o.id === save.pending) ? save.pending : null;
   const pendingName = pending ? findOption(pending)?.option.name : null;
   const sparkChosen = game.parts.spark ?? null;
+  const nextSlot = game.schedule[day + 1];
+  const next = nextSlot ? questionForSlot(nextSlot) : null;
 
   return (
     <div className="screen game">
@@ -324,14 +404,28 @@ function Vote({
                 disabled={game.adBusy}
                 data-testid="ad-vote"
               >
-                {game.adBusy ? 'Summoning…' : 'Watch an ad to vote again'}
+                {game.adBusy
+                  ? 'Summoning…'
+                  : `Watch an ad to vote again (${MAX_AD_VOTES_PER_DAY - save.adVotesEarned} left)`}
               </button>
             ) : (
               <p className="muted center-text small">
                 You've cast all {FREE_VOTES_PER_DAY + MAX_AD_VOTES_PER_DAY} of tonight's votes.
-                Return tomorrow for a new part.
               </p>
             )}
+            <p className="tomorrow" data-testid="tomorrow">
+              {next ? (
+                <>
+                  Come back after midnight (Central) to see which {question.part.toLowerCase()} is
+                  stitched on, and to choose the <b>{next.part.toLowerCase()}</b>.
+                </>
+              ) : (
+                <>
+                  This is the last part. Tomorrow the creature lies complete for the vigil, and on{' '}
+                  <b>Halloween</b> it wakes.
+                </>
+              )}
+            </p>
           </>
         )}
       </section>

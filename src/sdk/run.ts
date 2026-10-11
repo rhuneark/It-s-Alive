@@ -356,6 +356,37 @@ export async function loadTheme(): Promise<ThemeSource> {
   throw new Error(errors.join(' | '));
 }
 
+// ---------------------------------------------------------------- reminders
+
+const REMINDER_ID = 'stitched';
+let reminderHandle: string | null = null;
+
+/**
+ * A single local reminder at `atMs` (on run.world it lands in the bell inbox).
+ * Each call replaces the previous one, so a player never gets more than one.
+ */
+export function remindAt(atMs: number, title: string, body: string): void {
+  if (isMock()) return;
+  void ready().then(async () => {
+    try {
+      if (reminderHandle) {
+        await RundotGameAPI.notifications.cancelNotification(reminderHandle).catch(() => false);
+      }
+      const res = await RundotGameAPI.notifications.submitMessageAsync({
+        channels: ['local'],
+        title,
+        body,
+        triggerAt: new Date(atMs).toISOString(),
+        notificationId: REMINDER_ID,
+        collapseKey: REMINDER_ID,
+      });
+      reminderHandle = res?.results?.find((r) => r.channel === 'local')?.id ?? null;
+    } catch (err) {
+      warn('remindAt', err);
+    }
+  });
+}
+
 // ---------------------------------------------------------------- misc
 
 export function track(event: string, payload?: Record<string, unknown>): void {

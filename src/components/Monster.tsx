@@ -34,6 +34,8 @@ interface Props {
   /** Spark of life (chosen or previewed) drives the aura effect. */
   spark?: string | null;
   alive?: boolean;
+  /** A part just stitched on: it glows for a moment. */
+  fresh?: SlotId | null;
   /** Small, background-free version used inside option cards. */
   mini?: boolean;
   className?: string;
@@ -58,7 +60,16 @@ const toRect = (b: Box, grow = 0) => ({
 });
 
 /** The husk in the laboratory, with every chosen part painted into it. */
-export function Monster({ parts, preview, nextSlot, spark, alive, mini, className = '' }: Props) {
+export function Monster({
+  parts,
+  preview,
+  nextSlot,
+  spark,
+  alive,
+  fresh,
+  mini,
+  className = '',
+}: Props) {
   const all = useMemo(
     () => (preview && preview.slot !== 'spark' ? { ...parts, [preview.slot]: preview.id } : parts),
     [parts, preview],
@@ -87,7 +98,7 @@ export function Monster({ parts, preview, nextSlot, spark, alive, mini, classNam
           {pieces.map((p) => (
             <img
               key={p.src}
-              className={`part ${preview && p.slot === preview.slot ? 'previewing' : ''}`}
+              className={`part ${preview && p.slot === preview.slot ? 'previewing' : ''} ${fresh && p.slot === fresh ? 'fresh' : ''}`}
               src={layerUrl(p.src)}
               alt=""
               draggable={false}

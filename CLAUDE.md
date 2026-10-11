@@ -39,8 +39,15 @@ live: never reorder the parts already played (rules.test.ts pins them); only lat
   through a GainNode (iOS ignores `audio.volume`; a suspended context would play silence). Loops with a soft
   fade at the seam, follows the saved volume (`musicVolume`, 0..1, slider in the ♫ sound panel) and on/off
   (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
-- Title screen: the real creature so far, Enter, Sketchbook and a music row (on/off + volume, `MusicBar`);
-  touching the music row starts the theme there. In game the ♫ button opens the same controls.
+- Title screen: the real creature so far, a "Tonight" card (night N, tonight's part, countdown, whether you
+  voted, streak), then only Enter/Continue, Sketchbook and a music row (on/off + volume, `MusicBar`);
+  touching the music row starts the theme there. The lore panel shows to first-time players only.
+  In game the ♫ button opens the same controls.
+- Coming back: the first thing a returning player sees after a stitching is the Reveal (`src/game/reveal.ts`,
+  `components/Reveal.tsx`): the new part glowing on the creature, the winner's share, how their own pick
+  placed, and missed nights. `seenNight` in the save marks what was shown; a first visit marks every closed
+  night seen (no reveal). After voting, the vote screen says what comes tomorrow, and `run.remindAt` sets
+  ONE local reminder (bell inbox on run.world) for just after midnight Central, replacing any earlier one.
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
   opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
   Sign in / Try music again buttons. Use it to debug on a phone.
@@ -49,11 +56,12 @@ live: never reorder the parts already played (rules.test.ts pins them); only lat
 ```
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
-               sketch (Sketchbook designs), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
+               sketch (Sketchbook designs), reveal (last night's stitching), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
-               Sketchbook (players design their own monster), SoundPanel (in-game music popover and
+               Sketchbook (players design their own monster), Reveal (last night's stitching),
+               SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, vigil, awakened
 public/art/    shipped art: husk/<region>.png, parts/<key>.png (painted layers, also the card art),

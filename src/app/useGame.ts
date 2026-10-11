@@ -5,7 +5,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SlotId } from '../game/catalog';
+import { pendingReveal, type Reveal } from '../game/reveal';
 import {
+  DAY_MS,
   SEASON,
   buildSchedule,
   closedDays,
@@ -17,6 +19,7 @@ import {
 import {
   canEarnAdVote,
   grantAdVote,
+  markSeen,
   markStarted,
   newSave,
   parseSave,
@@ -56,6 +59,9 @@ export interface GameModel {
   adBusy: boolean;
   toast: Toast | null;
   begin: () => void;
+  /** Last night's stitching, until the player has seen it (null for a first visit). */
+  reveal: Reveal | null;
+  dismissReveal: () => void;
   select: (optionId: string | null) => void;
   cast: () => Promise<void>;
   watchAdForVote: () => Promise<void>;
@@ -238,8 +244,17 @@ export function useGame(): GameModel {
   }, [resolvePast, refreshCounts]);
 
   const begin = useCallback(() => {
-    void commit(markStarted(saveRef.current));
+    const s = saveRef.current;
+    // A first visit starts from tonight: past stitchings are in the Chronicle, not a reveal
+    // (every night closed so far, tallied yet or not).
+    void commit(markStarted(s.started ? s : markSeen(s, currentDay(run.now()) - 1)));
     run.funnel(2, 'begin');
+  }, [commit]);
+
+  const reveal = useMemo(() => (save.started ? pendingReveal(save, SCHEDULE) : null), [save]);
+  const dismissReveal = useCallback(() => {
+    const r = pendingReveal(saveRef.current, SCHEDULE);
+    if (r) void commit(markSeen(saveRef.current, r.night));
   }, [commit]);
 
   const select = useCallback(
@@ -283,7 +298,18 @@ export function useGame(): GameModel {
       option: optionId,
       kind: next.votes.at(-1)!.kind,
     });
-    if (next.votes.length === 1) run.funnel(3, 'first_vote');
+    if (next.votes.length === 1) {
+      run.funnel(3, 'first_vote');
+      // One reminder: just after midnight Central, when tonight's part is stitched on.
+      const tomorrow = SCHEDULE[p.day + 1];
+      run.remindAt(
+        SEASON.startMs + (p.day + 1) * DAY_MS + 60_000,
+        `The ${p.question.part.toLowerCase()} is stitched on`,
+        tomorrow
+          ? `See what the village chose, then pick tonight's ${tomorrow.part.toLowerCase()}.`
+          : 'Every part is in place. Come keep the vigil: on Halloween it wakes.',
+      );
+    }
     await refreshCounts();
   }, [casting, commit, notify, refreshCounts]);
 
@@ -356,6 +382,8 @@ export function useGame(): GameModel {
     adBusy,
     toast,
     begin,
+    reveal,
+    dismissReveal,
     select,
     cast,
     watchAdForVote,

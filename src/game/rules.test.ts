@@ -13,11 +13,13 @@ import {
   type Season,
 } from './schedule';
 import LAYERS from './layers.json';
+import { ordinal, pendingReveal } from './reveal';
 import { cleanSketch, randomSketch, setSketchPart, sketchFromPicks, sketchSize } from './sketch';
 import {
   MAX_AD_VOTES_PER_DAY,
   canEarnAdVote,
   grantAdVote,
+  markSeen,
   newSave,
   parseSave,
   recordVote,
@@ -230,6 +232,49 @@ describe('votes and saves', () => {
     // Night 1 comes round again: the torso vote already cast still counts as tonight's vote.
     expect(rollToDay(back, 1).votes).toEqual([{ optionId: 'torso_bear', kind: 'free' }]);
     expect(rollToDay(back, 2).votes).toEqual([]);
+  });
+});
+
+describe('reveal', () => {
+  const schedule = QUESTIONS;
+  const night = (winner: string, counts: number[]) => ({
+    winner,
+    counts,
+    reason: 'votes' as const,
+  });
+
+  it("shows the latest stitching the player hasn't seen, with how their pick placed", () => {
+    let s = newSave('test', 3);
+    s = {
+      ...s,
+      history: {
+        '0': night('head_croc', [1, 0, 9, 0, 0]),
+        '1': night('torso_bear', [0, 0, 0, 0, 5]),
+        '2': night('arm_crab', [3, 2, 10, 0, 5]),
+      },
+      myPicks: { '2': 'arm_skeleton' },
+      seenNight: 0,
+    };
+    const r = pendingReveal(s, schedule)!;
+    expect(r.night).toBe(2);
+    expect(r.winner).toBe('arm_crab');
+    expect(r.total).toBe(20);
+    expect(r.share).toBe(50);
+    expect(r.myPick).toBe('arm_skeleton');
+    expect(r.myPlace).toBe(5);
+    expect(r.missed).toBe(1); // night 1 went by unseen too
+    expect(ordinal(r.myPlace!)).toBe('5th');
+    expect(pendingReveal(markSeen(s, 2), schedule)).toBeNull();
+    expect(markSeen(markSeen(s, 2), 1).seenNight).toBe(2); // never goes backwards
+  });
+
+  it('places a winning pick first and a tie lost on the tie-break second', () => {
+    const base = { ...newSave('test', 1), seenNight: -1 };
+    const won = { ...base, history: { '0': night('head_raven', [0, 0, 4, 4, 0]) } };
+    expect(pendingReveal({ ...won, myPicks: { '0': 'head_raven' } }, schedule)!.myPlace).toBe(1);
+    const tied = { ...won, myPicks: { '0': schedule[0]!.options[3]!.id } };
+    expect(pendingReveal(tied, schedule)!.myPlace).toBe(2);
+    expect(pendingReveal({ ...won, myPicks: {} }, schedule)!.myPick).toBeNull();
   });
 });
 

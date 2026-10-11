@@ -161,7 +161,7 @@ b {
 .eyebrow {
   font-family: var(--font-head);
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--brass);
@@ -428,7 +428,7 @@ b {
 }
 
 .monster-title {
-  width: min(100%, 300px, calc(38vh * 170 / 200));
+  width: min(100%, 320px, calc(40vh * 170 / 200));
   aspect-ratio: 170 / 200;
 }
 
@@ -1215,4 +1215,127 @@ b {
 
 .sketch-actions .btn {
   min-height: 44px;
+}
+
+/* ---------- tonight (title screen) ---------- */
+.panel.tonight {
+  gap: 6px;
+  padding: 14px 16px;
+  text-align: center;
+  border-color: #5a4a36;
+}
+
+.tonight-part {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 19px;
+}
+
+.tonight-part b {
+  color: #fff3d6;
+}
+
+.tonight-clock {
+  font-size: 16px;
+  color: var(--parchment-dim);
+}
+
+.tonight-clock b {
+  font-family: var(--font-head);
+  font-size: 19px;
+  color: var(--brass);
+  font-variant-numeric: tabular-nums;
+}
+
+.tonight-status {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.tonight-status.done {
+  color: var(--bile);
+}
+
+.tonight-status.todo {
+  color: var(--blood-bright);
+  animation: beckon 2.4s ease-in-out infinite;
+}
+
+@keyframes beckon {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.streak {
+  align-self: center;
+  padding: 2px 10px;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 14px;
+  color: #1a1206;
+  background: linear-gradient(180deg, #e2c066, var(--brass));
+  border: 2px solid #000;
+  border-radius: 999px;
+}
+
+/* ---------- vote screen: tomorrow's hook ---------- */
+.tomorrow {
+  padding-top: 10px;
+  border-top: 1px dashed var(--stone-edge);
+  text-align: center;
+  font-size: 16px;
+  color: var(--parchment-dim);
+}
+
+/* ---------- reveal (a returning player's first sight) ---------- */
+.modal.reveal {
+  max-height: 96dvh;
+  overflow-y: auto;
+  align-items: stretch;
+  border-color: #5a4a36;
+}
+
+.modal.reveal > * {
+  flex-shrink: 0;
+}
+
+.reveal-monster {
+  width: min(100%, calc(42vh * 224 / 200));
+  align-self: center;
+}
+
+.reveal-winner {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 19px;
+}
+
+.reveal-mine {
+  padding: 8px 12px;
+  text-align: center;
+  font-size: 16px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--stone-edge);
+  border-radius: 6px;
+}
+
+.reveal-mine.won {
+  color: var(--bile);
+  border-color: var(--bile);
+}
+
+.part.fresh {
+  animation: fresh 1.5s ease-in-out 3;
+}
+
+@keyframes fresh {
+  0%,
+  100% {
+    filter: none;
+  }
+  50% {
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 8px var(--brass)) brightness(1.25);
+  }
 }

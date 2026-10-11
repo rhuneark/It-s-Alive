@@ -51,6 +51,8 @@ export interface SaveState {
   myPicks: Record<string, string>;
   /** The player's own design in the Sketchbook (slot -> option id). Never a vote. */
   sketch: Parts | null;
+  /** The latest night whose stitching the player has been shown (-1: none yet). */
+  seenNight: number;
 }
 
 export function newSave(season: string, day: number): SaveState {
@@ -68,6 +70,7 @@ export function newSave(season: string, day: number): SaveState {
     musicVolume: DEFAULT_MUSIC_VOLUME,
     myPicks: {},
     sketch: null,
+    seenNight: -1,
   };
 }
 
@@ -113,6 +116,7 @@ export function parseSave(raw: string | null, season: string, day: number): Save
           )
         : {},
       sketch: data.sketch == null ? null : cleanSketch(data.sketch),
+      seenNight: typeof data.seenNight === 'number' ? Math.min(data.seenNight, day - 1) : -1,
     };
     return rollToDay(save, day);
   } catch {
@@ -206,6 +210,11 @@ export function setMusicVolume(save: SaveState, volume: number): SaveState {
 
 export function markStarted(save: SaveState): SaveState {
   return save.started ? save : { ...save, started: true };
+}
+
+/** The player has been shown the stitching of `night` (and so every night before it). */
+export function markSeen(save: SaveState, night: number): SaveState {
+  return night <= save.seenNight ? save : { ...save, seenNight: night };
 }
 
 function clampInt(v: unknown, min: number, max: number): number {

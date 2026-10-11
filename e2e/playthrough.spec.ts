@@ -53,9 +53,16 @@ async function percentagesSumTo100(page: Page) {
   expect(pcts.reduce((a, t) => a + parseInt(t, 10), 0)).toBe(100);
 }
 
-async function openDay(page: Page, day: number) {
+async function openDay(page: Page, day: number, { reveal = 'skip' } = {}) {
   await page.goto(`/?day=${day}`);
   await page.getByTestId('start').click();
+  if (reveal !== 'skip') return;
+  // A returning player first sees the latest stitching; get it out of the way.
+  const close = page.getByTestId('reveal-close');
+  await close.waitFor({ state: 'visible', timeout: 2500 }).then(
+    () => close.click(),
+    () => {},
+  );
 }
 
 async function voteFor(page: Page, nth: number) {
@@ -104,6 +111,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.locator('.result')).toHaveCount(5);
   await percentagesSumTo100(page);
   await expect(page.locator('.result.mine .result-name')).toHaveText(first);
+  // The hook for tomorrow: what gets stitched at midnight and what comes next.
+  await expect(page.getByTestId('tomorrow')).toContainText('which head is stitched on');
+  await expect(page.getByTestId('tomorrow')).toContainText('torso');
   await noSidewaysScroll(page);
   await shot('results');
 
@@ -134,6 +144,8 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   // Continue where we left off.
   await page.reload();
   await expect(page.getByTestId('start')).toHaveText('Continue');
+  await expect(page.getByTestId('tonight')).toContainText('Tonight: the Head');
+  await expect(page.getByTestId('tonight')).toContainText(`You voted: ${first}`);
   await page.getByTestId('start').click();
   await expect(page.locator('.result')).toHaveCount(5);
   await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×3');
@@ -149,7 +161,21 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
     .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
     .count();
   for (let day = 1; day <= 19; day++) {
-    await openDay(page, day);
+    await openDay(page, day, { reveal: 'check' });
+    // Back after midnight: the stitching is revealed first, with how my pick fared.
+    const reveal = page.getByTestId('reveal');
+    await expect(reveal).toBeVisible();
+    await expect(reveal).toContainText(`Night ${day} ·`);
+    await expect(reveal).toContainText('The village chose');
+    await expect(page.getByTestId('reveal-mine')).toContainText(/won|came \d|did not vote/);
+    if (day === 1) {
+      await expect(page.locator('.reveal .part.fresh')).toHaveCount(1);
+      await noSidewaysScroll(page);
+      await framedButtons(page);
+      await shot('reveal');
+    }
+    await page.getByTestId('reveal-close').click();
+    await expect(reveal).toHaveCount(0);
     await expect(page.locator('.dayline')).toHaveText(`Night ${day + 1} of 20`);
     await expect(page.locator('.option')).toHaveCount(5);
     await expect(page.locator('.result')).toHaveCount(0);
