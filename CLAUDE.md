@@ -186,8 +186,8 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
 - Public: version 1.12.0 (commit dcbe8d1, the Oct 11 season) was submitted with the publish workflow on
   Oct 11, 10:08 UTC; RUN reviews it and makes it public on approval. Pushes after that deploy NEW private
   versions only: a fix reaches public players only when the owner asks to publish again (each
-  submission must be a higher version and goes through review). 1.13.0 (owner's thumbnail art) is
-  private only until the owner asks to publish it. Tags and description are set game-wide on each deploy.
+  submission must be a higher version and goes through review). Later versions (the owner's thumbnail
+  art from 1.13.0 on) stay private until the owner asks to publish. Tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`
   (newest from `rundot game list-versions` when blank — the CLI rejects "latest"); `unpublish` runs
   `rundot game set-private`. Only run it when the owner asks.
@@ -196,8 +196,9 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   2. `rundot init --name "It's Alive!" --description "..." --orientation Portrait --build-path ./dist`, commit `game.config.prod.json`
   3. `rundot game api-keys create --label "GitHub Actions"` and save the secret as the `RUNDOT_API_KEY` repo secret
 - `public/thumbnail.jpg` must be exactly 512x512 and under ~150 KB. It is the owner's own art (full size in
-  `art/thumbnail-source.jpg`, not shipped): never replace it with a render. Description and tags (including
-  the `October-Jam` and `Monster-Mash` jam tags) are the env lines at the top of deploy.yml.
+  `art/thumbnail-source.jpg`, not shipped): never replace it with a render. Name ("It's Alive!"), description and
+  tags (including the `October-Jam` and `Monster-Mash` jam tags) are the env lines at the top of
+  deploy.yml, applied game-wide on every deploy.
 - No leaderboard in this game.
 - `rundot/textGen.config.json` is `{"disabled": true}`: the game uses no AI, and `rundot deploy` otherwise
   auto-creates an uncapped config. Keep it disabled unless a feature needs it (then set caps).
