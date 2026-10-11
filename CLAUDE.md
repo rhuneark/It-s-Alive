@@ -186,7 +186,8 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
 - Public: version 1.12.0 (commit dcbe8d1, the Oct 11 season) was submitted with the publish workflow on
   Oct 11, 10:08 UTC; RUN reviews it and makes it public on approval. Pushes after that deploy NEW private
   versions only: a fix reaches public players only when the owner asks to publish again (each
-  submission must be a higher version and goes through review).
+  submission must be a higher version and goes through review). 1.13.0 (owner's thumbnail art) is
+  private only until the owner asks to publish it. Tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`
   (newest from `rundot game list-versions` when blank — the CLI rejects "latest"); `unpublish` runs
   `rundot game set-private`. Only run it when the owner asks.
