@@ -137,7 +137,7 @@ export function Sketchbook({ sketch, real, myPicks, history, schedule, onChange,
           </button>
           <button
             className="btn btn-secondary btn-small"
-            onClick={() => apply(randomSketch(Date.now() >>> 0))}
+            onClick={() => apply(randomSketch(Date.now() >>> 0, schedule))}
             data-testid="sketch-random"
           >
             Random

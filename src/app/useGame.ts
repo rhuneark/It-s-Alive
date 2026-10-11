@@ -9,11 +9,10 @@ import { pendingReveal, type Reveal } from '../game/reveal';
 import {
   DAY_MS,
   SEASON,
-  buildSchedule,
   closedDays,
   dayIndexAt,
   phaseAt,
-  votingDays,
+  seasonSchedule,
   type Phase,
 } from '../game/schedule';
 import {
@@ -75,7 +74,7 @@ export interface GameModel {
   schedule: readonly SlotId[];
 }
 
-const SCHEDULE = buildSchedule(votingDays(SEASON));
+const SCHEDULE = seasonSchedule(SEASON);
 const SLOTS = SCHEDULE.map((q) => q.slot);
 const TALLY_REFRESH_MS = 60_000;
 

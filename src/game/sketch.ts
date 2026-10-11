@@ -46,11 +46,15 @@ export function sketchFromPicks(
   return out;
 }
 
-/** A whole monster with every part chosen at random (seeded, so a seed always gives the same one). */
-export function randomSketch(seed: number): Parts {
+/**
+ * A whole monster with every part of the season chosen at random (seeded, so a seed
+ * always gives the same one).
+ */
+export function randomSketch(seed: number, slots: readonly SlotId[]): Parts {
   const rand = makeRng(seed);
   const out: Parts = {};
-  for (const q of QUESTIONS) out[q.slot] = q.options[Math.floor(rand() * q.options.length)]!.id;
+  for (const q of QUESTIONS)
+    if (slots.includes(q.slot)) out[q.slot] = q.options[Math.floor(rand() * q.options.length)]!.id;
   return out;
 }
 

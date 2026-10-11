@@ -9,6 +9,7 @@ import {
   closedDays,
   dayIndexAt,
   phaseAt,
+  seasonSchedule,
   votingDays,
   type Season,
 } from './schedule';
@@ -71,22 +72,25 @@ describe('schedule', () => {
     expect(LIVE_SEASON.startMs + votingDays(LIVE_SEASON) * DAY_MS).toBe(LIVE_SEASON.awakenMs);
   });
 
-  it('asks 20 parts from Oct 10 to Oct 29, head first, spark last, then keeps a vigil on Oct 30', () => {
-    expect(votingDays(SEASON)).toBe(21);
-    const s = buildSchedule(21);
-    expect(s).toHaveLength(20);
+  it('asks 19 parts from Oct 11 to Oct 29, head first, spark last, then keeps a vigil on Oct 30', () => {
+    expect(votingDays(LIVE_SEASON)).toBe(20);
+    const s = seasonSchedule(LIVE_SEASON);
+    expect(s).toHaveLength(19);
     expect(s[0]!.slot).toBe('head');
-    expect(s[18]!.slot).toBe('brain');
-    expect(s[19]!.slot).toBe('spark');
+    expect(s[17]!.slot).toBe('brain');
+    expect(s[18]!.slot).toBe('spark');
+    expect(s.map((q) => q.slot)).not.toContain('jaw'); // the part dropped for the later start
+    const vigil = phaseAt(LIVE_SEASON.startMs + 19 * DAY_MS + 5, LIVE_SEASON);
+    expect(vigil.kind).toBe('vigil');
   });
 
-  it('keeps the nights already played (the season is live) on the same parts', () => {
-    const launched = ['head', 'torso', 'armR', 'legL', 'browEye', 'armL', 'legR', 'heart', 'tail'];
+  it('keeps the opening nights in their announced order', () => {
+    const opening = ['head', 'torso', 'armR', 'legL', 'browEye', 'armL', 'legR', 'heart', 'tail'];
     expect(
-      buildSchedule(21)
+      seasonSchedule(LIVE_SEASON)
         .map((q) => q.slot)
-        .slice(0, launched.length),
-    ).toEqual(launched);
+        .slice(0, opening.length),
+    ).toEqual(opening);
   });
 
   it('drops middle questions for shorter seasons but keeps head, brain and spark', () => {
@@ -212,7 +216,17 @@ describe('votes and saves', () => {
     const s = recordVote(newSave('test', 4), 'eye_owl');
     expect(parseSave(serializeSave(s), 'test', 4)).toEqual(s);
     expect(parseSave('{nope', 'test', 4)).toEqual(newSave('test', 4));
-    expect(parseSave(serializeSave(s), 'other-season', 4)).toEqual(newSave('other-season', 4));
+    // A new season starts the votes afresh, but the player's own settings and Sketchbook stay.
+    const mine = setSketch(setMusicVolume(setMusic({ ...s, started: true }, false), 0.3), {
+      head: 'head_croc',
+    });
+    expect(parseSave(serializeSave(mine), 'other-season', 4)).toEqual({
+      ...newSave('other-season', 4),
+      started: true,
+      musicOn: false,
+      musicVolume: 0.3,
+      sketch: { head: 'head_croc' },
+    });
     expect(parseSave(serializeSave(s), 'test', 5).votes).toEqual([]);
   });
 
@@ -306,9 +320,11 @@ describe('sketchbook', () => {
   });
 
   it('randomises every part, the same way for the same seed', () => {
-    const a = randomSketch(42);
-    expect(sketchSize(a)).toBe(QUESTIONS.length);
-    expect(randomSketch(42)).toEqual(a);
+    const slots = seasonSchedule(LIVE_SEASON).map((q) => q.slot);
+    const a = randomSketch(42, slots);
+    expect(sketchSize(a)).toBe(slots.length);
+    expect(a.jaw).toBeUndefined(); // only this season's parts
+    expect(randomSketch(42, slots)).toEqual(a);
     expect(cleanSketch(a)).toEqual(a);
   });
 

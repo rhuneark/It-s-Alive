@@ -79,7 +79,8 @@ export function parseSave(raw: string | null, season: string, day: number): Save
   if (!raw) return newSave(season, day);
   try {
     const data = JSON.parse(raw) as Partial<SaveState>;
-    if (data.v !== SAVE_VERSION || data.season !== season) return newSave(season, day);
+    if (data.v !== SAVE_VERSION) return newSave(season, day);
+    if (data.season !== season) return carryOver(data, newSave(season, day));
     const base = newSave(season, day);
     const votes = Array.isArray(data.votes)
       ? data.votes.filter(
@@ -122,6 +123,20 @@ export function parseSave(raw: string | null, season: string, day: number): Save
   } catch {
     return newSave(season, day);
   }
+}
+
+/** A new season starts the votes afresh but keeps the player's own settings and Sketchbook. */
+function carryOver(old: Partial<SaveState>, fresh: SaveState): SaveState {
+  return {
+    ...fresh,
+    started: old.started === true,
+    musicOn: old.musicOn !== false,
+    musicVolume:
+      typeof old.musicVolume === 'number' && Number.isFinite(old.musicVolume)
+        ? Math.max(0, Math.min(1, old.musicVolume))
+        : DEFAULT_MUSIC_VOLUME,
+    sketch: old.sketch == null ? null : cleanSketch(old.sketch),
+  };
 }
 
 export function serializeSave(save: SaveState): string {

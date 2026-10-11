@@ -8,13 +8,16 @@ The monster starts as a whole human husk standing in the lab. Every day all play
 body part; at midnight US Central time (`DAY_TIME_ZONE`, America/Chicago) the most-voted option is
 painted into the husk. Night 1 is always the HEAD; the season ends with the BRAIN and the SPARK of life,
 and at midnight Central that begins Halloween (Oct 31) it wakes. The whole 2026 season is in CDT
-(UTC-5), so every day is 24 h and starts at 05:00 UTC (rules.test.ts checks every boundary). The switch
-from UTC to Central midnight happened mid-season (Oct 11, 02:40 UTC) and turned the clock back to night 1:
-`parseSave` drops cached results of days that are open again, and `rollToDay` gives back a day's vote
-from `myPicks`, so nobody votes twice on a night.
-The 2026 season has 20 parts for 21 days (Oct 10-29 vote); Oct 30 is the VIGIL: no vote, the finished
-creature waits with a countdown (phase `vigil` in schedule.ts, `Vigil` screen in App.tsx). The season is
-live: never reorder the parts already played (rules.test.ts pins them); only later nights may change.
+(UTC-5), so every day is 24 h and starts at 05:00 UTC (rules.test.ts checks every boundary).
+The 2026 season (id `s2026b`) starts Oct 11: 19 parts voted Oct 11-29, then the VIGIL on Oct 30
+(`VIGIL_DAYS` = 1, always the last day before Halloween: no vote, the finished creature waits with a
+countdown; phase `vigil` in schedule.ts, `Vigil` screen in App.tsx). `seasonSchedule()` builds the nights;
+with fewer nights than parts `buildSchedule` drops from `DROP_ORDER` (this season: the jaw). An Oct 10
+trial run used id `s2026`; a new season id starts fresh tallies and saves, but `parseSave` carries over
+the player's music settings, Sketchbook and "started". Once the season is live, never reorder the parts
+already played (rules.test.ts pins the opening nights); only later nights may change. If the clock ever
+moves back mid-season, `parseSave` drops cached results of days open again and `rollToDay` gives back a
+day's vote from `myPicks`, so nobody votes twice on a night.
 
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
@@ -161,8 +164,8 @@ appStorage keys (`testLab`, `save_test`, `testVotes`) are deleted on boot. Use l
 
 ## Dev
 
-- `npm run dev` — mock SDK. Add `?day=N` to time-travel to voting day N (`?day=20` = the vigil,
-  `?day=21` = Halloween); mock only.
+- `npm run dev` — mock SDK. Add `?day=N` to time-travel to voting day N (`?day=19` = the vigil,
+  `?day=20` = Halloween); mock only.
 - `node scripts/shot.mjs "?day=5" out.png 375 667 start` — screenshot with the dev server on :5173.
 
 ## Checks — run ALL before every push, fix every warning

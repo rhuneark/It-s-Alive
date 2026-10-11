@@ -24,10 +24,14 @@ export interface Season {
 export const DAY_TIME_ZONE = 'America/Chicago';
 
 export const SEASON: Season = {
-  id: 's2026',
-  startMs: Date.UTC(2026, 9, 10, 5), // Oct 10, 00:00 CDT
+  // Restarted on Oct 11 (the Oct 10 trial run used 's2026'): a new id means fresh tallies.
+  id: 's2026b',
+  startMs: Date.UTC(2026, 9, 11, 5), // Oct 11, 00:00 CDT
   awakenMs: Date.UTC(2026, 9, 31, 5), // Oct 31, 00:00 CDT
 };
+
+/** The last day before Halloween has no vote: the finished creature lies in state (the vigil). */
+export const VIGIL_DAYS = 1;
 
 /**
  * If the season is shorter than the full catalog, these slots are dropped first
@@ -53,7 +57,7 @@ const DROP_ORDER: readonly SlotId[] = [
   'torso',
 ];
 
-/** Number of days in a season (one question per day, Central time). */
+/** Number of days in a season, from the first question to Halloween (Central time). */
 export function votingDays(season: Season): number {
   return Math.max(0, Math.round((season.awakenMs - season.startMs) / DAY_MS));
 }
@@ -74,6 +78,11 @@ export function buildSchedule(days: number): Question[] {
   return slots.map((s) => bySlot.get(s)!);
 }
 
+/** The season's questions: one per day, the vigil excepted. */
+export function seasonSchedule(season: Season): Question[] {
+  return buildSchedule(votingDays(season) - VIGIL_DAYS);
+}
+
 export type Phase =
   | { kind: 'preseason'; opensInMs: number }
   | { kind: 'voting'; day: number; question: Question; endsInMs: number; dayCount: number }
@@ -87,7 +96,7 @@ export function dayIndexAt(nowMs: number, season: Season): number {
 }
 
 export function phaseAt(nowMs: number, season: Season): Phase {
-  const schedule = buildSchedule(votingDays(season));
+  const schedule = seasonSchedule(season);
   if (nowMs < season.startMs) return { kind: 'preseason', opensInMs: season.startMs - nowMs };
   const day = dayIndexAt(nowMs, season);
   if (nowMs >= season.awakenMs) {
@@ -111,7 +120,7 @@ export function phaseAt(nowMs: number, season: Season): Phase {
 
 /** Days whose voting has closed (and can be resolved) at `nowMs`. */
 export function closedDays(nowMs: number, season: Season): number[] {
-  const schedule = buildSchedule(votingDays(season));
+  const schedule = seasonSchedule(season);
   const day = Math.min(dayIndexAt(nowMs, season), schedule.length);
   const out: number[] = [];
   for (let d = 0; d < day; d++) out.push(d);
@@ -119,7 +128,7 @@ export function closedDays(nowMs: number, season: Season): number[] {
 }
 
 export function questionForDay(day: number, season: Season): Question | undefined {
-  return buildSchedule(votingDays(season))[day];
+  return seasonSchedule(season)[day];
 }
 
 export function formatCountdown(ms: number): string {

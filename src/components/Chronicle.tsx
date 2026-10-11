@@ -1,10 +1,10 @@
 import { findOption } from '../game/catalog';
-import { DAY_MS, DAY_TIME_ZONE, SEASON, buildSchedule, votingDays } from '../game/schedule';
+import { DAY_MS, DAY_TIME_ZONE, SEASON, seasonSchedule } from '../game/schedule';
 import type { SaveState } from '../game/state';
 import { percentages } from '../game/tally';
 import { iconUrl } from './Monster';
 
-const SCHEDULE = buildSchedule(votingDays(SEASON));
+const SCHEDULE = seasonSchedule(SEASON);
 
 interface Props {
   save: SaveState;

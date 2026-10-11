@@ -24,7 +24,7 @@ const RETIRED_KEYS = ['testLab', 'save_test', 'testVotes'];
 
 let readyPromise: Promise<void> | null = null;
 let clockOffsetMs = 0;
-/** Dev only (?day=N): the night to pretend it is (-1 before launch, 20 the vigil, 21 Halloween). */
+/** Dev only (?day=N): the night to pretend it is (-1 before launch, 19 the vigil, 20 Halloween). */
 let devDayOverride: number | null = null;
 
 function warn(label: string, err: unknown): void {
