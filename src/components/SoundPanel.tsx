@@ -46,3 +46,37 @@ export function SoundPanel({ on, volume, onToggle, onVolume, onClose }: Props) {
     </>
   );
 }
+
+/** Music on/off and volume in one row, for the title screen. */
+export function MusicBar({ on, volume, onToggle, onVolume }: Omit<Props, 'onClose'>) {
+  const pct = Math.round(volume * 100);
+  return (
+    <div className="music-bar" role="group" aria-label="Music">
+      <button
+        className={`btn btn-icon ${on ? 'btn-ad' : 'btn-secondary muted-icon'}`}
+        aria-pressed={on}
+        aria-label={on ? 'Music on (tap to turn off)' : 'Music off (tap to turn on)'}
+        onClick={onToggle}
+        data-testid="title-music-toggle"
+      >
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="currentColor">
+          <path d="M9 4.5 20 2v13.2a3 3 0 1 1-2-2.83V6.6l-7 1.6v9a3 3 0 1 1-2-2.83Z" />
+        </svg>
+      </button>
+      <input
+        className="slider"
+        type="range"
+        min={0}
+        max={100}
+        step={1}
+        value={pct}
+        disabled={!on}
+        onChange={(e) => onVolume(Number(e.target.value) / 100)}
+        aria-label="Music volume"
+        aria-valuetext={`${pct}%`}
+        data-testid="title-music-volume"
+      />
+      <span className="sound-pct">{on ? `${pct}%` : 'Off'}</span>
+    </div>
+  );
+}

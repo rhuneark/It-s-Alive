@@ -9,11 +9,11 @@ import type { WinReason } from './tally';
 /** Everyone gets one vote per day. */
 export const FREE_VOTES_PER_DAY = 1;
 /**
- * Extra votes a player can earn per day by watching rewarded ads. Tuned in
- * scripts/simulate.ts: the largest cap where one player maxing it out flips at
- * most 10% of 100-voter days.
+ * Extra votes a player can earn per day by watching rewarded ads (the owner's
+ * choice). scripts/simulate.ts checks it stays fair: one player maxing it out
+ * must flip only a small share of 100-voter days.
  */
-export const MAX_AD_VOTES_PER_DAY = 1;
+export const MAX_AD_VOTES_PER_DAY = 2;
 
 export const SAVE_VERSION = 1;
 export const DEFAULT_MUSIC_VOLUME = 0.5;
@@ -90,7 +90,14 @@ export function parseSave(raw: string | null, season: string, day: number): Save
       votes,
       adVotesEarned: clampInt(data.adVotesEarned, 0, MAX_AD_VOTES_PER_DAY),
       pending: typeof data.pending === 'string' ? data.pending : null,
-      history: isRecord(data.history) ? (data.history as Record<string, ResolvedDay>) : {},
+      // Only days already closed: a day reopened by a clock change is tallied again when it ends.
+      history: isRecord(data.history)
+        ? Object.fromEntries(
+            Object.entries(data.history as Record<string, ResolvedDay>).filter(
+              ([d]) => Number(d) < day,
+            ),
+          )
+        : {},
       stats: { ...base.stats, ...(isRecord(data.stats) ? data.stats : {}) },
       started: data.started === true,
       musicOn: data.musicOn !== false,
@@ -117,10 +124,16 @@ export function serializeSave(save: SaveState): string {
   return JSON.stringify(save);
 }
 
-/** Moving to a new day clears that day's votes and selection but keeps history and stats. */
+/**
+ * Moving to another day clears that day's votes and selection but keeps history and
+ * stats. A day the player already voted on keeps that vote (from `myPicks`), so moving
+ * the clock back (as the switch to Central midnight did) never hands out a second free vote.
+ */
 export function rollToDay(save: SaveState, day: number): SaveState {
   if (save.day === day) return save;
-  return { ...save, day, votes: [], adVotesEarned: 0, pending: null };
+  const pick = save.myPicks[String(day)];
+  const votes: CastVote[] = pick ? [{ optionId: pick, kind: 'free' }] : [];
+  return { ...save, day, votes, adVotesEarned: 0, pending: null };
 }
 
 export function votesAllowed(save: SaveState): number {
@@ -182,10 +195,6 @@ export function rememberResolved(save: SaveState, day: number, result: ResolvedD
 }
 
 /** Test Lab only: give back tonight's votes (the fake tally keeps the earlier ones). */
-export function refillVotes(save: SaveState): SaveState {
-  return { ...save, votes: [], adVotesEarned: 0, pending: null };
-}
-
 export function setMusic(save: SaveState, on: boolean): SaveState {
   return save.musicOn === on ? save : { ...save, musicOn: on };
 }

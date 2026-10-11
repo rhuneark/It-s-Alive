@@ -22,6 +22,14 @@ async function imagesLoaded(page: Page) {
 }
 
 async function framedButtons(page: Page) {
+  // Measure at rest: a sheet still sliding in reports squashed buttons. (Endless effects run on.)
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every(
+        (a) => a.effect?.getComputedTiming().endTime === Infinity || a.playState !== 'running',
+      ),
+  );
   const issues = await page.evaluate(() =>
     [...document.querySelectorAll<HTMLElement>('.btn')]
       .filter((b) => b.offsetParent !== null)
@@ -74,6 +82,11 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   const theme = page.waitForResponse((r) => r.url().includes('theme.mp3') && r.ok());
   await page.goto('/?day=0');
   await expect(page.getByTestId('start')).toHaveText('Enter the Laboratory');
+  // A quiet title: enter, the Sketchbook and the music, nothing else.
+  await expect(page.locator('.title-screen button:visible')).toHaveCount(3);
+  await expect(page.getByTestId('sketch-open')).toBeVisible();
+  await expect(page.getByTestId('title-music-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('title-music-volume')).toBeEnabled();
   await noSidewaysScroll(page);
   await framedButtons(page);
   await shot('title');
@@ -94,15 +107,17 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await noSidewaysScroll(page);
   await shot('results');
 
-  // One free vote only; a rewarded ad unlocks one more.
-  await expect(page.locator('.option')).toHaveCount(0);
-  await page.getByTestId('ad-vote').click();
-  await page.getByRole('button', { name: 'Close Ad' }).click();
-  await expect(page.locator('.notice')).toBeVisible();
-  await voteFor(page, 1);
-  await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×2');
+  // One free vote; each rewarded ad unlocks one more, twice a night.
+  for (const n of [2, 3]) {
+    await expect(page.locator('.option')).toHaveCount(0);
+    await page.getByTestId('ad-vote').click();
+    await page.getByRole('button', { name: 'Close Ad' }).click();
+    await expect(page.locator('.notice')).toBeVisible();
+    await voteFor(page, 1);
+    await expect(page.locator('.result.mine .chip').last()).toHaveText(`Your vote ×${n}`);
+  }
   await expect(page.getByTestId('ad-vote')).toHaveCount(0);
-  await expect(page.getByText("You've cast all 2 of tonight's votes")).toBeVisible();
+  await expect(page.getByText("You've cast all 3 of tonight's votes")).toBeVisible();
 
   // Sound panel: music toggle and volume slider, both remembered.
   await page.getByTestId('music').click();
@@ -121,7 +136,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('start')).toHaveText('Continue');
   await page.getByTestId('start').click();
   await expect(page.locator('.result')).toHaveCount(5);
-  await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×2');
+  await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×3');
   await page.getByTestId('music').click();
   await expect(page.getByTestId('music-toggle')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByTestId('music-volume')).toHaveValue('20');
@@ -203,80 +218,17 @@ test('every night of the season fits the phone without sideways scrolling', asyn
   }
 });
 
-test('owner Test Lab: jump between nights, vote freely, then leave without touching the real save', async ({
-  page,
-}) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-
-  await page.goto('/');
-  await page.getByTestId('lab-open').click();
-  await page.getByTestId('lab-start').click();
-  await expect(page.getByTestId('test-banner')).toBeVisible();
-  await expect(page.locator('.dayline')).toBeVisible(); // straight into the game
-
-  // Jump to night 5 and vote as much as we like.
-  await page.getByTestId('lab-banner-open').click();
-  await page.getByTestId('lab-night-5').click();
-  await expect(page.locator('.dayline')).toHaveText('Night 5 of 20');
-  await voteFor(page, 2);
-  await percentagesSumTo100(page);
-  await page.getByTestId('lab-banner-open').click();
-  await page.getByTestId('lab-refill').click();
-  await expect(page.locator('.option')).toHaveCount(5);
-  await voteFor(page, 2);
-  await expect(page.locator('.result')).toHaveCount(5);
-  await noSidewaysScroll(page);
-  await framedButtons(page);
-
-  // Next night: night 5's winner is stitched on.
-  const before = await page
-    .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
-    .count();
-  await page.getByTestId('lab-banner-open').click();
-  await page.getByTestId('lab-next').click();
-  await expect(page.locator('.dayline')).toHaveText('Night 6 of 20');
-  await expect
-    .poll(() => page.locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]').count())
-    .toBeGreaterThan(before);
-
-  // Test mode survives a reload.
-  await page.reload();
-  await expect(page.getByTestId('test-banner')).toBeVisible();
-  await page.getByTestId('start').click();
-  await expect(page.locator('.dayline')).toHaveText('Night 6 of 20');
-
-  // The vigil, then Halloween.
-  await page.getByTestId('lab-banner-open').click();
-  await page.getByTestId('lab-vigil').click();
-  await expect(page.getByTestId('vigil')).toBeVisible();
-  await page.getByTestId('lab-banner-open').click();
-  await page.getByTestId('lab-halloween').click();
-  await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
-
-  // Leaving test mode returns to the real save, which never voted.
-  await page.getByTestId('lab-banner-open').click();
-  await page.getByTestId('lab-exit').click();
-  await expect(page.getByTestId('test-banner')).toHaveCount(0);
-  await expect(page.locator('.result')).toHaveCount(0);
-  expect(errors).toEqual([]);
-});
-
-test('hidden diagnostics: tapping the build stamp 5 times shows device info and opens the Test Lab', async ({
-  page,
-}) => {
+test('hidden diagnostics: tapping the build stamp 5 times shows device info', async ({ page }) => {
   await page.goto('/?day=2');
   await page.getByTestId('start').click();
   await expect(page.locator('.dayline')).toBeVisible();
   for (let i = 0; i < 5; i++) await page.getByTestId('build-stamp').click();
   const diag = page.getByTestId('diagnostics');
   await expect(diag).toContainText('Build');
-  await expect(diag).toContainText('Owner check');
+  await expect(diag).toContainText('Signed in');
   await expect(diag).toContainText('Music file');
   await expect(diag).toContainText(/playing|paused/);
-  await page.getByTestId('diag-open-lab').click();
-  await page.getByTestId('lab-start').click();
-  await expect(page.getByTestId('test-banner')).toBeVisible();
+  await expect(diag).not.toContainText('Test Lab');
 });
 
 test('Sketchbook: try any parts, keep the design, and rebuild the monster from my votes', async ({

@@ -8,10 +8,8 @@
  * tally is `ugc.count({ contentType })`. Creating an entry needs a signed-in
  * player (RUN prompts guests to log in); counting works for everyone.
  *
- * Sandbox: in local mock mode (npm run dev), and in the owner-only Test Lab on a
- * deployed build, votes and tallies come from a seeded stand-in crowd plus votes
- * kept in appStorage, and time can jump to any night. Test Lab uses its own save
- * key, so the owner's real save and the real shared tallies are never touched.
+ * Sandbox: in local mock mode (npm run dev) votes and tallies come from a seeded
+ * stand-in crowd plus votes kept in appStorage, and ?day=N jumps to any night.
  */
 import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { HapticFeedbackStyle } from '@series-inc/rundot-game-sdk';
@@ -19,27 +17,15 @@ import { simulatedCrowd } from '../game/crowd';
 import { DAY_MS, SEASON } from '../game/schedule';
 
 const INIT_TIMEOUT_MS = 8000;
-const ROLE_TIMEOUT_MS = 15_000;
-const LAB_KEY = 'testLab';
+const SAVE_KEY = 'save';
+const DEV_VOTES_KEY = 'devVotes';
+/** Left behind by the retired Test Lab; removed once on boot. */
+const RETIRED_KEYS = ['testLab', 'save_test', 'testVotes'];
 
 let readyPromise: Promise<void> | null = null;
 let clockOffsetMs = 0;
+/** Dev only (?day=N): the night to pretend it is (-1 before launch, 20 the vigil, 21 Halloween). */
 let devDayOverride: number | null = null;
-let urlDayOverride: number | null = null;
-let labAllowed = false;
-let lab: LabState = { on: false, day: null, unlocked: false };
-
-/** Owner-only Test Lab settings (persisted in appStorage under `testLab`). */
-export interface LabState {
-  on: boolean;
-  /** Night to pretend it is (0-based; -1 = before launch, 20 = the vigil, 21 = Halloween). Null = real date. */
-  day: number | null;
-  /** Opened via the hidden version-label tap, so keep offering it. */
-  unlocked?: boolean;
-}
-
-const saveKey = () => (lab.on ? 'save_test' : 'save');
-const sandboxVotesKey = () => (lab.on ? 'testVotes' : 'devVotes');
 
 function warn(label: string, err: unknown): void {
   console.warn(`[run] ${label}:`, err);
@@ -71,107 +57,26 @@ export function ready(): Promise<void> {
       if (isMock()) {
         // Dev-only time travel for testing: ?day=N jumps to voting day N.
         const param = new URLSearchParams(window.location.search).get('day');
-        if (param !== null && /^-?\d+$/.test(param)) urlDayOverride = Number(param);
-        devDayOverride = urlDayOverride;
+        if (param !== null && /^-?\d+$/.test(param)) devDayOverride = Number(param);
+      } else {
+        quiet(RundotGameAPI.appStorage.removeMultipleItems(RETIRED_KEYS), 'retire test lab');
       }
-      await Promise.all([syncClock(), loadLab()]);
+      await syncClock();
     })();
   }
   return readyPromise;
 }
 
-/** True when votes are fake and private: local dev, or the owner's Test Lab. */
+/** True when votes are fake and private (local dev). */
 export function sandboxed(): boolean {
-  return lab.on || isMock();
+  return isMock();
 }
 
-/** Whether this player may open the Test Lab (game owner/editor, local dev, or unlocked by hand). */
-export function canUseLab(): boolean {
-  return labAllowed;
-}
-
-export function labState(): LabState {
-  return { ...lab };
-}
-
-const labListeners = new Set<() => void>();
-
-/** Notified when Test Lab access changes (the owner check finishes after boot). */
-export function onLabAccess(cb: () => void): () => void {
-  labListeners.add(cb);
-  return () => labListeners.delete(cb);
-}
-
-function setLabAllowed(allowed: boolean): void {
-  if (labAllowed === allowed) return;
-  labAllowed = allowed;
-  labListeners.forEach((cb) => cb());
-}
-
-/** What the owner check said, for the diagnostics panel. */
-let roleDiag = 'not checked yet';
-
-/** The player's server-verified role for this game (owner/editor/none). */
-async function checkRole(): Promise<void> {
-  const started = Date.now();
-  roleDiag = 'checking…';
-  try {
-    const role = await Promise.race([
-      RundotGameAPI.app.getMyRole(),
-      new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), ROLE_TIMEOUT_MS)),
-    ]);
-    roleDiag = `${String(role)} (${Date.now() - started} ms)`;
-    if (role === 'owner' || role === 'editor') setLabAllowed(true);
-  } catch (err) {
-    roleDiag = `error: ${err instanceof Error ? err.message : String(err)}`;
-    warn('getMyRole', err);
-  }
-}
-
-function applyLab(next: LabState): void {
-  lab = { on: next.on, day: next.on ? next.day : null, unlocked: next.unlocked === true };
-  devDayOverride = lab.on ? lab.day : urlDayOverride;
-}
-
-/**
- * Restore Test Lab settings, then check the owner role in the background so a
- * slow check never delays the game. The Lab only ever touches a private sandbox,
- * so honouring a saved "on" flag before the check finishes is harmless.
- */
-async function loadLab(): Promise<void> {
-  if (isMock()) setLabAllowed(true);
-  try {
-    const raw = await RundotGameAPI.appStorage.getItem(LAB_KEY);
-    const data = raw ? (JSON.parse(raw) as Partial<LabState>) : {};
-    applyLab({
-      on: data.on === true,
-      day: typeof data.day === 'number' && Number.isFinite(data.day) ? data.day : null,
-      unlocked: data.unlocked === true,
-    });
-    if (lab.on || lab.unlocked) setLabAllowed(true);
-  } catch (err) {
-    warn('loadLab', err);
-  }
-  if (isMock()) roleDiag = 'skipped (local dev mode)';
-  else void checkRole();
-}
-
-/**
- * Hidden way in (tap the version label 5 times) for when the owner check can't
- * recognise the account. Safe for anyone: the Lab only uses a private sandbox.
- */
-export async function unlockLab(): Promise<void> {
-  await ready();
-  setLabAllowed(true);
-  await setLab({ ...lab, unlocked: true });
-}
-
-/** Ask RUN to sign the player in (owners on a guest session), then re-check the role. */
+/** Ask RUN to sign the player in (voting needs an account). */
 export async function signIn(): Promise<boolean> {
   await ready();
   try {
     const res = await RundotGameAPI.accessGate.promptLogin();
-    await checkRole();
     return !!res && (res as { success?: boolean }).success !== false;
   } catch (err) {
     warn('signIn', err);
@@ -181,10 +86,8 @@ export async function signIn(): Promise<boolean> {
 
 export interface Diagnostics {
   mock: boolean;
-  role: string;
   signedIn: string;
   user: string;
-  lab: string;
 }
 
 export function diagnostics(): Diagnostics {
@@ -201,37 +104,7 @@ export function diagnostics(): Diagnostics {
   } catch (err) {
     user = `error: ${err instanceof Error ? err.message : String(err)}`;
   }
-  return {
-    mock: isMock(),
-    role: roleDiag,
-    signedIn,
-    user,
-    lab: `${labAllowed ? 'allowed' : 'hidden'}${lab.on ? ', test mode ON' : ''}${lab.unlocked ? ', unlocked by hand' : ''}`,
-  };
-}
-
-/**
- * Change Test Lab settings. Applies immediately (synchronously) so the caller can
- * remount the game in the same tick; the returned promise is just the save.
- */
-export function setLab(next: LabState): Promise<void> {
-  if (!labAllowed) return Promise.resolve();
-  applyLab({ ...next, unlocked: next.unlocked ?? lab.unlocked });
-  const snapshot = JSON.stringify(lab);
-  return RundotGameAPI.appStorage.setItem(LAB_KEY, snapshot).catch((err: unknown) => {
-    warn('setLab', err);
-  });
-}
-
-/** Wipe the Test Lab's sandbox save and fake votes. */
-export async function resetLab(): Promise<void> {
-  await ready();
-  if (!labAllowed) return;
-  try {
-    await RundotGameAPI.appStorage.removeMultipleItems(['save_test', 'testVotes']);
-  } catch (err) {
-    warn('resetLab', err);
-  }
+  return { mock: isMock(), signedIn, user };
 }
 
 export function isMock(): boolean {
@@ -256,7 +129,7 @@ export async function syncClock(): Promise<void> {
 export function now(): number {
   const real = Date.now() + clockOffsetMs;
   if (devDayOverride === null) return real;
-  const intoDay = ((real % DAY_MS) + DAY_MS) % DAY_MS;
+  const intoDay = (((real - SEASON.startMs) % DAY_MS) + DAY_MS) % DAY_MS;
   return SEASON.startMs + devDayOverride * DAY_MS + intoDay;
 }
 
@@ -265,7 +138,7 @@ export function now(): number {
 export async function loadSave(): Promise<string | null> {
   await ready();
   try {
-    return await RundotGameAPI.appStorage.getItem(saveKey());
+    return await RundotGameAPI.appStorage.getItem(SAVE_KEY);
   } catch (err) {
     warn('loadSave', err);
     return null;
@@ -275,7 +148,7 @@ export async function loadSave(): Promise<string | null> {
 export async function writeSave(json: string): Promise<boolean> {
   await ready();
   try {
-    await RundotGameAPI.appStorage.setItem(saveKey(), json);
+    await RundotGameAPI.appStorage.setItem(SAVE_KEY, json);
     return true;
   } catch (err) {
     warn('writeSave', err);
@@ -293,7 +166,7 @@ type DevVotes = Record<string, Record<string, number>>;
 
 async function readDevVotes(): Promise<DevVotes> {
   try {
-    const raw = await RundotGameAPI.appStorage.getItem(sandboxVotesKey());
+    const raw = await RundotGameAPI.appStorage.getItem(DEV_VOTES_KEY);
     return raw ? (JSON.parse(raw) as DevVotes) : {};
   } catch {
     return {};
@@ -310,7 +183,7 @@ export async function castVote(season: string, day: number, optionId: string): P
     const today = (all[String(day)] ??= {});
     today[optionId] = (today[optionId] ?? 0) + 1;
     try {
-      await RundotGameAPI.appStorage.setItem(sandboxVotesKey(), JSON.stringify(all));
+      await RundotGameAPI.appStorage.setItem(DEV_VOTES_KEY, JSON.stringify(all));
     } catch (err) {
       warn('dev vote', err);
       return { ok: false, reason: 'error' };
@@ -486,14 +359,12 @@ export async function loadTheme(): Promise<ThemeSource> {
 // ---------------------------------------------------------------- misc
 
 export function track(event: string, payload?: Record<string, unknown>): void {
-  if (lab.on) return; // keep Test Lab play out of the game's analytics
   void ready().then(() =>
     quiet(RundotGameAPI.analytics.recordCustomEvent(event, payload), `track ${event}`),
   );
 }
 
 export function funnel(step: number, name: string): void {
-  if (lab.on) return;
   void ready().then(() =>
     quiet(RundotGameAPI.analytics.trackFunnelStep(step, name, 'monster', 1), `funnel ${name}`),
   );

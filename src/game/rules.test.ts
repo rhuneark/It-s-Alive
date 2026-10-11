@@ -3,6 +3,8 @@ import { QUESTIONS, findOption } from './catalog';
 import { simulatedCrowd } from './crowd';
 import {
   DAY_MS,
+  DAY_TIME_ZONE,
+  SEASON as LIVE_SEASON,
   buildSchedule,
   closedDays,
   dayIndexAt,
@@ -55,6 +57,18 @@ describe('catalog', () => {
 });
 
 describe('schedule', () => {
+  it('turns every day over at midnight Central time, Halloween included', () => {
+    const central = new Intl.DateTimeFormat('en-US', {
+      timeZone: DAY_TIME_ZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    });
+    for (let d = 0; d <= votingDays(LIVE_SEASON); d++)
+      expect(central.format(LIVE_SEASON.startMs + d * DAY_MS), `day ${d}`).toBe('00:00');
+    expect(LIVE_SEASON.startMs + votingDays(LIVE_SEASON) * DAY_MS).toBe(LIVE_SEASON.awakenMs);
+  });
+
   it('asks 20 parts from Oct 10 to Oct 29, head first, spark last, then keeps a vigil on Oct 30', () => {
     expect(votingDays(SEASON)).toBe(21);
     const s = buildSchedule(21);
@@ -198,6 +212,24 @@ describe('votes and saves', () => {
     expect(parseSave('{nope', 'test', 4)).toEqual(newSave('test', 4));
     expect(parseSave(serializeSave(s), 'other-season', 4)).toEqual(newSave('other-season', 4));
     expect(parseSave(serializeSave(s), 'test', 5).votes).toEqual([]);
+  });
+
+  it('survives the clock moving back a day (the switch to Central midnight)', () => {
+    // Voted on night 0 and night 1 under the old clock; night 0 was already resolved.
+    let s = recordVote(newSave('test', 0), 'head_raven');
+    s = {
+      ...s,
+      history: { '0': { winner: 'head_croc', counts: [1, 0, 0, 0, 0], reason: 'votes' } },
+    };
+    s = recordVote(rollToDay(s, 1), 'torso_bear');
+    // The new clock says it is still night 0.
+    const back = parseSave(serializeSave(s), 'test', 0);
+    expect(back.history).toEqual({}); // night 0 is open again: tallied afresh when it ends
+    expect(back.votes).toEqual([{ optionId: 'head_raven', kind: 'free' }]); // no second free vote
+    expect(votesRemaining(back)).toBe(0);
+    // Night 1 comes round again: the torso vote already cast still counts as tonight's vote.
+    expect(rollToDay(back, 1).votes).toEqual([{ optionId: 'torso_bear', kind: 'free' }]);
+    expect(rollToDay(back, 2).votes).toEqual([]);
   });
 });
 

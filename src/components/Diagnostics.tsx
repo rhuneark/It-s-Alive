@@ -3,16 +3,15 @@ import { theme } from '../app/useMusic';
 import * as run from '../sdk/run';
 
 interface Props {
-  onOpenLab: () => void;
   onClose: () => void;
 }
 
 /**
  * Hidden panel (tap the build stamp 5 times) showing what the device actually
- * sees: build, sign-in, owner check and the music pipeline. Built for testing on a
+ * sees: build, sign-in and the music pipeline. Built for testing on a
  * phone, where there are no developer tools.
  */
-export function Diagnostics({ onOpenLab, onClose }: Props) {
+export function Diagnostics({ onClose }: Props) {
   const [, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -27,8 +26,6 @@ export function Diagnostics({ onOpenLab, onClose }: Props) {
     ['Local dev mode', d.mock ? 'yes' : 'no'],
     ['Signed in', d.signedIn],
     ['Account', d.user],
-    ['Owner check', d.role],
-    ['Test Lab', d.lab],
     ['Music file', m.source],
     ['Music player', m.element],
     ['Audio output', `${m.context}${m.routed ? ', volume control on' : ''}`],
@@ -58,7 +55,7 @@ export function Diagnostics({ onOpenLab, onClose }: Props) {
             </div>
           ))}
         </dl>
-        <div className="lab-row">
+        <div className="diag-actions">
           {d.signedIn.startsWith('no') && (
             <button
               className="btn btn-primary btn-small"
@@ -79,15 +76,6 @@ export function Diagnostics({ onOpenLab, onClose }: Props) {
             }}
           >
             Try music again
-          </button>
-          <button
-            className="btn btn-ad btn-small"
-            onClick={() => {
-              void run.unlockLab().then(onOpenLab);
-            }}
-            data-testid="diag-open-lab"
-          >
-            Open Test Lab
           </button>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { findOption } from '../game/catalog';
-import { SEASON, buildSchedule, votingDays } from '../game/schedule';
+import { DAY_MS, DAY_TIME_ZONE, SEASON, buildSchedule, votingDays } from '../game/schedule';
 import type { SaveState } from '../game/state';
 import { percentages } from '../game/tally';
 import { iconUrl } from './Monster';
@@ -13,8 +13,8 @@ interface Props {
 }
 
 function nightDate(day: number): string {
-  const d = new Date(SEASON.startMs + day * 86_400_000);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const d = new Date(SEASON.startMs + day * DAY_MS);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: DAY_TIME_ZONE });
 }
 
 /** Night-by-night record of which part won and by how much. */

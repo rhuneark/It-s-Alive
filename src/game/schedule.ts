@@ -1,6 +1,11 @@
 /**
- * The season calendar: which question is asked on which UTC day, and when the
+ * The season calendar: which question is asked on which day, and when the
  * monster wakes. Pure functions of time; the caller supplies a trusted clock.
+ *
+ * A day runs from midnight to midnight US Central time (DAY_TIME_ZONE). The 2026
+ * season lies wholly inside daylight time (CDT, UTC-5, until Nov 1), so every day
+ * is exactly 24 hours and Central midnight is 05:00 UTC. A season that crossed a
+ * DST change would need uneven days (rules.test.ts checks every boundary).
  */
 import { QUESTIONS, type Question, type SlotId } from './catalog';
 
@@ -9,16 +14,19 @@ export const DAY_MS = 86_400_000;
 export interface Season {
   /** Namespaces the shared vote tallies, so a future season starts fresh. */
   id: string;
-  /** UTC midnight of the first voting day (the HEAD question). */
+  /** Midnight (Central) that opens the first voting day (the HEAD question). */
   startMs: number;
-  /** UTC midnight of Halloween: voting is over and the monster wakes. */
+  /** Midnight (Central) that begins Halloween: voting is over and the monster wakes. */
   awakenMs: number;
 }
 
+/** Days turn over at midnight in this time zone. */
+export const DAY_TIME_ZONE = 'America/Chicago';
+
 export const SEASON: Season = {
   id: 's2026',
-  startMs: Date.UTC(2026, 9, 10),
-  awakenMs: Date.UTC(2026, 9, 31),
+  startMs: Date.UTC(2026, 9, 10, 5), // Oct 10, 00:00 CDT
+  awakenMs: Date.UTC(2026, 9, 31, 5), // Oct 31, 00:00 CDT
 };
 
 /**
@@ -45,7 +53,7 @@ const DROP_ORDER: readonly SlotId[] = [
   'torso',
 ];
 
-/** Number of voting days in a season (one question per UTC day). */
+/** Number of days in a season (one question per day, Central time). */
 export function votingDays(season: Season): number {
   return Math.max(0, Math.round((season.awakenMs - season.startMs) / DAY_MS));
 }
@@ -73,7 +81,7 @@ export type Phase =
   | { kind: 'vigil'; wakesInMs: number; dayCount: number }
   | { kind: 'awakened'; daysSinceAwakening: number };
 
-/** UTC day index relative to the season start (negative before it starts). */
+/** Day index relative to the season start (negative before it starts). */
 export function dayIndexAt(nowMs: number, season: Season): number {
   return Math.floor((nowMs - season.startMs) / DAY_MS);
 }

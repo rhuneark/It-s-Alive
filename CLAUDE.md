@@ -4,9 +4,14 @@
 # It's Alive! — project guide
 
 A RUN.world game (React + Vite + TypeScript, from series-ai/run-template-2d-react).
-The monster starts as a whole human husk standing in the lab. Every UTC day all players vote
-on one body part; at midnight the most-voted option is painted into the husk. Night 1 is always
-the HEAD; the season ends with the BRAIN and the SPARK of life, and on Halloween (Oct 31 UTC) it wakes.
+The monster starts as a whole human husk standing in the lab. Every day all players vote on one
+body part; at midnight US Central time (`DAY_TIME_ZONE`, America/Chicago) the most-voted option is
+painted into the husk. Night 1 is always the HEAD; the season ends with the BRAIN and the SPARK of life,
+and at midnight Central that begins Halloween (Oct 31) it wakes. The whole 2026 season is in CDT
+(UTC-5), so every day is 24 h and starts at 05:00 UTC (rules.test.ts checks every boundary). The switch
+from UTC to Central midnight happened mid-season (Oct 11, 02:40 UTC) and turned the clock back to night 1:
+`parseSave` drops cached results of days that are open again, and `rollToDay` gives back a day's vote
+from `myPicks`, so nobody votes twice on a night.
 The 2026 season has 20 parts for 21 days (Oct 10-29 vote); Oct 30 is the VIGIL: no vote, the finished
 creature waits with a countdown (phase `vigil` in schedule.ts, `Vigil` screen in App.tsx). The season is
 live: never reorder the parts already played (rules.test.ts pins them); only later nights may change.
@@ -16,8 +21,9 @@ live: never reorder the parts already played (rules.test.ts pins them); only lat
 - Season config: `SEASON` in `src/game/schedule.ts` (id, first day, Halloween). Changing `id` starts fresh tallies.
   The first day must be the launch day so night 1 (HEAD) is playable; a later start drops middle questions
   (`buildSchedule`), never the head, brain or spark.
-- One free vote per day, plus `MAX_AD_VOTES_PER_DAY` (`src/game/state.ts`) extra votes from rewarded ads.
-  The cap is tuned by `npm run simulate`; re-run it if you change the cap or the voting model.
+- One free vote per day, plus `MAX_AD_VOTES_PER_DAY` = 2 (`src/game/state.ts`, the owner's choice) extra
+  votes from rewarded ads. `npm run simulate` checks a maxed-out player flips at most 15% of 100-voter
+  days (2 ads: 12%); re-run it if you change the cap or the voting model.
 - Percentages are hidden until the player has voted.
 - Sketchbook (every screen, every player): a private sandbox to try any option for any part and see the
   creature it makes. Nothing in it is a vote. Rules in `src/game/sketch.ts`; the design is kept in the save
@@ -33,9 +39,11 @@ live: never reorder the parts already played (rules.test.ts pins them); only lat
   through a GainNode (iOS ignores `audio.volume`; a suspended context would play silence). Loops with a soft
   fade at the seam, follows the saved volume (`musicVolume`, 0..1, slider in the ♫ sound panel) and on/off
   (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
+- Title screen: the real creature so far, Enter, Sketchbook and a music row (on/off + volume, `MusicBar`);
+  touching the music row starts the theme there. In game the ♫ button opens the same controls.
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
-  opens the hidden Diagnostics panel: sign-in, owner check result, Test Lab access, music file/player/output and
-  the last music error, plus Sign in / Try music again / Open Test Lab buttons. Use it to debug on a phone.
+  opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
+  Sign in / Try music again buttons. Use it to debug on a phone.
 ## Layout
 
 ```
@@ -45,9 +53,9 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
-               Sketchbook (players design their own monster), TestLab (owner-only sandbox controls),
-               SoundPanel (music on/off + volume), Diagnostics
-src/App.tsx    screens: title/continue, vote, preseason, awakened
+               Sketchbook (players design their own monster), SoundPanel (in-game music popover and
+               the title's MusicBar), Diagnostics
+src/App.tsx    screens: title/continue, vote, preseason, vigil, awakened
 public/art/    shipped art: husk/<region>.png, parts/<key>.png (painted layers, also the card art),
                icons/spark_*.png (the spark is an effect), lab.png (room with its props painted in)
 public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audio/theme.mp3
@@ -138,20 +146,10 @@ The lab (`public/art/lab.png`, 224x200) is one painting: room `bg_lab__s14` (upr
 operating slab behind the husk) with the surgical cart and the generator INPAINTED onto its floor, so
 the props share its perspective. Never composite props onto the room: they float.
 
-## Test Lab (owner/editor only, works on the deployed build)
+## Testing nights
 
-- The "Test Lab (owner only)" button shows when `app.getMyRole()` says owner/editor (checked in the background
-  after boot, 15 s timeout; result in Diagnostics), in local mock mode, or once unlocked from Diagnostics
-  ("Open Test Lab", remembered as `unlocked`). Unlocking is safe for anyone: the Lab only touches a sandbox.
-  The role check only matches when the player is signed in to RUN with the owner's account; Diagnostics has a
-  Sign in button for guest sessions. While on, a red TEST MODE banner shows.
-- The Test Lab stays owner-only (night jumping, refills). Players get the Sketchbook instead.
-- Test mode = sandbox: own save key (`save_test`), fake crowd tallies plus fake votes (`testVotes`), any
-  night via a day override (`-1` before launch … `20` the vigil, `21` Halloween), "Refill tonight's votes",
-  wipe, leave.
-  Real shared tallies (UGC), the real `save`, and analytics are never touched. Settings persist in `testLab`.
-- Switching Test Lab settings applies synchronously (`run.setLab`) and remounts `<Game key>` in the same tick
-  (an async gap let taps land on the stale screen); music lives outside it so it keeps playing.
+The owner Test Lab (night jumping on the deployed build) was removed at the owner's request; its old
+appStorage keys (`testLab`, `save_test`, `testVotes`) are deleted on boot. Use local dev for any night.
 
 ## Dev
 

@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useGame, type GameModel } from './app/useGame';
 import { theme, useMusic } from './app/useMusic';
 import { Chronicle } from './components/Chronicle';
 import { Sketchbook } from './components/Sketchbook';
 import { Diagnostics } from './components/Diagnostics';
-import { SoundPanel } from './components/SoundPanel';
+import { MusicBar, SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
-import { TestLab } from './components/TestLab';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption } from './game/catalog';
 import { formatCountdown } from './game/schedule';
@@ -20,16 +19,20 @@ import {
 import * as run from './sdk/run';
 
 export default function App() {
-  // Bumped whenever Test Lab settings change, to remount the game on the new save/clock.
-  const [labKey, setLabKey] = useState(0);
   const [inGame, setInGame] = useState(false);
+  // Music may play once the player has tapped into the lab or touched the music controls.
+  const [listening, setListening] = useState(false);
   const [music, setMusic] = useState<MusicPrefs>({
     loaded: false,
     on: false,
     volume: DEFAULT_MUSIC_VOLUME,
   });
   // Downloaded on the title screen; audible from the first tap into the laboratory.
-  useMusic({ prefetch: music.loaded && music.on, on: inGame && music.on, volume: music.volume });
+  useMusic({
+    prefetch: music.loaded && music.on,
+    on: (inGame || listening) && music.on,
+    volume: music.volume,
+  });
 
   // Keep content clear of the host toolbar and device notches.
   useEffect(() => {
@@ -41,18 +44,10 @@ export default function App() {
     });
   }, []);
 
-  const onLabChanged = useCallback(() => setLabKey((k) => k + 1), []);
   const onEnter = useCallback(() => setInGame(true), []);
+  const onListen = useCallback(() => setListening(true), []);
 
-  return (
-    <Game
-      key={labKey}
-      inGame={inGame}
-      onEnter={onEnter}
-      onMusic={setMusic}
-      onLabChanged={onLabChanged}
-    />
-  );
+  return <Game inGame={inGame} onEnter={onEnter} onListen={onListen} onMusic={setMusic} />;
 }
 
 interface MusicPrefs {
@@ -61,23 +56,16 @@ interface MusicPrefs {
   volume: number;
 }
 
-/** Re-renders when Test Lab access changes (the owner check finishes after boot). */
-function useLabAccess(): boolean {
-  const [, bump] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => run.onLabAccess(bump), []);
-  return run.canUseLab();
-}
-
 function Game({
   inGame,
   onEnter,
+  onListen,
   onMusic,
-  onLabChanged,
 }: {
   inGame: boolean;
   onEnter: () => void;
+  onListen: () => void;
   onMusic: (prefs: MusicPrefs) => void;
-  onLabChanged: () => void;
 }) {
   const game = useGame();
   const [chronicle, setChronicle] = useState(false);
@@ -86,28 +74,12 @@ function Game({
     setSketchOpen(true);
     run.track('sketchbook_open');
   };
-  const [labOpen, setLabOpen] = useState(false);
   const [diagOpen, setDiagOpen] = useState(false);
 
   useEffect(() => {
     if (!game.loading)
       onMusic({ loaded: true, on: game.save.musicOn, volume: game.save.musicVolume });
   }, [game.loading, game.save.musicOn, game.save.musicVolume, onMusic]);
-
-  const lab = run.labState();
-  const canLab = useLabAccess() && !game.loading;
-  const applyLab = (next: run.LabState) => {
-    setLabOpen(false);
-    void run.setLab(next); // applies now, saves in the background
-    onEnter(); // land in the game on the chosen night
-    onLabChanged();
-  };
-  const wipeLab = async () => {
-    setLabOpen(false);
-    await run.resetLab();
-    onLabChanged();
-  };
-  const openLab = () => setLabOpen(true);
 
   let screen;
   if (game.loading) screen = <Loading />;
@@ -121,8 +93,8 @@ function Game({
           game.begin();
           onEnter();
         }}
-        onLab={canLab ? openLab : undefined}
         onSketch={openSketch}
+        onListen={onListen}
       />
     );
   else if (game.phase.kind === 'awakened')
@@ -146,31 +118,8 @@ function Game({
         <p className="title-sm">Turn your device upright</p>
         <p className="muted">The laboratory only fits in portrait.</p>
       </div>
-      {lab.on && !game.loading && (
-        <div className="test-banner" role="status" data-testid="test-banner">
-          <span>
-            <b>TEST MODE</b> · fake votes, private save
-          </span>
-          <button
-            className="btn btn-secondary btn-small"
-            onClick={openLab}
-            data-testid="lab-banner-open"
-          >
-            Lab
-          </button>
-        </div>
-      )}
       <main className="app">
         {screen}
-        {inGame && canLab && !lab.on && !game.loading && (
-          <button
-            className="btn btn-secondary btn-wide lab-entry"
-            onClick={openLab}
-            data-testid="lab-open"
-          >
-            Test Lab (owner only)
-          </button>
-        )}
         <BuildStamp onSecret={() => setDiagOpen(true)} />
       </main>
       {chronicle && (
@@ -187,27 +136,7 @@ function Game({
           onClose={() => setSketchOpen(false)}
         />
       )}
-      {labOpen && (
-        <TestLab
-          lab={lab}
-          onApply={applyLab}
-          onRefill={() => {
-            game.refillVotes();
-            setLabOpen(false);
-          }}
-          onReset={() => void wipeLab()}
-          onClose={() => setLabOpen(false)}
-        />
-      )}
-      {diagOpen && (
-        <Diagnostics
-          onOpenLab={() => {
-            setDiagOpen(false);
-            setLabOpen(true);
-          }}
-          onClose={() => setDiagOpen(false)}
-        />
-      )}
+      {diagOpen && <Diagnostics onClose={() => setDiagOpen(false)} />}
       {game.toast && (
         <div key={game.toast.id} className={`toast toast-${game.toast.tone}`} role="status">
           {game.toast.text}
@@ -250,13 +179,13 @@ function Loading() {
 function Title({
   game,
   onStart,
-  onLab,
   onSketch,
+  onListen,
 }: {
   game: GameModel;
   onStart: () => void;
-  onLab?: () => void;
   onSketch: () => void;
+  onListen: () => void;
 }) {
   const built = Object.keys(game.parts).length;
   return (
@@ -270,8 +199,8 @@ function Title({
       />
       <div className="panel lore">
         <p>
-          Each night the village votes on <b>one body part</b>. At midnight (UTC) the most wanted
-          part is stitched onto the creature.
+          Each night the village votes on <b>one body part</b>. At midnight (Central time) the most
+          wanted part is stitched onto the creature.
         </p>
         <p>
           On <b>Halloween</b>, lightning will strike… and it will wake.
@@ -286,11 +215,20 @@ function Title({
           : `${built} part${built === 1 ? '' : 's'} stitched so far.`}
       </p>
       <SketchButton onClick={onSketch} />
-      {onLab && (
-        <button className="btn btn-secondary btn-wide" onClick={onLab} data-testid="lab-open">
-          Test Lab (owner only)
-        </button>
-      )}
+      <MusicBar
+        on={game.save.musicOn}
+        volume={game.save.musicVolume}
+        onToggle={() => {
+          // A tap: phones allow the theme to start right here.
+          if (!game.save.musicOn) theme.setWanted(true);
+          onListen();
+          game.toggleMusic();
+        }}
+        onVolume={(v) => {
+          onListen();
+          game.setVolume(v);
+        }}
+      />
     </div>
   );
 }
@@ -547,7 +485,7 @@ function Vigil({
         <p className="eyebrow">The night before Halloween</p>
         <p>
           Every part is stitched. There is no vote tonight: keep watch over the slab. When midnight
-          (UTC) strikes and <b>Halloween</b> begins, the lightning comes, and it wakes.
+          (Central time) strikes and <b>Halloween</b> begins, the lightning comes, and it wakes.
         </p>
       </section>
       <SketchButton onClick={onSketch} />

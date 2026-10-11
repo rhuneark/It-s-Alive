@@ -21,7 +21,6 @@ import {
   newSave,
   parseSave,
   recordVote,
-  refillVotes,
   rememberResolved,
   rollToDay,
   selectOption,
@@ -64,8 +63,6 @@ export interface GameModel {
   toggleMusic: () => void;
   /** Live volume while dragging; saved shortly after the player lets go. */
   setVolume: (v: number) => void;
-  /** Test Lab only: hand back tonight's votes. */
-  refillVotes: () => void;
   /** Keep the player's Sketchbook design (debounced save). */
   setSketch: (sketch: Parts) => void;
   /** The slot voted on each night, for the Sketchbook's "my votes". */
@@ -210,7 +207,7 @@ export function useGame(): GameModel {
     return () => clearInterval(id);
   }, []);
 
-  // Midnight UTC: the day's winner is stitched on and a new question opens.
+  // Midnight Central: the day's winner is stitched on and a new question opens.
   useEffect(() => {
     if (loading) return;
     const d = currentDay(now);
@@ -331,12 +328,6 @@ export function useGame(): GameModel {
     [commit],
   );
 
-  const refill = useCallback(() => {
-    if (!run.sandboxed()) return;
-    void commit(refillVotes(saveRef.current));
-    setTodayCounts(null);
-  }, [commit]);
-
   const sketchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setSketch = useCallback(
     (sketch: Parts) => {
@@ -371,7 +362,6 @@ export function useGame(): GameModel {
     refreshCounts,
     toggleMusic,
     setVolume,
-    refillVotes: refill,
     setSketch,
     schedule: SLOTS,
   };
