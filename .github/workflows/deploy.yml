@@ -18,8 +18,8 @@ concurrency:
 
 env:
   # Tags drive RUN search and recommendations; set-keywords replaces the whole list.
-  GAME_KEYWORDS: 'halloween,monster,frankenstein,voting,community,daily,gothic,horror,pixel-art,creature-builder,spooky,multiplayer'
-  GAME_DESCRIPTION: "Every night the whole community votes on one body part, and at midnight the winner is stitched onto a gothic monster. Choose its head, limbs, eyes and heart, then watch it wake on Halloween. It's alive!"
+  GAME_KEYWORDS: 'October-Jam,Monster-Mash,halloween,monster,frankenstein,creature-builder,voting,community,daily,social,pixel-art,gothic,horror,spooky'
+  GAME_DESCRIPTION: "Build a monster with everyone. Each night the whole community votes on one body part, and at midnight the winner is stitched onto the creature in the lab: a head, wings, a third eye, a beating heart and more. Try any mix in your Sketchbook, come back each day to see what was sewn on, and on Halloween the lightning strikes. It's alive!"
 
 jobs:
   deploy:

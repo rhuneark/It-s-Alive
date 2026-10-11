@@ -194,7 +194,9 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   1. `rundot login`
   2. `rundot init --name "It's Alive!" --description "..." --orientation Portrait --build-path ./dist`, commit `game.config.prod.json`
   3. `rundot game api-keys create --label "GitHub Actions"` and save the secret as the `RUNDOT_API_KEY` repo secret
-- `public/thumbnail.jpg` must be exactly 512x512 and under ~150 KB (`tools/thumbnail/` renders it).
+- `public/thumbnail.jpg` must be exactly 512x512 and under ~150 KB. It is the owner's own art (full size in
+  `art/thumbnail-source.jpg`, not shipped): never replace it with a render. Description and tags (including
+  the `October-Jam` and `Monster-Mash` jam tags) are the env lines at the top of deploy.yml.
 - No leaderboard in this game.
 - `rundot/textGen.config.json` is `{"disabled": true}`: the game uses no AI, and `rundot deploy` otherwise
   auto-creates an uncapped config. Keep it disabled unless a feature needs it (then set caps).

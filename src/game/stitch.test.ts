@@ -203,7 +203,7 @@ describe('the husk and its painted parts', () => {
             }
     }
     expect([...new Set(problems)]).toEqual([]);
-  });
+  }, 30_000); // composes every option on 50 monsters: ~4 s, more on a busy machine
 });
 
 /** Share of a layer's pixels not covered by layers drawn in front of it. */
