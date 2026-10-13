@@ -58,7 +58,9 @@ export function Reveal({ reveal, parts, phase, onChronicle, onClose }: Props) {
               : `You voted ${nameOf(myPick)}${myPlace ? `: it came ${ordinal(myPlace)}` : ''}.`}
           </p>
         ) : (
-          <p className="reveal-mine">You did not vote that night.</p>
+          <p className="reveal-mine" data-testid="reveal-mine">
+            You did not vote that night.
+          </p>
         )}
         {missed > 0 && (
           <button className="btn btn-secondary btn-small" onClick={onChronicle}>

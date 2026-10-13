@@ -16,6 +16,7 @@ import {
   type Phase,
 } from '../game/schedule';
 import {
+  bonusVoteWaiting,
   canEarnAdVote,
   grantAdVote,
   markSeen,
@@ -248,9 +249,11 @@ export function useGame(): GameModel {
   const armReminders = useCallback(() => {
     const t = run.now();
     const p = phaseAt(t, SEASON);
-    const voted =
-      p.kind === 'voting' && saveRef.current.day === p.day && saveRef.current.votes.length > 0;
-    run.setReminders(reminderPlan(t, SEASON, SCHEDULE, voted));
+    const s = saveRef.current;
+    const today = p.kind === 'voting' && s.day === p.day;
+    run.setReminders(
+      reminderPlan(t, SEASON, SCHEDULE, today && s.votes.length > 0, today && bonusVoteWaiting(s)),
+    );
   }, []);
 
   const begin = useCallback(() => {

@@ -4,7 +4,7 @@
  *
  * Targets:
  *  1. Empty days and ties pick every eligible option equally often (within 1.5 points).
- *  2. A determined returning player who spends every extra vote (the return bonus plus
+ *  2. A determined player on a streak who spends every extra vote (the streak bonus plus
  *     every ad vote) backing the runner-up flips the day's winner on at most 15% of
  *     100-voter days (one ordinary vote alone flips ~4%). The caps are the owner's choice
  *     (1 bonus + 2 ad votes: ~14.7%, even though ordinary voters here get no bonus);
@@ -108,7 +108,7 @@ console.log(
 const extraVotes = RETURN_BONUS_VOTES + MAX_AD_VOTES_PER_DAY;
 check(
   flipAt100(extraVotes) <= MAX_FLIP_AT_100,
-  `${RETURN_BONUS_VOTES} return bonus + ${MAX_AD_VOTES_PER_DAY} ad votes (${extraVotes} extra) flip ${(flipAt100(extraVotes) * 100).toFixed(1)}% of 100-voter days`,
+  `${RETURN_BONUS_VOTES} streak bonus + ${MAX_AD_VOTES_PER_DAY} ad votes (${extraVotes} extra) flip ${(flipAt100(extraVotes) * 100).toFixed(1)}% of 100-voter days`,
 );
 
 process.exit(failed ? 1 : 0);

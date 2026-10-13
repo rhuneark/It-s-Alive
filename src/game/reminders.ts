@@ -31,6 +31,8 @@ export function reminderPlan(
   season: Season,
   schedule: readonly Question[],
   votedToday: boolean,
+  /** The streak bonus vote is waiting tonight (the player voted last night). */
+  bonusToday = false,
 ): Reminder[] {
   const today = dayIndexAt(nowMs, season);
   const halloween = votingDays(season);
@@ -43,11 +45,15 @@ export function reminderPlan(
     const q = schedule[day];
     if (q) {
       if (day === today && votedToday) continue;
+      // A streak bonus is certain for tonight if earned, and for tomorrow once voted today.
+      const streak = (day === today && bonusToday) || (day === today + 1 && votedToday);
       out.push({
         id,
         atMs,
         title: `Night ${day + 1}: the ${q.part.toLowerCase()}`,
-        body: `${q.prompt} The vote closes at midnight, and your extra vote is waiting.`,
+        body: `${q.prompt} ${
+          streak ? 'Your streak bonus vote is waiting too.' : 'The vote closes at midnight.'
+        }`,
       });
     } else if (day < halloween) {
       out.push({

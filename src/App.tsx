@@ -423,7 +423,8 @@ function Vote({
               {next ? (
                 <>
                   Come back after midnight (Central) to see which {question.part.toLowerCase()} is
-                  stitched on, and to choose the <b>{next.part.toLowerCase()}</b>.
+                  stitched on, and to choose the <b>{next.part.toLowerCase()}</b>. Your streak earns
+                  you <b>+1 vote</b> tomorrow.
                 </>
               ) : (
                 <>
@@ -624,12 +625,12 @@ function Awakened({
   );
 }
 
-/** A slim ribbon (not a card) telling a returning player about their extra vote. */
+/** A slim ribbon (not a card) telling a player on a streak (voted last night) about their extra vote. */
 function BonusBanner({ voted }: { voted: boolean }) {
   return (
     <p className="bonus-banner" role="status" data-testid="bonus-banner">
       <span aria-hidden="true">⚡</span>
-      {voted ? 'Your +1 vote is waiting' : 'Welcome back! +1 vote tonight'}
+      {voted ? 'Your streak vote is waiting' : 'Streak bonus! +1 vote tonight'}
       <span aria-hidden="true">⚡</span>
     </p>
   );

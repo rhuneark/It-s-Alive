@@ -8,7 +8,7 @@ import type { WinReason } from './tally';
 
 /** Everyone gets one vote per day. */
 export const FREE_VOTES_PER_DAY = 1;
-/** A returning player (played on an earlier day) gets this many more, every day they come back. */
+/** A player on a streak (voted on the night before) gets this many more votes tonight. */
 export const RETURN_BONUS_VOTES = 1;
 /**
  * Extra votes a player can earn per day by watching rewarded ads (the owner's
@@ -38,7 +38,7 @@ export interface SaveState {
   day: number;
   votes: CastVote[];
   adVotesEarned: number;
-  /** Extra votes for coming back on a later day (RETURN_BONUS_VOTES), for `day` only. */
+  /** Streak bonus votes (RETURN_BONUS_VOTES) for `day` only: the player voted the night before. */
   bonusVotes: number;
   /** Option the player tapped but has not cast yet. */
   pending: string | null;
@@ -153,7 +153,7 @@ export function serializeSave(save: SaveState): string {
 
 /**
  * Moving to another day clears that day's votes and selection but keeps history and
- * stats. A player who played on an earlier day and comes back gets the return bonus.
+ * stats. A player who voted on the night before (a streak) gets the bonus vote.
  * A day the player already voted on keeps that vote (from `myPicks`), so moving the
  * clock back (as the switch to Central midnight did) never hands out a second free vote.
  */
@@ -161,12 +161,12 @@ export function rollToDay(save: SaveState, day: number): SaveState {
   if (save.day === day) return save;
   const pick = save.myPicks[String(day)];
   const votes: CastVote[] = pick ? [{ optionId: pick, kind: 'free' }] : [];
-  const returning = save.started && day > save.day;
-  const bonusVotes = returning ? RETURN_BONUS_VOTES : 0;
+  const streak = save.stats.lastVotedDay === day - 1;
+  const bonusVotes = streak ? RETURN_BONUS_VOTES : 0;
   return { ...save, day, votes, adVotesEarned: 0, bonusVotes, pending: null };
 }
 
-/** The return bonus is still there to use today. */
+/** The streak bonus vote is still there to use today. */
 export function bonusVoteWaiting(save: SaveState): boolean {
   return save.bonusVotes > 0 && save.votes.length < FREE_VOTES_PER_DAY + save.bonusVotes;
 }

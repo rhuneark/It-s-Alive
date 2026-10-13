@@ -115,6 +115,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   // The hook for tomorrow: what gets stitched at midnight and what comes next.
   await expect(page.getByTestId('tomorrow')).toContainText('which head is stitched on');
   await expect(page.getByTestId('tomorrow')).toContainText('torso');
+  await expect(page.getByTestId('tomorrow')).toContainText('streak earns you +1 vote tomorrow');
   await noSidewaysScroll(page);
   await shot('results');
 
@@ -163,15 +164,21 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
     .count();
   for (let day = 1; day <= 18; day++) {
     await page.goto(`/?day=${day}`);
-    // Back on a later day: an extra vote, announced by a ribbon (not a card).
-    if (day === 1) await expect(page.getByTestId('bonus-banner')).toContainText('+1 vote tonight');
+    // Voted last night: a streak vote, announced by a ribbon (not a card). Night 7 is skipped,
+    // so night 8 brings no bonus, and voting on night 8 earns it back for night 9.
+    await expect(page.getByTestId('tonight')).toContainText('Your vote is waiting');
+    if (day === 7) await expect(page.getByTestId('bonus-banner')).toHaveCount(0);
+    else
+      await expect(page.getByTestId('bonus-banner')).toContainText('Streak bonus! +1 vote tonight');
     await page.getByTestId('start').click();
     // Back after midnight: the stitching is revealed first, with how my pick fared.
     const reveal = page.getByTestId('reveal');
     await expect(reveal).toBeVisible();
     await expect(reveal).toContainText(`Night ${day} ·`);
     await expect(reveal).toContainText('The village chose');
-    await expect(page.getByTestId('reveal-mine')).toContainText(/won|came \d|did not vote/);
+    await expect(page.getByTestId('reveal-mine')).toContainText(
+      day === 7 ? 'did not vote' : /won|came \d/,
+    );
     if (day === 1) {
       await expect(page.locator('.reveal .part.fresh')).toHaveCount(1);
       await noSidewaysScroll(page);
@@ -190,9 +197,10 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
       .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
       .count();
     await imagesLoaded(page);
+    if (day === 6) continue; // night 7: no vote
     await voteFor(page, day % 5);
     if (day === 1) {
-      await expect(page.getByTestId('bonus-banner')).toContainText('+1 vote is waiting');
+      await expect(page.getByTestId('bonus-banner')).toContainText('Your streak vote is waiting');
       await voteFor(page, day % 5);
       await expect(page.getByTestId('bonus-banner')).toHaveCount(0);
       await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×2');

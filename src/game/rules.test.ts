@@ -185,7 +185,7 @@ describe('votes and saves', () => {
     };
     s = rollToDay(s, 1);
     expect(s.votes).toEqual([]);
-    expect(votesRemaining(s)).toBe(1);
+    expect(votesRemaining(s)).toBe(2); // the free vote + the streak vote
     expect(s.history['0']!.winner).toBe('head_raven');
     s = recordVote(s, 'torso_bear');
     expect(s.stats.streak).toBe(2);
@@ -252,11 +252,12 @@ describe('votes and saves', () => {
   });
 });
 
-describe('return bonus', () => {
-  it('gives a player who comes back on a later day an extra vote, not on their first day', () => {
-    let s = newSave('test', 2);
+describe('streak bonus', () => {
+  it('gives a player who voted last night an extra vote tonight', () => {
+    let s = { ...newSave('test', 2), started: true };
     expect(votesAllowed(s)).toBe(1);
-    s = rollToDay({ ...s, started: true }, 3);
+    s = recordVote(s, 'eye_owl'); // night 3
+    s = rollToDay(s, 3);
     expect(s.bonusVotes).toBe(1);
     expect(votesAllowed(s)).toBe(2);
     expect(bonusVoteWaiting(s)).toBe(true);
@@ -264,13 +265,22 @@ describe('return bonus', () => {
     expect(bonusVoteWaiting(s)).toBe(true);
     s = recordVote(s, 'eye_owl');
     expect(s.votes.map((v) => v.kind)).toEqual(['free', 'bonus']);
+    expect(s.stats.streak).toBe(2);
     expect(bonusVoteWaiting(s)).toBe(false);
     expect(votesRemaining(s)).toBe(0);
     expect(canEarnAdVote(s)).toBe(true); // ads still add up to MAX_AD_VOTES_PER_DAY more
     expect(parseSave(serializeSave(s), 'test', 3).bonusVotes).toBe(1); // same day: kept
-    // never started (looked at the title only): no bonus; the clock going back: no bonus
-    expect(rollToDay(newSave('test', 2), 3).bonusVotes).toBe(0);
-    expect(rollToDay({ ...newSave('test', 4), started: true }, 3).bonusVotes).toBe(0);
+    expect(rollToDay(s, 4).bonusVotes).toBe(1); // the streak goes on
+  });
+
+  it('gives no bonus to a player who skipped last night or never voted', () => {
+    const voted2 = recordVote({ ...newSave('test', 2), started: true }, 'eye_owl');
+    expect(rollToDay(voted2, 4).bonusVotes).toBe(0); // missed night 4
+    expect(rollToDay({ ...newSave('test', 2), started: true }, 3).bonusVotes).toBe(0);
+    expect(rollToDay(newSave('test', 0), 1).bonusVotes).toBe(0);
+    // looked in on a night without voting: tomorrow brings no bonus either
+    const idle = rollToDay(voted2, 3);
+    expect(rollToDay({ ...idle, votes: [] }, 4).bonusVotes).toBe(0);
   });
 });
 
@@ -300,6 +310,26 @@ describe('daily reminders', () => {
     ]);
     expect(end.at(-1)!.atMs).toBe(LIVE_SEASON.awakenMs + 10 * 3_600_000);
     expect(reminderPlan(LIVE_SEASON.awakenMs + DAY_MS, LIVE_SEASON, schedule, false)).toEqual([]);
+  });
+
+  it('mentions the streak vote only on nights it is certain', () => {
+    const streak = (r: { body: string }) => r.body.includes('streak');
+    // a bonus waiting tonight: tonight says so, later nights do not (the player may skip)
+    expect(reminderPlan(at(2, 9), LIVE_SEASON, schedule, false, true).map(streak)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    // voted tonight: tomorrow's bonus is earned
+    expect(reminderPlan(at(2, 9), LIVE_SEASON, schedule, true).map(streak).slice(0, 2)).toEqual([
+      true,
+      false,
+    ]);
+    expect(reminderPlan(at(2, 9), LIVE_SEASON, schedule, false).some(streak)).toBe(false);
   });
 });
 
