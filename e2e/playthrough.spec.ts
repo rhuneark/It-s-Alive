@@ -103,6 +103,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.locator('.option')).toHaveCount(5);
   await expect(page.locator('.result')).toHaveCount(0); // no peeking before voting
   await expect(page.getByTestId('cast')).toBeDisabled();
+  await expect(page.getByTestId('bonus-banner')).toHaveCount(0); // a first visit: one vote
   await noSidewaysScroll(page);
   await framedButtons(page);
   await shot('vote');
@@ -161,7 +162,10 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
     .locator('.monster:not(.monster-mini) .part[data-layer^="parts/"]')
     .count();
   for (let day = 1; day <= 18; day++) {
-    await openDay(page, day, { reveal: 'check' });
+    await page.goto(`/?day=${day}`);
+    // Back on a later day: an extra vote, announced by a ribbon (not a card).
+    if (day === 1) await expect(page.getByTestId('bonus-banner')).toContainText('+1 vote tonight');
+    await page.getByTestId('start').click();
     // Back after midnight: the stitching is revealed first, with how my pick fared.
     const reveal = page.getByTestId('reveal');
     await expect(reveal).toBeVisible();
@@ -187,6 +191,12 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
       .count();
     await imagesLoaded(page);
     await voteFor(page, day % 5);
+    if (day === 1) {
+      await expect(page.getByTestId('bonus-banner')).toContainText('+1 vote is waiting');
+      await voteFor(page, day % 5);
+      await expect(page.getByTestId('bonus-banner')).toHaveCount(0);
+      await expect(page.locator('.result.mine .chip').last()).toHaveText('Your vote ×2');
+    }
     await percentagesSumTo100(page);
     await noSidewaysScroll(page);
     if (day === 10) await shot('midseason');

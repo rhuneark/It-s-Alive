@@ -14,6 +14,7 @@
 import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { HapticFeedbackStyle } from '@series-inc/rundot-game-sdk';
 import { simulatedCrowd } from '../game/crowd';
+import type { Reminder } from '../game/reminders';
 import { DAY_MS, SEASON } from '../game/schedule';
 
 const INIT_TIMEOUT_MS = 8000;
@@ -358,31 +359,37 @@ export async function loadTheme(): Promise<ThemeSource> {
 
 // ---------------------------------------------------------------- reminders
 
-const REMINDER_ID = 'stitched';
-let reminderHandle: string | null = null;
+/** Marks our local notifications (a payload key the host passes through), so we can find them again. */
+const REMINDER_TAG = 'itsAliveReminder';
 
 /**
- * A single local reminder at `atMs` (on run.world it lands in the bell inbox).
- * Each call replaces the previous one, so a player never gets more than one.
+ * Replace this player's pending reminders with `plan` (on run.world they land in the bell
+ * inbox). Our earlier ones are cancelled first, and each night keeps a stable id, so
+ * arming again (every Continue, Sketchbook or vote) never stacks duplicates.
  */
-export function remindAt(atMs: number, title: string, body: string): void {
+export function setReminders(plan: readonly Reminder[]): void {
   if (isMock()) return;
   void ready().then(async () => {
+    const n = RundotGameAPI.notifications;
     try {
-      if (reminderHandle) {
-        await RundotGameAPI.notifications.cancelNotification(reminderHandle).catch(() => false);
+      const pending = await n.getAllScheduledLocalNotifications().catch(() => []);
+      for (const p of pending ?? []) {
+        if (p?.payload && REMINDER_TAG in p.payload)
+          await n.cancelNotification(p.id).catch(() => false);
       }
-      const res = await RundotGameAPI.notifications.submitMessageAsync({
-        channels: ['local'],
-        title,
-        body,
-        triggerAt: new Date(atMs).toISOString(),
-        notificationId: REMINDER_ID,
-        collapseKey: REMINDER_ID,
-      });
-      reminderHandle = res?.results?.find((r) => r.channel === 'local')?.id ?? null;
+      for (const r of plan) {
+        await n.submitMessageAsync({
+          channels: ['local'],
+          title: r.title,
+          body: r.body,
+          triggerAt: new Date(r.atMs).toISOString(),
+          notificationId: r.id,
+          collapseKey: r.id,
+          payload: { [REMINDER_TAG]: r.id },
+        });
+      }
     } catch (err) {
-      warn('remindAt', err);
+      warn('setReminders', err);
     }
   });
 }

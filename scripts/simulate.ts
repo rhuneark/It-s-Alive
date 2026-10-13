@@ -4,14 +4,15 @@
  *
  * Targets:
  *  1. Empty days and ties pick every eligible option equally often (within 1.5 points).
- *  2. A determined player who spends every ad vote backing the runner-up flips the
- *     day's winner on at most 15% of 100-voter days (one ordinary vote alone flips
- *     ~4%). MAX_AD_VOTES_PER_DAY is the owner's choice (2 extra votes a day, ~12%);
- *     this check keeps any change to it fair.
+ *  2. A determined returning player who spends every extra vote (the return bonus plus
+ *     every ad vote) backing the runner-up flips the day's winner on at most 15% of
+ *     100-voter days (one ordinary vote alone flips ~4%). The caps are the owner's choice
+ *     (1 bonus + 2 ad votes: ~14.7%, even though ordinary voters here get no bonus);
+ *     this check keeps any change to them fair.
  */
 import { resolveDay } from '../src/game/tally';
 import { makeRng, rngFor } from '../src/game/rng';
-import { MAX_AD_VOTES_PER_DAY } from '../src/game/state';
+import { MAX_AD_VOTES_PER_DAY, RETURN_BONUS_VOTES } from '../src/game/state';
 
 const RUNS = 20_000;
 let failed = false;
@@ -104,9 +105,10 @@ for (let cap = 0; cap < flipRates.length; cap++)
 console.log(
   `\nLargest cap keeping a maxed-out player under ${MAX_FLIP_AT_100 * 100}% flips at 100 voters: ${bestCap}`,
 );
+const extraVotes = RETURN_BONUS_VOTES + MAX_AD_VOTES_PER_DAY;
 check(
-  flipAt100(MAX_AD_VOTES_PER_DAY) <= MAX_FLIP_AT_100,
-  `MAX_AD_VOTES_PER_DAY (${MAX_AD_VOTES_PER_DAY}) flips ${(flipAt100(MAX_AD_VOTES_PER_DAY) * 100).toFixed(1)}% of 100-voter days`,
+  flipAt100(extraVotes) <= MAX_FLIP_AT_100,
+  `${RETURN_BONUS_VOTES} return bonus + ${MAX_AD_VOTES_PER_DAY} ad votes (${extraVotes} extra) flip ${(flipAt100(extraVotes) * 100).toFixed(1)}% of 100-voter days`,
 );
 
 process.exit(failed ? 1 : 0);

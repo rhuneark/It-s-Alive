@@ -14,10 +14,12 @@ import {
   type Season,
 } from './schedule';
 import LAYERS from './layers.json';
+import { reminderPlan } from './reminders';
 import { ordinal, pendingReveal } from './reveal';
 import { cleanSketch, randomSketch, setSketchPart, sketchFromPicks, sketchSize } from './sketch';
 import {
   MAX_AD_VOTES_PER_DAY,
+  bonusVoteWaiting,
   canEarnAdVote,
   grantAdVote,
   markSeen,
@@ -29,6 +31,7 @@ import {
   setMusic,
   setMusicVolume,
   setSketch,
+  votesAllowed,
   votesRemaining,
 } from './state';
 import { percentages, resolveDay } from './tally';
@@ -246,6 +249,57 @@ describe('votes and saves', () => {
     // Night 1 comes round again: the torso vote already cast still counts as tonight's vote.
     expect(rollToDay(back, 1).votes).toEqual([{ optionId: 'torso_bear', kind: 'free' }]);
     expect(rollToDay(back, 2).votes).toEqual([]);
+  });
+});
+
+describe('return bonus', () => {
+  it('gives a player who comes back on a later day an extra vote, not on their first day', () => {
+    let s = newSave('test', 2);
+    expect(votesAllowed(s)).toBe(1);
+    s = rollToDay({ ...s, started: true }, 3);
+    expect(s.bonusVotes).toBe(1);
+    expect(votesAllowed(s)).toBe(2);
+    expect(bonusVoteWaiting(s)).toBe(true);
+    s = recordVote(s, 'eye_owl');
+    expect(bonusVoteWaiting(s)).toBe(true);
+    s = recordVote(s, 'eye_owl');
+    expect(s.votes.map((v) => v.kind)).toEqual(['free', 'bonus']);
+    expect(bonusVoteWaiting(s)).toBe(false);
+    expect(votesRemaining(s)).toBe(0);
+    expect(canEarnAdVote(s)).toBe(true); // ads still add up to MAX_AD_VOTES_PER_DAY more
+    expect(parseSave(serializeSave(s), 'test', 3).bonusVotes).toBe(1); // same day: kept
+    // never started (looked at the title only): no bonus; the clock going back: no bonus
+    expect(rollToDay(newSave('test', 2), 3).bonusVotes).toBe(0);
+    expect(rollToDay({ ...newSave('test', 4), started: true }, 3).bonusVotes).toBe(0);
+  });
+});
+
+describe('daily reminders', () => {
+  const schedule = seasonSchedule(LIVE_SEASON);
+  const at = (day: number, hour: number) => LIVE_SEASON.startMs + day * DAY_MS + hour * 3_600_000;
+
+  it("names each night's part at 6 pm Central for the next week", () => {
+    const plan = reminderPlan(at(2, 9), LIVE_SEASON, schedule, false);
+    expect(plan).toHaveLength(7);
+    expect(plan[0]!.atMs).toBe(at(2, 18));
+    expect(plan[0]!.title).toBe(`Night 3: the ${schedule[2]!.part.toLowerCase()}`);
+    expect(plan[0]!.body).toContain(schedule[2]!.prompt);
+    expect(new Set(plan.map((r) => r.id)).size).toBe(plan.length);
+    expect(plan.every((r) => r.atMs - at(2, 9) <= 7 * DAY_MS)).toBe(true);
+  });
+
+  it('skips tonight once voted or past 6 pm, and ends with the vigil and the waking', () => {
+    expect(reminderPlan(at(2, 9), LIVE_SEASON, schedule, true)[0]!.atMs).toBe(at(3, 18));
+    expect(reminderPlan(at(2, 19), LIVE_SEASON, schedule, false)[0]!.atMs).toBe(at(3, 18));
+    const end = reminderPlan(at(17, 9), LIVE_SEASON, schedule, false);
+    expect(end.map((r) => r.title)).toEqual([
+      `Night 18: the ${schedule[17]!.part.toLowerCase()}`,
+      `Night 19: the ${schedule[18]!.part.toLowerCase()}`,
+      'The vigil',
+      "It's alive!",
+    ]);
+    expect(end.at(-1)!.atMs).toBe(LIVE_SEASON.awakenMs + 10 * 3_600_000);
+    expect(reminderPlan(LIVE_SEASON.awakenMs + DAY_MS, LIVE_SEASON, schedule, false)).toEqual([]);
   });
 });
 

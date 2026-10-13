@@ -24,9 +24,12 @@ day's vote from `myPicks`, so nobody votes twice on a night.
 - Season config: `SEASON` in `src/game/schedule.ts` (id, first day, Halloween). Changing `id` starts fresh tallies.
   The first day must be the launch day so night 1 (HEAD) is playable; a later start drops middle questions
   (`buildSchedule`), never the head, brain or spark.
-- One free vote per day, plus `MAX_AD_VOTES_PER_DAY` = 2 (`src/game/state.ts`, the owner's choice) extra
-  votes from rewarded ads. `npm run simulate` checks a maxed-out player flips at most 15% of 100-voter
-  days (2 ads: 12%); re-run it if you change the cap or the voting model.
+- One free vote per day; a returning player (started, and back on a later day) gets `RETURN_BONUS_VOTES` = 1
+  more every day (`bonusVotes` in the save, set by `rollToDay`; vote kind `bonus`), announced by a slim
+  ribbon (`BonusBanner`, not a card) on the title and vote screens until it is used. Plus
+  `MAX_AD_VOTES_PER_DAY` = 2 extra votes from rewarded ads (the owner's choices, `src/game/state.ts`).
+  `npm run simulate` checks a maxed-out player (bonus + ads) flips at most 15% of 100-voter days
+  (1 + 2 extra: 14.7%, counting ordinary voters without a bonus); re-run it if you change any cap.
 - Percentages are hidden until the player has voted.
 - Sketchbook (every screen, every player): a private sandbox to try any option for any part and see the
   creature it makes. Nothing in it is a vote. Rules in `src/game/sketch.ts`; the design is kept in the save
@@ -49,8 +52,14 @@ day's vote from `myPicks`, so nobody votes twice on a night.
 - Coming back: the first thing a returning player sees after a stitching is the Reveal (`src/game/reveal.ts`,
   `components/Reveal.tsx`): the new part glowing on the creature, the winner's share, how their own pick
   placed, and missed nights. `seenNight` in the save marks what was shown; a first visit marks every closed
-  night seen (no reveal). After voting, the vote screen says what comes tomorrow, and `run.remindAt` sets
-  ONE local reminder (bell inbox on run.world) for just after midnight Central, replacing any earlier one.
+  night seen (no reveal). After voting, the vote screen says what comes tomorrow.
+- Daily reminders: tapping Continue/Enter, opening the Sketchbook, or voting arms them (`armReminders` in
+  useGame): `reminderPlan()` (`src/game/reminders.ts`) gives one local notification a day at 6 pm Central
+  naming that night's part ("Night 5: the third eye", the question, "your extra vote is waiting"), then the
+  vigil and Halloween morning, for the next 7 days (the platform's limit), skipping tonight once voted.
+  `run.setReminders` cancels our earlier ones (payload tag `itsAliveReminder`) and schedules the plan with
+  a stable id per night, so re-arming never stacks duplicates. On run.world they land in the bell inbox.
+  Skipped in local dev (mock).
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
   opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
   Sign in / Try music again buttons. Use it to debug on a phone.
@@ -59,7 +68,7 @@ day's vote from `myPicks`, so nobody votes twice on a night.
 ```
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
-               sketch (Sketchbook designs), reveal (last night's stitching), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
+               sketch (Sketchbook designs), reveal (last night's stitching), reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,

@@ -8,6 +8,8 @@ import type { WinReason } from './tally';
 
 /** Everyone gets one vote per day. */
 export const FREE_VOTES_PER_DAY = 1;
+/** A returning player (played on an earlier day) gets this many more, every day they come back. */
+export const RETURN_BONUS_VOTES = 1;
 /**
  * Extra votes a player can earn per day by watching rewarded ads (the owner's
  * choice). scripts/simulate.ts checks it stays fair: one player maxing it out
@@ -20,7 +22,7 @@ export const DEFAULT_MUSIC_VOLUME = 0.5;
 
 export interface CastVote {
   optionId: string;
-  kind: 'free' | 'ad';
+  kind: 'free' | 'bonus' | 'ad';
 }
 
 export interface ResolvedDay {
@@ -36,6 +38,8 @@ export interface SaveState {
   day: number;
   votes: CastVote[];
   adVotesEarned: number;
+  /** Extra votes for coming back on a later day (RETURN_BONUS_VOTES), for `day` only. */
+  bonusVotes: number;
   /** Option the player tapped but has not cast yet. */
   pending: string | null;
   /** Resolved past days, keyed by day index. Final once a day has closed. */
@@ -62,6 +66,7 @@ export function newSave(season: string, day: number): SaveState {
     day,
     votes: [],
     adVotesEarned: 0,
+    bonusVotes: 0,
     pending: null,
     history: {},
     stats: { totalVotes: 0, daysVoted: 0, lastVotedDay: -999, streak: 0 },
@@ -85,7 +90,9 @@ export function parseSave(raw: string | null, season: string, day: number): Save
     const votes = Array.isArray(data.votes)
       ? data.votes.filter(
           (v): v is CastVote =>
-            !!v && typeof v.optionId === 'string' && (v.kind === 'free' || v.kind === 'ad'),
+            !!v &&
+            typeof v.optionId === 'string' &&
+            (v.kind === 'free' || v.kind === 'bonus' || v.kind === 'ad'),
         )
       : [];
     const save: SaveState = {
@@ -93,6 +100,7 @@ export function parseSave(raw: string | null, season: string, day: number): Save
       day: typeof data.day === 'number' ? data.day : day,
       votes,
       adVotesEarned: clampInt(data.adVotesEarned, 0, MAX_AD_VOTES_PER_DAY),
+      bonusVotes: clampInt(data.bonusVotes, 0, RETURN_BONUS_VOTES),
       pending: typeof data.pending === 'string' ? data.pending : null,
       // Only days already closed: a day reopened by a clock change is tallied again when it ends.
       history: isRecord(data.history)
@@ -145,18 +153,26 @@ export function serializeSave(save: SaveState): string {
 
 /**
  * Moving to another day clears that day's votes and selection but keeps history and
- * stats. A day the player already voted on keeps that vote (from `myPicks`), so moving
- * the clock back (as the switch to Central midnight did) never hands out a second free vote.
+ * stats. A player who played on an earlier day and comes back gets the return bonus.
+ * A day the player already voted on keeps that vote (from `myPicks`), so moving the
+ * clock back (as the switch to Central midnight did) never hands out a second free vote.
  */
 export function rollToDay(save: SaveState, day: number): SaveState {
   if (save.day === day) return save;
   const pick = save.myPicks[String(day)];
   const votes: CastVote[] = pick ? [{ optionId: pick, kind: 'free' }] : [];
-  return { ...save, day, votes, adVotesEarned: 0, pending: null };
+  const returning = save.started && day > save.day;
+  const bonusVotes = returning ? RETURN_BONUS_VOTES : 0;
+  return { ...save, day, votes, adVotesEarned: 0, bonusVotes, pending: null };
+}
+
+/** The return bonus is still there to use today. */
+export function bonusVoteWaiting(save: SaveState): boolean {
+  return save.bonusVotes > 0 && save.votes.length < FREE_VOTES_PER_DAY + save.bonusVotes;
 }
 
 export function votesAllowed(save: SaveState): number {
-  return FREE_VOTES_PER_DAY + save.adVotesEarned;
+  return FREE_VOTES_PER_DAY + save.bonusVotes + save.adVotesEarned;
 }
 
 export function votesRemaining(save: SaveState): number {
@@ -184,7 +200,9 @@ export function grantAdVote(save: SaveState): SaveState {
 
 export function recordVote(save: SaveState, optionId: string): SaveState {
   if (votesRemaining(save) <= 0) throw new Error('No votes remaining today');
-  const kind: CastVote['kind'] = save.votes.length < FREE_VOTES_PER_DAY ? 'free' : 'ad';
+  const n = save.votes.length;
+  const kind: CastVote['kind'] =
+    n < FREE_VOTES_PER_DAY ? 'free' : n < FREE_VOTES_PER_DAY + save.bonusVotes ? 'bonus' : 'ad';
   const firstToday = save.votes.length === 0;
   const continuing = save.stats.lastVotedDay === save.day - 1;
   const stats = firstToday

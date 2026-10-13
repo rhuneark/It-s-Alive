@@ -12,9 +12,10 @@ import { findOption, questionForSlot } from './game/catalog';
 import { formatCountdown } from './game/schedule';
 import {
   DEFAULT_MUSIC_VOLUME,
-  FREE_VOTES_PER_DAY,
   MAX_AD_VOTES_PER_DAY,
+  bonusVoteWaiting,
   canEarnAdVote,
+  votesAllowed,
   votesRemaining,
 } from './game/state';
 import * as run from './sdk/run';
@@ -73,6 +74,7 @@ function Game({
   const [sketchOpen, setSketchOpen] = useState(false);
   const openSketch = () => {
     setSketchOpen(true);
+    game.armReminders();
     run.track('sketchbook_open');
   };
   const [diagOpen, setDiagOpen] = useState(false);
@@ -214,6 +216,9 @@ function Title({
         alive={phase.kind === 'awakened'}
         className="monster-title"
       />
+      {phase.kind === 'voting' && bonusVoteWaiting(save) && (
+        <BonusBanner voted={save.votes.length > 0} />
+      )}
       <Tonight game={game} />
       {!returning && (
         <div className="panel lore">
@@ -335,6 +340,7 @@ function Vote({
   return (
     <div className="screen game">
       <TopBar game={game} onChronicle={onChronicle} subtitle={`Night ${day + 1} of ${dayCount}`} />
+      {bonusVoteWaiting(save) && <BonusBanner voted={voted} />}
 
       <Monster
         parts={game.parts}
@@ -410,7 +416,7 @@ function Vote({
               </button>
             ) : (
               <p className="muted center-text small">
-                You've cast all {FREE_VOTES_PER_DAY + MAX_AD_VOTES_PER_DAY} of tonight's votes.
+                You've cast all {votesAllowed(save)} of tonight's votes.
               </p>
             )}
             <p className="tomorrow" data-testid="tomorrow">
@@ -615,6 +621,17 @@ function Awakened({
       </section>
       <SketchButton onClick={onSketch} />
     </div>
+  );
+}
+
+/** A slim ribbon (not a card) telling a returning player about their extra vote. */
+function BonusBanner({ voted }: { voted: boolean }) {
+  return (
+    <p className="bonus-banner" role="status" data-testid="bonus-banner">
+      <span aria-hidden="true">⚡</span>
+      {voted ? 'Your +1 vote is waiting' : 'Welcome back! +1 vote tonight'}
+      <span aria-hidden="true">⚡</span>
+    </p>
   );
 }
 

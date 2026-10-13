@@ -5,9 +5,9 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SlotId } from '../game/catalog';
+import { reminderPlan } from '../game/reminders';
 import { pendingReveal, type Reveal } from '../game/reveal';
 import {
-  DAY_MS,
   SEASON,
   closedDays,
   dayIndexAt,
@@ -58,6 +58,8 @@ export interface GameModel {
   adBusy: boolean;
   toast: Toast | null;
   begin: () => void;
+  /** Schedule the daily reminders (opening the Sketchbook does this too). */
+  armReminders: () => void;
   /** Last night's stitching, until the player has seen it (null for a first visit). */
   reveal: Reveal | null;
   dismissReveal: () => void;
@@ -242,13 +244,23 @@ export function useGame(): GameModel {
     });
   }, [resolvePast, refreshCounts]);
 
+  /** Daily reminders for the coming week, from now on (Continue, the Sketchbook, a vote). */
+  const armReminders = useCallback(() => {
+    const t = run.now();
+    const p = phaseAt(t, SEASON);
+    const voted =
+      p.kind === 'voting' && saveRef.current.day === p.day && saveRef.current.votes.length > 0;
+    run.setReminders(reminderPlan(t, SEASON, SCHEDULE, voted));
+  }, []);
+
   const begin = useCallback(() => {
     const s = saveRef.current;
     // A first visit starts from tonight: past stitchings are in the Chronicle, not a reveal
     // (every night closed so far, tallied yet or not).
     void commit(markStarted(s.started ? s : markSeen(s, currentDay(run.now()) - 1)));
     run.funnel(2, 'begin');
-  }, [commit]);
+    armReminders();
+  }, [commit, armReminders]);
 
   const reveal = useMemo(() => (save.started ? pendingReveal(save, SCHEDULE) : null), [save]);
   const dismissReveal = useCallback(() => {
@@ -299,18 +311,10 @@ export function useGame(): GameModel {
     });
     if (next.votes.length === 1) {
       run.funnel(3, 'first_vote');
-      // One reminder: just after midnight Central, when tonight's part is stitched on.
-      const tomorrow = SCHEDULE[p.day + 1];
-      run.remindAt(
-        SEASON.startMs + (p.day + 1) * DAY_MS + 60_000,
-        `The ${p.question.part.toLowerCase()} is stitched on`,
-        tomorrow
-          ? `See what the village chose, then pick tonight's ${tomorrow.part.toLowerCase()}.`
-          : 'Every part is in place. Come keep the vigil: on Halloween it wakes.',
-      );
+      armReminders(); // tonight's reminder is no longer needed
     }
     await refreshCounts();
-  }, [casting, commit, notify, refreshCounts]);
+  }, [casting, commit, notify, refreshCounts, armReminders]);
 
   const watchAdForVote = useCallback(async () => {
     if (adBusy || !canEarnAdVote(saveRef.current)) return;
@@ -381,6 +385,7 @@ export function useGame(): GameModel {
     adBusy,
     toast,
     begin,
+    armReminders,
     reveal,
     dismissReveal,
     select,

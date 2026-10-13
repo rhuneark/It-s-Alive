@@ -1339,3 +1339,36 @@ b {
     filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 8px var(--brass)) brightness(1.25);
   }
 }
+
+/* ---------- return bonus: a ribbon, not a card ---------- */
+.bonus-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 -16px;
+  padding: 7px 12px;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: var(--bile);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(155, 224, 106, 0.16) 30%,
+    rgba(155, 224, 106, 0.16) 70%,
+    transparent
+  );
+  border-top: 1px solid rgba(155, 224, 106, 0.45);
+  border-bottom: 1px solid rgba(155, 224, 106, 0.45);
+  text-shadow: 0 0 8px rgba(155, 224, 106, 0.55);
+  animation: bonus-glow 2.6s ease-in-out infinite;
+}
+
+@keyframes bonus-glow {
+  50% {
+    text-shadow: 0 0 14px rgba(155, 224, 106, 0.9);
+  }
+}
