@@ -1,4 +1,10 @@
+import { existsSync } from 'node:fs';
 import { defineConfig } from '@playwright/test';
+
+// The cloud sandbox ships Chromium at /opt/pw-browsers; on your own computer Playwright
+// uses the browser from `npx playwright install chromium`.
+const chromium =
+  process.env.PW_CHROMIUM || ['/opt/pw-browsers/chromium'].find((p) => existsSync(p));
 
 // Full playthrough against the dev server (SDK in mock mode, ?day=N time travel).
 export default defineConfig({
@@ -9,7 +15,7 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: 'http://127.0.0.1:5199',
-    launchOptions: { executablePath: process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium' },
+    launchOptions: chromium ? { executablePath: chromium } : {},
     deviceScaleFactor: 2,
     hasTouch: true,
   },

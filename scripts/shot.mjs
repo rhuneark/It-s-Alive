@@ -1,11 +1,13 @@
 // Dev helper: screenshot the running dev server.
 // node scripts/shot.mjs <url-query> <out.png> [width] [height] [clickTestId...]
+import { existsSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const [query = '', out = 'shot.png', w = '390', h = '844', ...clicks] = process.argv.slice(2);
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium',
-});
+// The cloud sandbox's preinstalled Chromium, else Playwright's own (npx playwright install chromium).
+const executablePath =
+  process.env.PW_CHROMIUM || ['/opt/pw-browsers/chromium'].find((p) => existsSync(p));
+const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage({
   viewport: { width: Number(w), height: Number(h) },
   deviceScaleFactor: 2,

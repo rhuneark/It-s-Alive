@@ -15,7 +15,8 @@
     "test": "vitest run",
     "simulate": "tsx scripts/simulate.ts",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check": "tsc --noEmit && npm test && npm run simulate && npm run build && rundot preflight && npm run test:e2e"
   },
   "keywords": [
     "react",

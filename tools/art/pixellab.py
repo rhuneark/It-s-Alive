@@ -1,18 +1,25 @@
-"""Minimal PixelLab v2 client. Auth is injected by the environment proxy."""
+"""Minimal PixelLab v2 client.
+
+In the cloud sandbox the environment proxy injects auth. On your own computer, set
+PIXELLAB_API_KEY (your PixelLab API token) instead.
+"""
 import base64
 import io
 import json
+import os
 import time
 
 import requests
 from PIL import Image
 
 BASE = "https://api.pixellab.ai/v2"
+_KEY = os.environ.get("PIXELLAB_API_KEY")
+HEADERS = {"Authorization": f"Bearer {_KEY}"} if _KEY else {}
 
 
 def _post(path, body, retries=4):
     for attempt in range(retries):
-        r = requests.post(f"{BASE}{path}", json=body, timeout=300)
+        r = requests.post(f"{BASE}{path}", json=body, headers=HEADERS, timeout=300)
         if r.status_code == 429 or r.status_code >= 500:
             time.sleep(2 ** attempt * 3)
             continue
@@ -87,7 +94,7 @@ def pro(description, w, h, style_image=None, seed=None, poll=6):
     while True:
         time.sleep(poll)
         try:
-            r = requests.get(f"{BASE}/background-jobs/{job_id}", timeout=60)
+            r = requests.get(f"{BASE}/background-jobs/{job_id}", headers=HEADERS, timeout=60)
         except requests.RequestException:
             continue
         if r.status_code == 429 or r.status_code >= 500:
@@ -109,7 +116,7 @@ def _job(path, body, poll=6):
     while True:
         time.sleep(poll)
         try:
-            r = requests.get(f"{BASE}/background-jobs/{job_id}", timeout=60)
+            r = requests.get(f"{BASE}/background-jobs/{job_id}", headers=HEADERS, timeout=60)
         except requests.RequestException:
             continue
         if r.status_code == 429 or r.status_code >= 500:

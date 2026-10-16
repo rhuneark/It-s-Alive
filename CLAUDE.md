@@ -21,6 +21,9 @@ day's vote from `myPicks`, so nobody votes twice on a night.
 
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
+- The owner also works from a LOCAL CLONE of this branch (README "Work on it from your computer") and
+  pushes from it. Before starting work and again before pushing, `git pull origin claude/blissful-keller-ybbygh`
+  (merge, never rebase or force-push over their commits).
 - Season config: `SEASON` in `src/game/schedule.ts` (id, first day, Halloween). Changing `id` starts fresh tallies.
   The first day must be the launch day so night 1 (HEAD) is playable; a later start drops middle questions
   (`buildSchedule`), never the head, brain or spark.
@@ -109,7 +112,7 @@ e2e/           Playwright full-season playthrough at 375x667 and 390x844
   96 was too few for 300+ layers and turned the croc grey).
   Everything in `public/` ships — keep unreleased art in `art/`.
 
-## The monster: one husk with parts painted into it (PixelLab, connected via the environment proxy)
+## The monster: one husk with parts painted into it (PixelLab: the cloud proxy adds auth; on a local clone set `PIXELLAB_API_KEY`)
 
 Night 1 (and before launch) shows a whole human husk (`art/picked/husk.png`) standing in the lab. Every
 part is PAINTED INTO that body by PixelLab, never pasted on as a separate sprite, so all parts share the
@@ -179,8 +182,12 @@ appStorage keys (`testLab`, `save_test`, `testVotes`) are deleted on boot. Use l
 - `npm run dev` — mock SDK. Add `?day=N` to time-travel to voting day N (`?day=19` = the vigil,
   `?day=20` = Halloween); mock only.
 - `node scripts/shot.mjs "?day=5" out.png 375 667 start` — screenshot with the dev server on :5173.
+- Playwright (e2e, shot.mjs) uses the sandbox's `/opt/pw-browsers/chromium` when it exists, else its
+  own browser (`npx playwright install chromium` on a local clone). `.gitattributes` keeps LF endings.
 
 ## Checks — run ALL before every push, fix every warning
+
+`npm run check` runs all of them in this order and stops at the first failure.
 
 ```
 npx tsc --noEmit
