@@ -219,6 +219,8 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   `art/thumbnail-source.jpg`, not shipped): never replace it with a render. Name ("It's Alive!"), description and
   tags (including the `October-Jam` and `Monster-Mash` jam tags) are the env lines at the top of
   deploy.yml, applied game-wide on every deploy.
+- `.github/workflows/jam-promo.yml`: hand-run, read-only. `rundot jam promo` prints the game's jam entries
+  (October Jam) with their vote/play links, caption and social share URLs; read them in the run's log.
 - No leaderboard in this game.
 - `rundot/textGen.config.json` is `{"disabled": true}`: the game uses no AI, and `rundot deploy` otherwise
   auto-creates an uncapped config. Keep it disabled unless a feature needs it (then set caps).

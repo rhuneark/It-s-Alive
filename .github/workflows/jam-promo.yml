@@ -1,0 +1,25 @@
+name: Jam promo links
+
+# Hand-run only. Prints the game's jam entries with their shareable vote/play links,
+# a caption and social share URLs (`rundot jam promo`). Changes nothing on RUN.
+on:
+  workflow_dispatch:
+
+jobs:
+  promo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install the RUN CLI
+        run: |
+          curl -fsSL https://github.com/series-ai/rundot-cli-releases/releases/latest/download/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Log in to RUN
+        env:
+          RUNDOT_API_KEY: ${{ secrets.RUNDOT_API_KEY }}
+        run: printf '%s' "$RUNDOT_API_KEY" | rundot login --api-key-stdin
+
+      - name: Jam promo
+        run: rundot jam promo
