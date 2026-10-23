@@ -51,8 +51,14 @@ day's vote from `myPicks`, so nobody votes twice on a night.
   fade at the seam, follows the saved volume (`musicVolume`, 0..1, slider in the ♫ sound panel) and on/off
   (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
 - Title screen: the real creature so far, a "Tonight" card (night N, tonight's part, countdown, whether you
-  voted, streak), then only Enter/Continue, Sketchbook and a music row (on/off + volume, `MusicBar`);
-  touching the music row starts the theme there. The lore panel shows to first-time players only.
+  voted, streak), then only Enter/Continue, the October Jam vote button, Sketchbook and a music row
+  (on/off + volume, `MusicBar`); touching the music row starts the theme there.
+- October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
+  `JAM_VOTE_URL` (useGame.ts, from `rundot jam promo`). Games cannot open outside pages: RUN's frame is
+  sandboxed `allow-scripts allow-downloads` (no popups, no top navigation), so `window.open` fails preflight
+  (critical `sandbox-blocked-modals`, which blocks the deploy) and `target="_blank"` is blocked too. A tap
+  copies the link (`run.copyText`, clipboard is allowed) and a toast says to paste it in a browser; the
+  href still serves a long-press / right-click "open in new tab". Remove it when jam voting closes. The lore panel shows to first-time players only.
   In game the ♫ button opens the same controls.
 - Coming back: the first thing a returning player sees after a stitching is the Reveal (`src/game/reveal.ts`,
   `components/Reveal.tsx`): the new part glowing on the creature, the winner's share, how their own pick

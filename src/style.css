@@ -1372,3 +1372,88 @@ b {
     text-shadow: 0 0 14px rgba(155, 224, 106, 0.9);
   }
 }
+
+/* ---------- October Jam vote: a glowing pumpkin-to-violet button with a light sweep ---------- */
+.btn.btn-jam {
+  position: relative;
+  overflow: hidden;
+  gap: 12px;
+  padding: 8px 16px;
+  text-decoration: none;
+  text-align: left;
+  color: #fff6e0;
+  background: linear-gradient(120deg, #ff9a2e 0%, #e2560c 42%, #8b2a9e 78%, #4b1677 100%);
+  border: 3px solid #ffc861;
+  box-shadow:
+    inset 0 0 0 2px #3a0f05,
+    0 4px 0 #000,
+    0 0 16px rgba(255, 140, 40, 0.45);
+  animation: jam-glow 2.4s ease-in-out infinite;
+}
+
+/* the light sweeping across every few seconds */
+.btn-jam::after {
+  content: '';
+  position: absolute;
+  top: -10%;
+  bottom: -10%;
+  left: -60%;
+  width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(255, 244, 214, 0.4), transparent);
+  transform: skewX(-20deg);
+  animation: jam-shine 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.jam-icon {
+  font-size: 30px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.6));
+  animation: jam-bob 2.4s ease-in-out infinite;
+}
+
+.jam-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.jam-main {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.jam-sub {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: #ffe6bd;
+}
+
+@keyframes jam-glow {
+  50% {
+    box-shadow:
+      inset 0 0 0 2px #3a0f05,
+      0 4px 0 #000,
+      0 0 28px rgba(255, 170, 70, 0.85);
+  }
+}
+
+@keyframes jam-shine {
+  0%,
+  55% {
+    left: -60%;
+  }
+  100% {
+    left: 130%;
+  }
+}
+
+@keyframes jam-bob {
+  50% {
+    transform: rotate(-10deg) scale(1.12);
+  }
+}

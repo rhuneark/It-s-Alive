@@ -396,6 +396,21 @@ export function setReminders(plan: readonly Reminder[]): void {
 
 // ---------------------------------------------------------------- misc
 
+/**
+ * Copies text to the clipboard (RUN's sandbox allows it). The game cannot open an outside page:
+ * the frame is sandboxed without allow-popups, so window.open and target="_blank" links are
+ * blocked (preflight: sandbox-blocked-modals). Links are copied for the player to paste instead.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    warn('copyText', err);
+    return false;
+  }
+}
+
 export function track(event: string, payload?: Record<string, unknown>): void {
   void ready().then(() =>
     quiet(RundotGameAPI.analytics.recordCustomEvent(event, payload), `track ${event}`),

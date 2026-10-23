@@ -38,6 +38,9 @@ import type { Parts } from '../game/sketch';
 import { resolveDay } from '../game/tally';
 import * as run from '../sdk/run';
 
+/** The game's October Jam page, where players vote for it (Community Pick). */
+export const JAM_VOTE_URL = 'https://run.world/jams/octoberjam?game=GORVjkIRThUz5n2tmAms';
+
 export interface Toast {
   id: number;
   text: string;
@@ -69,6 +72,8 @@ export interface GameModel {
   watchAdForVote: () => Promise<void>;
   refreshCounts: () => Promise<void>;
   toggleMusic: () => void;
+  /** Copy the October Jam vote link for the player (RUN's sandbox cannot open new tabs). */
+  voteInJam: () => void;
   /** Live volume while dragging; saved shortly after the player lets go. */
   setVolume: (v: number) => void;
   /** Keep the player's Sketchbook design (debounced save). */
@@ -117,6 +122,20 @@ export function useGame(): GameModel {
   const notify = useCallback((text: string, tone: Toast['tone'] = 'info') => {
     setToast({ id: Date.now(), text, tone });
   }, []);
+
+  const voteInJam = useCallback(() => {
+    run.track('jam_vote_link');
+    void run
+      .copyText(JAM_VOTE_URL)
+      .then((copied) =>
+        notify(
+          copied
+            ? "Link copied! Paste it in your browser to vote for It's Alive!"
+            : "Vote for It's Alive! at run.world/jams/octoberjam",
+          copied ? 'success' : 'info',
+        ),
+      );
+  }, [notify]);
 
   useEffect(() => {
     if (!toast) return;
@@ -396,6 +415,7 @@ export function useGame(): GameModel {
     watchAdForVote,
     refreshCounts,
     toggleMusic,
+    voteInJam,
     setVolume,
     setSketch,
     schedule: SLOTS,

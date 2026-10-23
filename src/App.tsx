@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useGame, type GameModel } from './app/useGame';
+import { JAM_VOTE_URL, useGame, type GameModel } from './app/useGame';
 import { theme, useMusic } from './app/useMusic';
 import { Chronicle } from './components/Chronicle';
 import { Sketchbook } from './components/Sketchbook';
@@ -234,6 +234,7 @@ function Title({
       <button className="btn btn-primary btn-wide" onClick={onStart} data-testid="start">
         {returning ? 'Continue' : 'Enter the Laboratory'}
       </button>
+      <JamButton onVote={game.voteInJam} />
       <SketchButton onClick={onSketch} />
       <MusicBar
         on={save.musicOn}
@@ -633,6 +634,34 @@ function BonusBanner({ voted }: { voted: boolean }) {
       {voted ? 'Your streak vote is waiting' : 'Streak bonus! +1 vote tonight'}
       <span aria-hidden="true">⚡</span>
     </p>
+  );
+}
+
+/**
+ * The October Jam vote: an eye-catching link to the jam page. RUN's sandbox blocks new tabs, so a
+ * tap copies the link (the href still serves a long-press or right-click "open in new tab").
+ */
+function JamButton({ onVote }: { onVote: () => void }) {
+  return (
+    <a
+      className="btn btn-jam btn-wide"
+      href={JAM_VOTE_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => {
+        e.preventDefault();
+        onVote();
+      }}
+      data-testid="jam-vote"
+    >
+      <span className="jam-icon" aria-hidden="true">
+        🎃
+      </span>
+      <span className="jam-text">
+        <span className="jam-main">Vote in October Jam</span>
+        <span className="jam-sub">Tap to copy the vote link 🔗</span>
+      </span>
+    </a>
   );
 }
 

@@ -97,6 +97,21 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await noSidewaysScroll(page);
   await framedButtons(page);
   await shot('title');
+
+  // October Jam: RUN's sandbox blocks new tabs, so the glowing button copies the vote link.
+  const JAM = 'https://run.world/jams/octoberjam?game=GORVjkIRThUz5n2tmAms';
+  const jam = page.getByTestId('jam-vote');
+  await expect(jam).toHaveAttribute('href', JAM);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  let tabs = 0;
+  page.on('popup', () => tabs++);
+  await jam.click();
+  await expect(page.locator('.toast')).toContainText('Link copied');
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(JAM);
+  expect(tabs).toBe(0);
+  await expect(page.getByTestId('start')).toBeVisible(); // still on the title screen
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 6000 });
+
   await page.getByTestId('start').click();
   await theme;
   await expect(page.locator('.prompt')).toHaveText('Whose HEAD shall crown our creation?');
