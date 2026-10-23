@@ -52,14 +52,14 @@ day's vote from `myPicks`, so nobody votes twice on a night.
   (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
 - Title screen: the real creature so far, a "Tonight" card (night N, tonight's part, countdown, whether you
   voted, streak), then only Enter/Continue, the October Jam vote button, Sketchbook and a music row
-  (on/off + volume, `MusicBar`); touching the music row starts the theme there.
+  (on/off + volume, `MusicBar`); touching the music row starts the theme there. The lore panel shows to
+  first-time players only. In game the ♫ button opens the same controls.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
   `JAM_VOTE_URL` (useGame.ts, from `rundot jam promo`). Games cannot open outside pages: RUN's frame is
   sandboxed `allow-scripts allow-downloads` (no popups, no top navigation), so `window.open` fails preflight
   (critical `sandbox-blocked-modals`, which blocks the deploy) and `target="_blank"` is blocked too. A tap
   copies the link (`run.copyText`, clipboard is allowed) and a toast says to paste it in a browser; the
-  href still serves a long-press / right-click "open in new tab". Remove it when jam voting closes. The lore panel shows to first-time players only.
-  In game the ♫ button opens the same controls.
+  href still serves a long-press / right-click "open in new tab". Remove it when jam voting closes.
 - Coming back: the first thing a returning player sees after a stitching is the Reveal (`src/game/reveal.ts`,
   `components/Reveal.tsx`): the new part glowing on the creature, the winner's share, how their own pick
   placed, and missed nights. `seenNight` in the save marks what was shown; a first visit marks every closed
@@ -208,10 +208,10 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
 
 - `.github/workflows/deploy.yml`: every push to `claude/blissful-keller-ybbygh` (except docs-only) runs tests,
   builds and `rundot deploy --orientation Portrait`, then sets keywords/description from the env lines at the top.
-- Public: version 1.16.0 (commit cff4963: daily reminders and the streak bonus vote, on top of 1.14.0's
-  Oct 11 season, the owner's thumbnail art and name "It's Alive!") was submitted with the publish
-  workflow on Oct 13, 17:22 UTC (1.14.0 on Oct 11, 1.12.0 before it); RUN reviews it and makes it public
-  on approval. Pushes after that deploy NEW private versions only: a fix
+- Public: version 1.20.0 (commit d37ca43: the October Jam vote button, on top of 1.16.0's daily reminders
+  and streak bonus vote and 1.14.0's Oct 11 season, thumbnail art and name "It's Alive!") was submitted
+  with the publish workflow on Oct 23, 15:29 UTC (1.16.0 on Oct 13, 1.14.0 on Oct 11, 1.12.0 before it);
+  RUN reviews it and makes it public on approval. Pushes after that deploy NEW private versions only: a fix
   reaches public players only when the owner asks to publish again (each submission must be a higher
   version and goes through review). Name, tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`
