@@ -239,6 +239,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('vigil')).toBeVisible();
   await expect(page.locator('.option')).toHaveCount(0);
   await expect(page.locator('.countdown')).toContainText('It wakes in');
+  // A storm gathers over the tower: lightning in the window, the room and page flash.
+  await expect(page.locator('.lab-strike')).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.locator('.storm-flash')).toHaveCount(1);
   await expect(page.locator('.monster.alive')).toHaveCount(0);
   // the spark chosen on the last night is an effect, not a layer: its aura now plays
   await expect(page.locator('.monster:not(.monster-mini).aura')).toBeVisible();
@@ -270,16 +273,27 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(wake).toHaveAttribute('data-stage', 'alive', { timeout: 6000 });
   await expect(wake.locator('.monster.alive.aura')).toBeVisible();
   await expect(wake.locator('.awaken-title')).toHaveText("IT'S ALIVE!");
-  // ...and breaks out of the laboratory into its first rampage.
+  // ...and breaks out of the laboratory into the rampage menu: the creature the village built,
+  // loose over the village.
   await expect(page.getByTestId('awaken-done')).toHaveText('It breaks out! ⚡', { timeout: 6000 });
   await page.getByTestId('awaken-done').click();
   await expect(wake).toHaveCount(0);
+  const menu = page.getByTestId('rampage-menu');
+  await expect(menu).toBeVisible();
+  await expect(page.getByTestId('loose-title')).toHaveText("IT'S LOOSE!", { timeout: 5000 });
+  await expect(page.getByTestId('loose-scene')).toHaveAttribute('data-loose', 'true');
+  await expect(menu).toContainText('Loose in The Village');
+  await expect(page.getByTestId('rampage-card')).toContainText('Rampage day 1');
+  await expect(page.getByTestId('reveal')).toHaveCount(0); // the scene showed the last stitching
+  await noSidewaysScroll(page);
+  await framedButtons(page);
+  await shot('rampage-menu');
+  // A run: it grows as it smashes (steered here like a player), then the end panel.
+  await page.getByTestId('rampage-start').click();
   const rampage = page.getByTestId('rampage');
-  await expect(rampage).toHaveAttribute('data-phase', 'intro', { timeout: 10_000 });
-  await expect(page.getByTestId('rampage-title')).toHaveText("IT'S LOOSE!", { timeout: 5000 });
+  await expect(page.getByTestId('rampage-title')).toHaveText('RAMPAGE!', { timeout: 10_000 });
   await expect(rampage).toHaveAttribute('data-phase', 'play', { timeout: 5000 });
   await shot('rampage');
-  // It is the creature the village built, growing as it smashes (steered here like a player).
   await page.keyboard.down('ArrowUp');
   await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
   await page.keyboard.up('ArrowUp');
@@ -287,43 +301,35 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('rampage-count')).toContainText('Added to the creature');
   await framedButtons(page);
   await shot('rampage-over');
-  // Again starts a fresh run (no breakout this time); back to the lab shows the hub.
+  // Again starts a fresh run; back to the lab returns to the menu, with the player's best.
   await page.getByTestId('rampage-again').click();
   await expect(rampage).toHaveAttribute('data-phase', 'play', { timeout: 10_000 });
-  await expect(page.getByTestId('rampage-title')).toHaveCount(0, { timeout: 3000 });
   await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
   await page.getByTestId('rampage-quit').click();
   await expect(rampage).toHaveCount(0);
-  await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
-  await expect(page.getByTestId('rampage-card')).toContainText('Rampage day 1');
   await expect(page.getByTestId('rampage-card')).toContainText('Your best');
-  await expect(page.getByTestId('reveal')).toHaveCount(0); // the scene showed the last stitching
-  await noSidewaysScroll(page);
-  await framedButtons(page);
   // The waking can be watched again, and skipped.
   await page.getByTestId('awaken-replay').click();
   await expect(wake).toHaveAttribute('data-stage', 'dark');
   await page.getByTestId('awaken-skip').click();
   await expect(wake).toHaveCount(0);
-  // Once seen, coming back goes to the title, whose big button is now the rampage.
+  // Coming back: straight to the menu, no waking and no breakout this time.
   await page.goto('/?day=20&runSeconds=4');
-  await expect(page.getByTestId('start')).toHaveText('Rampage! ⚡');
-  await expect(page.getByTestId('tonight')).toContainText('The Village');
+  await expect(menu).toBeVisible();
   await expect(wake).toHaveCount(0);
+  await expect(page.getByTestId('loose-scene')).toHaveAttribute('data-loose', 'true');
+  await expect(page.getByTestId('loose-title')).toHaveCount(0);
   await imagesLoaded(page);
   await noSidewaysScroll(page);
   await shot('alive');
-  await page.getByTestId('start').click();
-  await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
-  await page.getByTestId('rampage-quit').click();
   await page.getByRole('button', { name: 'Chronicle' }).click();
   await expect(page.locator('.chron-done')).toHaveCount(19);
   await page.getByRole('button', { name: 'Close chronicle' }).click();
 
   // The next day it is loose somewhere new, and taller for what everyone smashed.
   await page.goto('/?day=21&runSeconds=4');
-  await expect(page.getByTestId('tonight')).toContainText('Rampage day 2 · The Farmlands');
-  await expect(page.getByTestId('tonight')).toContainText(/grew \d+ ft last night/);
+  await expect(menu).toContainText('Loose in The Farmlands');
+  await expect(page.getByTestId('rampage-card')).toContainText(/grew \d+ ft last night/);
 
   expect(errors).toEqual([]);
 });
@@ -339,7 +345,9 @@ test('the awakening skips the flashes and shaking for players who ask for less m
   await expect(wake.locator('.awaken-title')).toBeVisible();
   await page.getByTestId('awaken-done').click({ timeout: 3000 });
   await expect(wake).toHaveCount(0);
-  await expect(page.locator('.logo-alive')).toBeVisible();
+  // The menu's breakout skips its shaking and flash too: the creature is simply loose.
+  await expect(page.getByTestId('rampage-menu')).toBeVisible();
+  await expect(page.getByTestId('loose-scene')).toHaveAttribute('data-loose', 'true');
 });
 
 test('every night of the season fits the phone without sideways scrolling', async ({ page }) => {

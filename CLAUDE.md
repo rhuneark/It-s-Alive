@@ -55,11 +55,25 @@ everything the whole community smashed that day. It runs on with no end date (th
   through a GainNode (iOS ignores `audio.volume`; a suspended context would play silence). Loops with a soft
   fade at the seam, follows the saved volume (`musicVolume`, 0..1, slider in the ♫ sound panel) and on/off
   (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
-- Title screen: the real creature so far, a "Tonight" card (night N, tonight's part, countdown, whether you
-  voted, streak; from Halloween `RampageCard`: rampage day, place, height in ft, growth last night, the
-  countdown to the next growth, everyone's rubble today), then only Enter/Continue (from Halloween
-  "Rampage! ⚡", straight into a run), the October Jam vote button, Sketchbook and a music row
-  (on/off + volume, `MusicBar`); touching the music row starts the theme there. The lore panel shows to
+- Title screen (until Halloween): the real creature so far, a "Tonight" card (night N, tonight's part,
+  countdown, whether you voted, streak), then only Enter/Continue, the October Jam vote button,
+  Sketchbook and a music row (on/off + volume, `MusicBar`); touching the music row starts the theme there.
+- The vigil (Oct 30) has a STORM (`app/useStorm.ts`, timing `stormGap` in awakening.ts): lightning strikes
+  at random, more often as midnight nears (7-12 s apart with 6 h left, down to 1.2-2 s in the last
+  minute); each strike draws a bolt in the lab's window behind the creature (`StormStrike` in
+  Monster.tsx, clipped to `WINDOW`), lights the room, flashes the page (`.storm-flash`), jolts the
+  creature (Web Animations) and rolls thunder (near strikes sooner and louder). Rain falls behind the
+  page (`.storm-rain`; `.app` sits above it). Two flickers per strike, strikes ≥ 1.2 s apart: under
+  3 flashes a second. Nothing strikes for reduced-motion players.
+- From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx): `LooseScene`
+  (canvas: the community's creature looming over the night village of the day's place, bigger the
+  taller the community made it, lightning in its spark colour; the first time a player sees it, the
+  BREAKOUT plays there: the laboratory tower shakes, bursts, the creature rises, IT'S LOOSE!, then
+  `markBrokeOut`), "Loose in <place>" and its blurb, the big glowing "Rampage! ⚡" (`.btn-rampage`), the
+  `RampageCard` (rampage day, place, height in ft, growth last night, countdown to the next growth,
+  everyone's rubble today, your best), the jam button, "Watch it wake again", Sketchbook and the music
+  row. The scene is not mounted while the waking scene or a run covers the menu (`covered`), so the
+  breakout is never played unseen. The lore panel shows to
   first-time players only. In game the ♫ button opens the same controls.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
   `JAM_VOTE_URL` (useGame.ts, from `rundot jam promo`). Games cannot open outside pages: RUN's frame is
@@ -91,8 +105,7 @@ everything the whole community smashed that day. It runs on with no end date (th
   chosen spark gathering (its line in `SPARK_LINES`, two soft flickers, generator crackle), the strike (a
   bolt from the sky onto the head in the spark's `--aura` colour, one flash, quake, thunderclap, heavy
   haptic), colour flooding back with jolts, then breathing and IT'S ALIVE! slamming in, and "It breaks
-  out! ⚡" (later replays: "See your creature") straight into the first rampage run, which opens with the
-  BREAKOUT (the laboratory tower shakes, bursts, and the creature rises from its rubble: IT'S LOOSE!). Skip at any point. `markAwakened` also marks every night seen, so
+  out! ⚡" (later: "See your creature") into the rampage menu, where the breakout plays. Skip at any point. `markAwakened` also marks every night seen, so
   no stale Reveal follows. "Watch it wake again" on the Awakened screen replays it. Each stage's resting
   style is its end state (animations only add motion), reduced-motion goes straight to the end, and
   flashes stay under 3 a second. Storm sounds are synthesized noise (`src/app/sfx.ts`) through the
@@ -125,7 +138,8 @@ everything the whole community smashed that day. It runs on with no end date (th
     `totalFromBands` of 12 counts. Closed days are cached in `save.rampage.totals`; the creature's height
     today is `communitySize(sum of past days)` (logarithmic). Guests are NOT prompted after every run:
     the end panel offers "Sign in to count it" (`run.isGuest`, `countAsSignedIn`).
-  - Save: `rampage` {best, runs, day, today, brokeOut, totals} (`recordRun`, `rememberRubble`).
+  - Save: `rampage` {best, runs, day, today, brokeOut, totals} (`recordRun`, `rememberRubble`,
+    `markBrokeOut`). Runs start from the menu with a short "RAMPAGE!" intro (no breakout in runs).
   - Art: village props are PixelLab pixflux sprites (`tools/art/props.py gen|sheet|pick`, picks in
     `art/props.json`, shipped in `public/art/props/<kind>.png`, trimmed). Small figures drew a moon
     behind themselves with "night" in the prompt: those use `PLAIN`. Debris colours come from each sprite.
@@ -145,14 +159,16 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
                reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
-               sfx: synthesized storm and rampage sounds; creatureSprite: the community's creature
+               useStorm: the vigil's lightning; sfx: synthesized storm and rampage sounds;
+               creatureSprite: the community's creature
                as one sprite (plus glow and per-part canvases) for the rampage
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
                Sketchbook (players design their own monster), Reveal (last night's stitching),
                Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),
+               LooseScene (the rampage menu's picture and the breakout),
                SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
-src/App.tsx    screens: title/continue, vote, preseason, vigil, awakened
+src/App.tsx    screens: title/continue, vote, preseason, vigil, and from Halloween the rampage menu
 public/art/    shipped art: husk/<region>.png, parts/<key>.png (painted layers, also the card art),
                props/<kind>.png (the rampage's village),
                icons/spark_*.png (the spark is an effect), lab.png (room with its props painted in)

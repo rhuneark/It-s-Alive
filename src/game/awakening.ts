@@ -41,3 +41,23 @@ export function seasonTotals(
 export function allStitched(save: SaveState, schedule: readonly Question[]): boolean {
   return schedule.every((_, n) => save.history[String(n)] !== undefined);
 }
+
+/**
+ * The vigil's storm (the day before it wakes) grows wilder as midnight nears: the wait until the
+ * next lightning strike, from the time left and a roll in [0, 1). Never under 1.2 s, so even with
+ * a double flicker per strike the screen flashes fewer than 3 times a second.
+ */
+export function stormGap(msLeft: number, roll: number): number {
+  const hours = msLeft / 3_600_000;
+  const [min, max] =
+    hours > 6
+      ? [7000, 12000]
+      : hours > 2
+        ? [4500, 8000]
+        : hours > 0.5
+          ? [3000, 5500]
+          : hours > 1 / 60
+            ? [2000, 3500]
+            : [1200, 2000];
+  return Math.round(min + Math.max(0, Math.min(1, roll)) * (max - min));
+}

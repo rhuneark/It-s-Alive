@@ -38,7 +38,6 @@ const KINDS = Object.keys(PROPS) as PropKind[];
 const SCREEN_FILL = 0.27;
 /** Drag this far (css px) for full speed. */
 const STICK = 56;
-const BREAKOUT_SECONDS = 3.4;
 const READY_SECONDS = 1.1;
 
 type Phase = 'loading' | 'intro' | 'play' | 'over';
@@ -101,8 +100,6 @@ interface Props {
   seed: string;
   /** The creature's real height is its run size times this (it grew with the community). */
   scale: number;
-  /** The first run: it breaks out of the laboratory. */
-  breakout: boolean;
   volume: number;
   best: number;
   /** Whether the finished run reached the community's tally ('pending' while it is sent). */
@@ -118,7 +115,6 @@ export function Rampage({
   stage,
   seed,
   scale,
-  breakout,
   volume,
   best,
   contribution,
@@ -155,7 +151,6 @@ export function Rampage({
     const world = buildWorld(seed, stage);
     const seconds = testSeconds();
     const sim = new RampageRun(world, BASE_SIZE, `${seed}:${Math.random()}`, seconds);
-    const lab = world.props.find((p) => p.kind === 'lab');
 
     let sprite: CreatureSprite | null = null;
     const imgs = new Map<PropKind, HTMLImageElement>();
@@ -266,12 +261,8 @@ export function Rampage({
       mode = 'intro';
       setPhase('intro');
       stage0 = performance.now() / 1000;
-      if (breakout) {
-        setTitle(null);
-      } else {
-        setTitle('RAMPAGE!');
-        roar(volume * 0.7);
-      }
+      setTitle('RAMPAGE!');
+      roar(volume * 0.7);
       let last = performance.now();
       const frame = (nowMs: number) => {
         if (!alive) return;
@@ -290,9 +281,7 @@ export function Rampage({
       flash = Math.max(0, flash - dt * 2.5);
       if (mode === 'intro') {
         const t = now - stage0;
-        const total = breakout ? BREAKOUT_SECONDS : READY_SECONDS;
-        if (breakout) introBeats(t, now);
-        if (t >= total) {
+        if (t >= READY_SECONDS) {
           mode = 'play';
           setPhase('play');
           setTitle(null);
@@ -313,8 +302,7 @@ export function Rampage({
         }
       }
       // Camera: keep the creature at the same height on screen, however big it gets.
-      // (During the breakout it first frames the laboratory, then the creature rising from it.)
-      const framing = mode === 'intro' && breakout && !burst ? 300 : sim.size;
+      const framing = sim.size;
       const target = (cv.height * SCREEN_FILL) / framing;
       cam.z += (target - cam.z) * Math.min(1, dt * 2.5);
       const fx = sim.x;
@@ -337,28 +325,6 @@ export function Rampage({
           next: next ? (powerParts(next.power, parts)[0] ?? next.power.id) : null,
           progress: next ? next.progress : 1,
         });
-      }
-    };
-
-    // The breakout: the laboratory shakes, bursts, and the creature rises from its rubble.
-    let burst = false;
-    const introBeats = (t: number, now: number) => {
-      if (t < 1.5) {
-        shake = Math.max(shake, 1 + t * 3);
-        if (Math.random() < 0.25 && lab) dust(lab.x + (Math.random() - 0.5) * 60, lab.y, 30, 1);
-        if (now - lastThud > 0.35) {
-          lastThud = now;
-          thud(volume * 0.5, 0.4);
-        }
-      } else if (!burst) {
-        burst = true;
-        flash = 1;
-        shake = 18;
-        if (lab) debris(lab.x, lab.y, 300, 'lab', 60);
-        thud(volume, 1);
-        roar(volume);
-        run.haptic('heavy');
-        setTitle("IT'S LOOSE!");
       }
     };
 
@@ -557,7 +523,7 @@ export function Rampage({
       const items: Array<{ y: number; draw: () => void }> = [];
       ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
       for (const p of sim.props) {
-        if (!p.alive && !(p.kind === 'lab' && mode === 'intro' && breakout && !burst)) continue;
+        if (!p.alive) continue;
         if (p.x < vx0 - margin || p.x > vx1 + margin || p.y < vy0 - 40 || p.y > vy1 + margin)
           continue;
         ctx.beginPath();
@@ -565,7 +531,7 @@ export function Rampage({
         ctx.fill();
         items.push({ y: p.y, draw: () => drawProp(p, now) });
       }
-      if (sprite && !(mode === 'intro' && breakout && !burst)) {
+      if (sprite) {
         const air = airHeight();
         ctx.beginPath();
         ctx.ellipse(
@@ -631,9 +597,6 @@ export function Rampage({
 
     const drawProp = (p: LiveProp, now: number) => {
       const img = imgs.get(p.kind);
-      let wobble = 0;
-      if (p.kind === 'lab' && mode === 'intro')
-        wobble = Math.sin(now * 40) * Math.min(1, now - stage0) * 4;
       const hop = p.mover && (p.vx || p.vy) ? Math.abs(Math.sin(now * 14 + p.id)) * p.h * 0.08 : 0;
       if (!img) {
         ctx.fillStyle = '#4a4038';
@@ -643,7 +606,7 @@ export function Rampage({
       const h = p.h;
       const w = (h * img.width) / img.height;
       ctx.save();
-      ctx.translate(p.x + wobble, p.y + p.r * 0.3 - hop);
+      ctx.translate(p.x, p.y + p.r * 0.3 - hop);
       if (p.mover && p.vx < 0) ctx.scale(-1, 1);
       ctx.drawImage(img, -w / 2, -h, w, h);
       ctx.restore();
@@ -651,9 +614,7 @@ export function Rampage({
 
     const drawCreature = (now: number, air: number) => {
       if (!sprite) return;
-      const t = mode === 'intro' && breakout ? Math.min(1, (now - stage0 - 1.5) / 0.7) : 1;
-      const rise = t < 1 ? 0.55 + 0.45 * easeOutBack(t) : 1;
-      const k = (sim.size / sprite.height) * rise;
+      const k = sim.size / sprite.height;
       const bob = sim.moving ? Math.abs(Math.sin(walk)) * sim.size * 0.035 : 0;
       const squash = sim.moving ? 1 + Math.sin(walk * 2) * 0.02 : 1 + Math.sin(now * 2.2) * 0.012;
       ctx.save();
@@ -862,11 +823,6 @@ function testSeconds(): number {
   if (!run.isMock()) return RUN_SECONDS;
   const n = Number(new URLSearchParams(window.location.search).get('runSeconds'));
   return Number.isFinite(n) && n > 0 ? n : RUN_SECONDS;
-}
-
-function easeOutBack(t: number): number {
-  const c = 1.7;
-  return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2;
 }
 
 /** A few colours from a sprite, for its debris. */

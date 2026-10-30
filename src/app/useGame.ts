@@ -22,6 +22,7 @@ import {
   grantAdVote,
   markSeen,
   markStarted,
+  markBrokeOut as saveBrokeOut,
   recordRun,
   rememberRubble,
   newSave,
@@ -110,6 +111,8 @@ export interface GameModel {
   finishRun: (result: RunResult) => Promise<run.RubbleResult>;
   /** A guest chose to sign in so a run counts. */
   countAsSignedIn: (rubble: number) => Promise<run.RubbleResult>;
+  /** The player has seen it break out of the laboratory. */
+  markBrokeOut: () => void;
   select: (optionId: string | null) => void;
   cast: () => Promise<void>;
   watchAdForVote: () => Promise<void>;
@@ -412,6 +415,10 @@ export function useGame(): GameModel {
     [commit, rampageDay, refreshRubble],
   );
 
+  const markBrokeOut = useCallback(() => {
+    void commit(saveBrokeOut(saveRef.current));
+  }, [commit]);
+
   const countAsSignedIn = useCallback(
     async (rubble: number) => {
       if (!(await run.signIn())) return 'guest' as const;
@@ -549,6 +556,7 @@ export function useGame(): GameModel {
     rampage,
     finishRun,
     countAsSignedIn,
+    markBrokeOut,
     select,
     cast,
     watchAdForVote,

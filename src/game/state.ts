@@ -113,6 +113,11 @@ export function recordRun(save: SaveState, rampageDay: number, rubble: number): 
   };
 }
 
+/** The player has seen the creature break out of the laboratory (the rampage menu's first scene). */
+export function markBrokeOut(save: SaveState): SaveState {
+  return save.rampage.brokeOut ? save : { ...save, rampage: { ...save.rampage, brokeOut: true } };
+}
+
 /** Cache a closed rampage day's community rubble (it no longer changes). */
 export function rememberRubble(save: SaveState, rampageDay: number, total: number): SaveState {
   return {

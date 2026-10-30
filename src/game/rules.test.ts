@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allStitched, awakeningDue, markAwakened, seasonTotals } from './awakening';
+import { allStitched, awakeningDue, markAwakened, seasonTotals, stormGap } from './awakening';
 import { QUESTIONS, findOption } from './catalog';
 import { simulatedCrowd } from './crowd';
 import {
@@ -380,6 +380,18 @@ describe('awakening', () => {
     const partial = newSave(LIVE_SEASON.id, schedule.length);
     expect(allStitched(partial, schedule)).toBe(false);
     expect(seasonTotals(partial, schedule)).toEqual({ nights: 0, votes: 0 });
+  });
+});
+
+describe('the vigil storm', () => {
+  it('strikes more often as midnight nears, never fast enough to strobe', () => {
+    const hours = [20, 5, 1, 0.2, 0.001];
+    const slow = hours.map((h) => stormGap(h * 3_600_000, 1));
+    for (let i = 1; i < slow.length; i++) expect(slow[i]!).toBeLessThan(slow[i - 1]!);
+    for (const h of hours) {
+      expect(stormGap(h * 3_600_000, 0)).toBeGreaterThanOrEqual(1200);
+      expect(stormGap(h * 3_600_000, 0)).toBeLessThanOrEqual(stormGap(h * 3_600_000, 0.99));
+    }
   });
 });
 

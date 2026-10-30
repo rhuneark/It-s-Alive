@@ -66,6 +66,8 @@ b {
 }
 
 .app {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
@@ -2083,4 +2085,267 @@ b {
 
 .rampage-count {
   font-size: 15px;
+}
+
+/* ---------- the vigil storm (the day before it wakes) ---------- */
+/* Two flickers per strike, strikes at least 1.2 s apart: under 3 flashes a second. */
+.lab-strike {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.lab-strike-sky {
+  fill: #dbe9ff;
+  opacity: 0;
+  mix-blend-mode: screen;
+  animation: window-flash 0.7s ease-out;
+}
+
+.lab-strike-bolt {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 1.6;
+  stroke-linejoin: miter;
+  opacity: 0;
+  filter: drop-shadow(0 0 1.5px #bcd8ff) drop-shadow(0 0 4px #8fb8ff);
+  animation: window-bolt 0.6s steps(1, end);
+}
+
+.lab-strike.near .lab-strike-bolt {
+  stroke-width: 2.4;
+}
+
+@keyframes window-flash {
+  0% {
+    opacity: 0.85;
+  }
+  15% {
+    opacity: 0.15;
+  }
+  25% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes window-bolt {
+  0% {
+    opacity: 1;
+  }
+  30% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+  70%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.lab-strike-room {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    rgba(190, 215, 255, 0.55),
+    rgba(120, 150, 220, 0.15) 60%,
+    transparent 85%
+  );
+  animation: room-flash 0.8s ease-out;
+}
+
+.lab-strike-room.near {
+  animation-name: room-flash-near;
+}
+
+@keyframes room-flash {
+  0% {
+    opacity: 0.6;
+  }
+  20% {
+    opacity: 0.1;
+  }
+  30% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes room-flash-near {
+  0% {
+    opacity: 1;
+  }
+  20% {
+    opacity: 0.2;
+  }
+  30% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.storm-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  opacity: 0;
+  background: rgb(210, 225, 255);
+  animation: page-flash 0.7s ease-out;
+}
+
+.storm-flash.near {
+  animation-name: page-flash-near;
+}
+
+@keyframes page-flash {
+  0% {
+    opacity: 0.16;
+  }
+  20% {
+    opacity: 0.02;
+  }
+  30% {
+    opacity: 0.1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes page-flash-near {
+  0% {
+    opacity: 0.3;
+  }
+  20% {
+    opacity: 0.04;
+  }
+  30% {
+    opacity: 0.2;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.storm-rain {
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background: repeating-linear-gradient(
+    104deg,
+    transparent 0 14px,
+    rgba(180, 200, 230, 0.25) 14px 15px,
+    transparent 15px 31px
+  );
+  animation: rain 0.5s linear infinite;
+}
+
+.tonight-status.storm {
+  color: var(--spark);
+}
+
+/* ---------- the rampage menu (from Halloween on) ---------- */
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.menu-logo {
+  font-size: clamp(32px, 10vw, 44px);
+  text-align: left;
+}
+
+.loose-scene {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 10 / 9;
+  max-height: 46vh;
+  overflow: hidden;
+  background: #0a0b14;
+  border: 3px solid #3a3042;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 0 0 2px #000,
+    0 0 0 2px #000,
+    0 10px 30px rgba(0, 0, 0, 0.7);
+}
+
+.loose-scene canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.loose-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loose-title {
+  position: absolute;
+  top: 8%;
+  left: 0;
+  right: 0;
+  font-family: var(--font-title);
+  font-size: clamp(40px, 13vw, 64px);
+  text-align: center;
+  white-space: nowrap;
+  color: var(--bile);
+  text-shadow:
+    0 0 24px rgba(155, 224, 106, 0.6),
+    0 4px 0 #000;
+  pointer-events: none;
+  animation:
+    slam 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both,
+    fade-out 0.8s 3.2s ease-in forwards;
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+.menu-where {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: center;
+}
+
+.btn-rampage:not(:disabled) {
+  font-size: 22px;
+  min-height: 60px;
+  animation: rampage-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes rampage-glow {
+  50% {
+    box-shadow:
+      inset 0 0 0 2px #2a0507,
+      inset 0 2px 0 3px rgba(255, 200, 160, 0.15),
+      0 4px 0 #000,
+      0 0 26px rgba(214, 64, 58, 0.75);
+  }
 }

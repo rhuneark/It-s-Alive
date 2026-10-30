@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { JAM_VOTE_URL, useGame, type GameModel } from './app/useGame';
 import { theme, useMusic } from './app/useMusic';
+import { useStorm, type Strike } from './app/useStorm';
 import { Awakening } from './components/Awakening';
 import { Chronicle } from './components/Chronicle';
 import { Sketchbook } from './components/Sketchbook';
@@ -8,6 +9,7 @@ import { Diagnostics } from './components/Diagnostics';
 import { MusicBar, SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
 import { Reveal } from './components/Reveal';
+import { LooseScene } from './components/LooseScene';
 import { Rampage } from './components/Rampage';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption, questionForSlot } from './game/catalog';
@@ -84,19 +86,23 @@ function Game({
   // Halloween: the waking scene plays once for everyone; the Awakened screen can replay it.
   const [replay, setReplay] = useState(false);
   const showAwakening = !game.loading && (game.awakening || replay);
+  // The vigil: a storm gathers over the tower, wilder as midnight nears.
+  const vigil = !game.loading && game.phase.kind === 'vigil';
+  const strike = useStorm(
+    vigil,
+    game.phase.kind === 'vigil' ? game.phase.wakesInMs : 0,
+    game.save.musicOn ? game.save.musicVolume : 0,
+  );
   // The rampage: one mounted run at a time (a new key starts a fresh run).
-  const [rampageRun, setRampageRun] = useState<{
-    key: number;
-    breakout: boolean;
-    best: number;
-  } | null>(null);
+  const [rampageRun, setRampageRun] = useState<{ key: number; best: number } | null>(null);
   const [counted, setCounted] = useState<'pending' | run.RubbleResult | null>(null);
-  const startRampage = (breakout = !game.save.rampage.brokeOut) => {
+  const startRampage = () => {
     // Only ever the creature everyone built: wait until every night is tallied.
     if (!game.rampage || !game.stitched) return;
+    if (!inGame) enter();
     setCounted(null);
-    setRampageRun((r) => ({ key: (r?.key ?? 0) + 1, breakout, best: game.save.rampage.best }));
-    run.track('rampage_start', { day: game.rampage.day, breakout });
+    setRampageRun((r) => ({ key: (r?.key ?? 0) + 1, best: game.save.rampage.best }));
+    run.track('rampage_start', { day: game.rampage.day });
   };
 
   /** Into the laboratory (Continue, or the end of the waking scene). */
@@ -114,31 +120,38 @@ function Game({
 
   let screen;
   if (game.loading) screen = <Loading />;
+  // From midnight Central that begins Halloween: the rampage menu, title and hub in one.
+  else if (game.phase.kind === 'awakened')
+    screen = (
+      <RampageMenu
+        game={game}
+        covered={showAwakening || rampageRun !== null}
+        onRampage={startRampage}
+        onChronicle={() => setChronicle(true)}
+        onSketch={openSketch}
+        onReplay={() => setReplay(true)}
+        onListen={onListen}
+      />
+    );
   else if (!inGame)
     screen = (
       <Title
         game={game}
-        onStart={() => {
-          enter();
-          // From Halloween on, the title's big button goes straight to the rampage.
-          if (game.rampage) startRampage();
-        }}
+        strike={strike}
+        onStart={enter}
         onSketch={openSketch}
         onListen={onListen}
       />
     );
-  else if (game.phase.kind === 'awakened')
+  else if (game.phase.kind === 'vigil')
     screen = (
-      <Awakened
+      <Vigil
         game={game}
+        strike={strike}
         onChronicle={() => setChronicle(true)}
         onSketch={openSketch}
-        onReplay={() => setReplay(true)}
-        onRampage={() => startRampage()}
       />
     );
-  else if (game.phase.kind === 'vigil')
-    screen = <Vigil game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
   else if (game.phase.kind === 'preseason')
     screen = <Preseason game={game} onSketch={openSketch} />;
   else screen = <Vote game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
@@ -156,6 +169,14 @@ function Game({
         <p className="title-sm">Turn your device upright</p>
         <p className="muted">The laboratory only fits in portrait.</p>
       </div>
+      {vigil && <div className="storm-rain" aria-hidden="true" />}
+      {strike && (
+        <div
+          key={strike.id}
+          className={`storm-flash ${strike.near ? 'near' : ''}`}
+          aria-hidden="true"
+        />
+      )}
       <main className="app">
         {screen}
         <BuildStamp onSecret={() => setDiagOpen(true)} />
@@ -187,12 +208,11 @@ function Game({
             onListen();
           }}
           doneLabel={game.save.rampage.brokeOut ? 'See your creature' : 'It breaks out! ⚡'}
-          onDone={(how) => {
+          onDone={() => {
             setReplay(false);
             game.markAwake();
             if (!inGame) enter();
-            // Watched to the end: it bursts out of the laboratory into its first rampage.
-            if (how === 'watched' && !game.save.rampage.brokeOut) startRampage(true);
+            // Then the rampage menu: the first time, it breaks out of the laboratory there.
           }}
         />
       )}
@@ -203,7 +223,6 @@ function Game({
           stage={game.rampage.stage}
           seed={game.rampage.seed}
           scale={game.rampage.size / BASE_SIZE}
-          breakout={rampageRun.breakout}
           volume={game.save.musicOn ? game.save.musicVolume : 0}
           best={rampageRun.best}
           contribution={counted}
@@ -215,7 +234,7 @@ function Game({
             setCounted('pending');
             void game.countAsSignedIn(rubble).then(setCounted);
           }}
-          onAgain={() => startRampage(false)}
+          onAgain={startRampage}
           onQuit={() => setRampageRun(null)}
         />
       )}
@@ -273,11 +292,13 @@ function Loading() {
 
 function Title({
   game,
+  strike,
   onStart,
   onSketch,
   onListen,
 }: {
   game: GameModel;
+  strike: Strike | null;
   onStart: () => void;
   onSketch: () => void;
   onListen: () => void;
@@ -294,6 +315,7 @@ function Title({
         parts={game.parts}
         spark={phase.kind === 'voting' ? null : (game.parts.spark ?? null)}
         alive={phase.kind === 'awakened'}
+        strike={strike}
         className="monster-title"
       />
       {phase.kind === 'voting' && bonusVoteWaiting(save) && (
@@ -312,7 +334,7 @@ function Title({
         </div>
       )}
       <button className="btn btn-primary btn-wide" onClick={onStart} data-testid="start">
-        {game.rampage ? 'Rampage! ⚡' : returning ? 'Continue' : 'Enter the Laboratory'}
+        {returning ? 'Continue' : 'Enter the Laboratory'}
       </button>
       <JamButton onVote={game.voteInJam} />
       <SketchButton onClick={onSketch} />
@@ -369,6 +391,7 @@ function Tonight({ game }: { game: GameModel }) {
         <p className="tonight-clock">
           It wakes in <b>{formatCountdown(phase.wakesInMs)}</b>
         </p>
+        <p className="tonight-status storm">A storm is gathering over the tower…</p>
       </>
     );
   } else if (phase.kind === 'awakened') {
@@ -633,10 +656,12 @@ function Preseason({ game, onSketch }: { game: GameModel; onSketch: () => void }
 /** The night before Halloween: every part is chosen, nothing to vote on, the creature waits. */
 function Vigil({
   game,
+  strike,
   onChronicle,
   onSketch,
 }: {
   game: GameModel;
+  strike: Strike | null;
   onChronicle: () => void;
   onSketch: () => void;
 }) {
@@ -646,7 +671,7 @@ function Vigil({
   return (
     <div className="screen game">
       <TopBar game={game} onChronicle={onChronicle} subtitle="The vigil" />
-      <Monster parts={game.parts} spark={game.parts.spark ?? null} />
+      <Monster parts={game.parts} spark={game.parts.spark ?? null} strike={strike} />
       <ProgressRail total={dayCount} today={dayCount} done={done} />
       <div className="countdown" aria-label="Time until it wakes">
         <span className="muted">It wakes in</span> <b>{formatCountdown(wakesInMs)}</b>
@@ -659,8 +684,9 @@ function Vigil({
       <section className="panel lore" data-testid="vigil">
         <p className="eyebrow">The night before Halloween</p>
         <p>
-          Every part is stitched. There is no vote tonight: keep watch over the slab. When midnight
-          (Central time) strikes and <b>Halloween</b> begins, the lightning comes, and it wakes.
+          Every part is stitched, and a storm is gathering over the tower. There is no vote tonight:
+          keep watch over the slab. When midnight (Central time) strikes and <b>Halloween</b>{' '}
+          begins, the lightning comes, and it wakes.
         </p>
       </section>
       <SketchButton onClick={onSketch} />
@@ -693,54 +719,97 @@ function RampageCard({ game }: { game: GameModel }) {
   );
 }
 
-function Awakened({
+/**
+ * From Halloween on: the rampage menu (title and hub in one). The creature, loose over the day's
+ * place (it breaks out of the laboratory the first time), the big Rampage button, where it is and
+ * how tall the village has made it, and the rest.
+ */
+function RampageMenu({
   game,
+  covered,
+  onRampage,
   onChronicle,
   onSketch,
   onReplay,
-  onRampage,
+  onListen,
 }: {
   game: GameModel;
+  /** The waking scene or a run is on top: the scene waits (and its breakout is not wasted). */
+  covered: boolean;
+  onRampage: () => void;
   onChronicle: () => void;
   onSketch: () => void;
   onReplay: () => void;
-  onRampage: () => void;
+  onListen: () => void;
 }) {
+  const r = game.rampage;
+  const { save } = game;
   return (
-    <div className="screen game">
-      <TopBar game={game} onChronicle={onChronicle} />
-      <h1 className="logo logo-alive">IT'S ALIVE!</h1>
-      <Monster parts={game.parts} spark={game.parts.spark ?? 'spark_lightning'} alive />
-      {game.resolving && (
-        <p className="muted small center-text">
-          Exhuming past nights… {game.resolving.done}/{game.resolving.total}
-        </p>
+    <div className="screen rampage-menu" data-testid="rampage-menu">
+      <header className="menu-head">
+        <h1 className="logo menu-logo">It's Alive!</h1>
+        <button className="btn btn-secondary btn-small" onClick={onChronicle}>
+          Chronicle
+        </button>
+      </header>
+      {r && game.stitched && !covered ? (
+        <LooseScene
+          key={r.stage.id}
+          parts={game.parts}
+          stage={r.stage}
+          size={r.size}
+          breakout={!save.rampage.brokeOut}
+          volume={save.musicOn ? save.musicVolume : 0}
+          onBrokeOut={game.markBrokeOut}
+        />
+      ) : (
+        <div className="loose-scene loose-wait">
+          <p className="muted">{game.stitched ? '' : 'Gathering the parts…'}</p>
+        </div>
+      )}
+      {r && (
+        <div className="menu-where">
+          <p className="eyebrow">Loose in {r.stage.name}</p>
+          <p className="muted">{r.stage.blurb}</p>
+        </div>
       )}
       <button
-        className="btn btn-primary btn-wide"
+        className="btn btn-primary btn-wide btn-rampage"
         onClick={onRampage}
-        disabled={!game.stitched}
+        disabled={!game.stitched || !r}
         data-testid="rampage-start"
       >
         {game.stitched ? 'Rampage! ⚡' : 'Gathering the parts…'}
       </button>
-      {game.rampage && (
+      {r && (
         <section className="panel tonight" data-testid="rampage-card">
           <RampageCard game={game} />
-          {game.save.rampage.runs > 0 && (
+          {save.rampage.runs > 0 && (
             <p className="muted small">
-              Your best: {game.save.rampage.best.toLocaleString('en-US')} rubble · today{' '}
-              {game.save.rampage.day === game.rampage.day
-                ? game.save.rampage.today.toLocaleString('en-US')
-                : 0}
+              Your best: {save.rampage.best.toLocaleString('en-US')} rubble · today{' '}
+              {save.rampage.day === r.day ? save.rampage.today.toLocaleString('en-US') : 0}
             </p>
           )}
         </section>
       )}
+      <JamButton onVote={game.voteInJam} />
       <button className="btn btn-secondary btn-wide" onClick={onReplay} data-testid="awaken-replay">
         Watch it wake again
       </button>
       <SketchButton onClick={onSketch} />
+      <MusicBar
+        on={save.musicOn}
+        volume={save.musicVolume}
+        onToggle={() => {
+          if (!save.musicOn) theme.setWanted(true);
+          onListen();
+          game.toggleMusic();
+        }}
+        onVolume={(v) => {
+          onListen();
+          game.setVolume(v);
+        }}
+      />
     </div>
   );
 }
