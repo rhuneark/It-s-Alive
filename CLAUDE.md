@@ -292,10 +292,10 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
 
 - `.github/workflows/deploy.yml`: every push to `claude/blissful-keller-ybbygh` (except docs-only) runs tests,
   builds and `rundot deploy --orientation Portrait`, then sets keywords/description from the env lines at the top.
-- Public: version 1.20.0 (commit d37ca43: the October Jam vote button, on top of 1.16.0's daily reminders
-  and streak bonus vote and 1.14.0's Oct 11 season, thumbnail art and name "It's Alive!") was submitted
-  with the publish workflow on Oct 23, 15:29 UTC (1.16.0 on Oct 13, 1.14.0 on Oct 11, 1.12.0 before it);
-  RUN reviews it and makes it public on approval. Pushes after that deploy NEW private versions only: a fix
+- Public: version 1.24.0 (commit b4bc1d2: the vigil storm, the awakening at midnight Central Oct 31, the
+  rampage menu and the rampage, on top of 1.20.0's jam button, 1.16.0's reminders and streak vote and
+  1.14.0's season, thumbnail and name) was submitted with the publish workflow on Oct 30, 20:41 UTC
+  (1.20.0 on Oct 23, 1.16.0 on Oct 13, 1.14.0 on Oct 11); RUN reviews it and makes it public on approval. Pushes after that deploy NEW private versions only: a fix
   reaches public players only when the owner asks to publish again (each submission must be a higher
   version and goes through review). Name, tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`
