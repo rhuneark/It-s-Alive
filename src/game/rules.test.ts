@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { allStitched, awakeningDue, markAwakened, seasonTotals } from './awakening';
 import { QUESTIONS, findOption } from './catalog';
 import { simulatedCrowd } from './crowd';
 import {
@@ -26,6 +27,7 @@ import {
   newSave,
   parseSave,
   recordVote,
+  rememberResolved,
   rollToDay,
   serializeSave,
   setMusic,
@@ -330,6 +332,47 @@ describe('daily reminders', () => {
       false,
     ]);
     expect(reminderPlan(at(2, 9), LIVE_SEASON, schedule, false).some(streak)).toBe(false);
+  });
+});
+
+describe('awakening', () => {
+  const schedule = seasonSchedule(LIVE_SEASON);
+  const halloween = phaseAt(LIVE_SEASON.awakenMs + 60_000, LIVE_SEASON);
+  const vigil = phaseAt(LIVE_SEASON.awakenMs - 60_000, LIVE_SEASON);
+  const full = () => {
+    let s = newSave(LIVE_SEASON.id, schedule.length);
+    schedule.forEach((q, n) => {
+      s = rememberResolved(s, n, {
+        winner: q.options[0]!.id,
+        counts: [3, 2, 1, 0, n === 0 ? 4 : 0],
+        reason: 'votes',
+      });
+    });
+    return s;
+  };
+
+  it('plays once, from midnight Central that begins Halloween, for every player', () => {
+    const s = full();
+    expect(awakeningDue(s, vigil)).toBe(false);
+    expect(awakeningDue(s, halloween)).toBe(true);
+    expect(awakeningDue({ ...s, started: true }, halloween)).toBe(true); // returning players too
+    const seen = markAwakened(s, schedule);
+    expect(awakeningDue(seen, halloween)).toBe(false);
+    // kept across reloads; a new season starts it afresh
+    const day = schedule.length;
+    expect(parseSave(serializeSave(seen), LIVE_SEASON.id, day).sawAwakening).toBe(true);
+    expect(parseSave(serializeSave(seen), 'next-season', day).sawAwakening).toBe(false);
+  });
+
+  it('leaves no stitching to reveal afterwards, and counts what went into the creature', () => {
+    const s = full();
+    expect(pendingReveal(s, schedule)).not.toBeNull();
+    expect(pendingReveal(markAwakened(s, schedule), schedule)).toBeNull();
+    expect(allStitched(s, schedule)).toBe(true);
+    expect(seasonTotals(s, schedule)).toEqual({ nights: 19, votes: 19 * 6 + 4 });
+    const partial = newSave(LIVE_SEASON.id, schedule.length);
+    expect(allStitched(partial, schedule)).toBe(false);
+    expect(seasonTotals(partial, schedule)).toEqual({ nights: 0, votes: 0 });
   });
 });
 

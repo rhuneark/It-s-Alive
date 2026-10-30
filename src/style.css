@@ -107,6 +107,8 @@ b {
 }
 
 .logo-alive {
+  font-size: clamp(38px, 12.5vw, 64px);
+  white-space: nowrap;
   color: var(--bile);
   animation: alive-text 2.6s infinite;
 }
@@ -1456,4 +1458,382 @@ b {
   50% {
     transform: rotate(-10deg) scale(1.12);
   }
+}
+
+/* ---------- the awakening (Halloween): the creature everyone built wakes up ---------- */
+/* Each stage's resting style is its end state; animations only add motion, so reduced-motion
+   players (animations off) still see every stage correctly. At most 2 flashes a second. */
+.awakening {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: calc(var(--safe-top) + 16px) 16px calc(var(--safe-bottom) + 16px);
+  overflow: hidden;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 35%, #1b1324, #060408 70%);
+  animation: fade-in 0.4s ease-out;
+}
+
+.awaken-rain {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0.32;
+  background: repeating-linear-gradient(
+    104deg,
+    transparent 0 14px,
+    rgba(180, 200, 230, 0.22) 14px 15px,
+    transparent 15px 31px
+  );
+  animation: rain 0.55s linear infinite;
+  transition: opacity 2s ease;
+}
+
+.awakening[data-stage='alive'] .awaken-rain,
+.awakening[data-stage='done'] .awaken-rain {
+  opacity: 0.08;
+}
+
+@keyframes rain {
+  to {
+    transform: translate(-8px, 31px);
+  }
+}
+
+.awaken-intro {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 420px);
+  font-size: 17px;
+  color: var(--parchment);
+}
+
+.awaken-intro-title {
+  font-family: var(--font-title);
+  font-weight: 400;
+  font-size: clamp(38px, 12vw, 54px);
+  line-height: 1;
+  color: var(--parchment);
+  text-shadow:
+    0 0 20px var(--aura),
+    0 3px 0 #000;
+}
+
+.awaken-go:not(:disabled) {
+  animation: jam-glow 2.4s ease-in-out infinite;
+}
+
+.awaken-skip {
+  position: absolute;
+  top: calc(var(--safe-top) + 12px);
+  right: 12px;
+  z-index: 3;
+}
+
+.awaken-frame {
+  position: relative;
+  flex: none;
+  width: min(100%, 340px, calc(52vh * 170 / 200));
+  aspect-ratio: 170 / 200;
+}
+
+.awakening .awaken-monster {
+  width: 100%;
+  height: 100%;
+}
+
+/* dormant: a grey body in a dark, blue lab */
+.awakening .monster-body {
+  transition: filter 0.6s ease;
+}
+
+.awakening.dormant .monster-body {
+  filter: grayscale(1) brightness(0.34) contrast(1.15);
+}
+
+.awakening.dormant .monster-bg {
+  filter: brightness(0.3) saturate(0.4) hue-rotate(195deg);
+}
+
+.awakening .monster-bg {
+  transition: filter 1.2s ease;
+}
+
+/* the generator gathering charge: two soft flickers in the spark's colour */
+.awaken-flicker {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(ellipse at 50% 30%, var(--aura), transparent 70%);
+}
+
+.awakening[data-stage='charge'] .awaken-flicker {
+  animation: flicker 1.8s steps(1, end);
+}
+
+@keyframes flicker {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  30% {
+    opacity: 0.45;
+  }
+  36% {
+    opacity: 0;
+  }
+  72% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 0;
+  }
+}
+
+.awakening[data-stage='charge'] .awaken-monster {
+  animation: shudder 0.18s linear infinite;
+}
+
+@keyframes shudder {
+  50% {
+    transform: translateX(1px);
+  }
+}
+
+/* the strike: a bolt onto the head, one white-hot flash, the room shakes */
+.awaken-bolt {
+  position: absolute;
+  z-index: 2;
+  inset: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  pointer-events: none;
+  overflow: visible;
+  opacity: 0;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+  shape-rendering: crispEdges;
+  filter: drop-shadow(0 0 2px var(--aura)) drop-shadow(0 0 8px var(--aura));
+}
+
+.awaken-bolt .fork {
+  stroke-width: 1.8;
+}
+
+.awakening[data-stage='strike'] .awaken-bolt {
+  opacity: 1;
+  animation: bolt 0.55s ease-out forwards;
+}
+
+.awakening[data-stage='strike'] .awaken-bolt polyline {
+  stroke-dasharray: 220;
+  animation: bolt-draw 0.12s linear both;
+}
+
+@keyframes bolt {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.3;
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bolt-draw {
+  from {
+    stroke-dashoffset: 220;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.awaken-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 30%, #fff, var(--aura) 60%, transparent);
+}
+
+.awakening[data-stage='strike'] .awaken-flash {
+  animation: flash 0.9s ease-out;
+}
+
+@keyframes flash {
+  0% {
+    opacity: 0.95;
+  }
+  20% {
+    opacity: 0.15;
+  }
+  32% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.awakening[data-stage='strike'] .awaken-frame {
+  animation: quake 0.55s linear;
+}
+
+@keyframes quake {
+  10% {
+    transform: translate(-6px, 3px) rotate(-1deg);
+  }
+  25% {
+    transform: translate(5px, -4px) rotate(1deg);
+  }
+  40% {
+    transform: translate(-4px, 2px);
+  }
+  60% {
+    transform: translate(3px, -2px);
+  }
+  80% {
+    transform: translate(-1px, 1px);
+  }
+}
+
+/* the surge: colour floods back into the stitched body, which jolts on the slab */
+.awakening[data-stage='surge'] .monster-body {
+  animation: flood 1.6s ease-out;
+}
+
+@keyframes flood {
+  0% {
+    filter: grayscale(1) brightness(0.34) drop-shadow(0 0 0 transparent)
+      drop-shadow(0 0 0 transparent);
+  }
+  18% {
+    filter: grayscale(0) brightness(2.3) drop-shadow(0 0 6px var(--aura))
+      drop-shadow(0 0 26px var(--aura));
+  }
+  100% {
+    filter: grayscale(0) brightness(1) drop-shadow(0 0 3px var(--aura))
+      drop-shadow(0 0 10px var(--aura));
+  }
+}
+
+.awakening[data-stage='surge'] .awaken-monster {
+  animation: jolt 1.5s linear;
+}
+
+@keyframes jolt {
+  0%,
+  100% {
+    transform: none;
+  }
+  8% {
+    transform: translate(0, -4px) rotate(-1.5deg);
+  }
+  16% {
+    transform: translate(2px, 1px) rotate(1deg);
+  }
+  24%,
+  48% {
+    transform: none;
+  }
+  54% {
+    transform: translate(-2px, -2px) rotate(-1deg);
+  }
+  60%,
+  80% {
+    transform: none;
+  }
+  85% {
+    transform: translate(1px, -1px) rotate(0.6deg);
+  }
+}
+
+/* alive: it breathes, and the title slams in */
+.awakening[data-stage='alive'] .awaken-monster,
+.awakening[data-stage='done'] .awaken-monster {
+  animation: breathe 2.8s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  50% {
+    transform: scale(1.015);
+  }
+}
+
+.awaken-words {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 92px;
+}
+
+.awaken-caption {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  color: var(--parchment);
+  text-shadow: 0 2px 0 #000;
+  animation: fade-in 0.6s ease-out;
+}
+
+.awaken-title {
+  animation:
+    slam 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both,
+    alive-text 2.6s 0.7s infinite;
+}
+
+@keyframes slam {
+  from {
+    opacity: 0;
+    transform: scale(2.6) rotate(-4deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.94) rotate(1deg);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.awaken-sub {
+  font-size: 16px;
+  color: var(--parchment-dim);
+  animation: fade-in 0.8s 0.5s ease-out both;
+}
+
+/* the button's room is kept from the start, so nothing jumps when it appears */
+.awaken-actions {
+  display: flex;
+  justify-content: center;
+  width: min(100%, 420px);
+  min-height: 52px;
+}
+
+.awaken-done {
+  animation: fade-in 0.5s ease-out;
 }

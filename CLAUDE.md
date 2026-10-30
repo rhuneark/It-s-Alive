@@ -72,6 +72,20 @@ day's vote from `myPicks`, so nobody votes twice on a night.
   `run.setReminders` cancels our earlier ones (payload tag `itsAliveReminder`) and schedules the plan with
   a stable id per night, so re-arming never stacks duplicates. On run.world they land in the bell inbox.
   Skipped in local dev (mock).
+- The awakening (Halloween, `components/Awakening.tsx`, rules in `src/game/awakening.ts`): a full-screen scene
+  every player sees ONCE, the first time they open the game from midnight Central that begins Oct 31
+  (`awakeningDue`: phase `awakened` and not `save.sawAwakening`; it also pops up for a player who has the
+  game open across midnight). Intro card "Midnight has come" with "Witness the awakening" (the tap lets
+  phones play sound; it waits for every night to be tallied, `allStitched`), then ~7.6 s on `TIMELINE`:
+  dark grey creature in the rain with the season's totals ("19 nights. N votes.", `seasonTotals`), the
+  chosen spark gathering (its line in `SPARK_LINES`, two soft flickers, generator crackle), the strike (a
+  bolt from the sky onto the head in the spark's `--aura` colour, one flash, quake, thunderclap, heavy
+  haptic), colour flooding back with jolts, then breathing and IT'S ALIVE! slamming in, and "See your
+  creature" into the Awakened screen. Skip at any point. `markAwakened` also marks every night seen, so
+  no stale Reveal follows. "Watch it wake again" on the Awakened screen replays it. Each stage's resting
+  style is its end state (animations only add motion), reduced-motion goes straight to the end, and
+  flashes stay under 3 a second. Storm sounds are synthesized noise (`src/app/sfx.ts`) through the
+  theme's unlocked AudioContext (`theme.output()`), at the music volume, silent with music off.
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
   opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
   Sign in / Try music again buttons. Use it to debug on a phone.
@@ -80,11 +94,14 @@ day's vote from `myPicks`, so nobody votes twice on a night.
 ```
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
-               sketch (Sketchbook designs), reveal (last night's stitching), reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
+               sketch (Sketchbook designs), reveal (last night's stitching), awakening (Halloween scene),
+               reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
-src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme
+src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
+               sfx: synthesized storm sounds for the awakening
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
                Sketchbook (players design their own monster), Reveal (last night's stitching),
+               Awakening (the Halloween waking scene),
                SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, vigil, awakened

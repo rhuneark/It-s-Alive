@@ -114,6 +114,11 @@ class ThemePlayer {
     this.apply();
   }
 
+  /** The audio output the player's taps have unlocked (null before the first), for sound effects. */
+  output(): AudioContext | null {
+    return this.ctx;
+  }
+
   diagnostics(): MusicDiagnostics {
     const a = this.audio;
     return {

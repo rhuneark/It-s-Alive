@@ -57,6 +57,8 @@ export interface SaveState {
   sketch: Parts | null;
   /** The latest night whose stitching the player has been shown (-1: none yet). */
   seenNight: number;
+  /** The player has watched (or skipped) the creature waking on Halloween. */
+  sawAwakening: boolean;
 }
 
 export function newSave(season: string, day: number): SaveState {
@@ -76,6 +78,7 @@ export function newSave(season: string, day: number): SaveState {
     myPicks: {},
     sketch: null,
     seenNight: -1,
+    sawAwakening: false,
   };
 }
 
@@ -126,6 +129,7 @@ export function parseSave(raw: string | null, season: string, day: number): Save
         : {},
       sketch: data.sketch == null ? null : cleanSketch(data.sketch),
       seenNight: typeof data.seenNight === 'number' ? Math.min(data.seenNight, day - 1) : -1,
+      sawAwakening: data.sawAwakening === true,
     };
     return rollToDay(save, day);
   } catch {

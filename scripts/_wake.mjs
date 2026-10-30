@@ -1,0 +1,30 @@
+import { chromium } from '@playwright/test';
+const [out, w, h] = [process.argv[2], +process.argv[3], +process.argv[4]];
+const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
+const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+const errors = [];
+page.on('pageerror', (e) => errors.push(e.message));
+page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+await page.goto('http://127.0.0.1:5173/?day=20');
+const go = page.getByTestId('awaken-start');
+await go.waitFor();
+await page.waitForFunction(() => !document.querySelector('[data-testid=awaken-start]')?.disabled);
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/wake-${w}-0-intro.png` });
+await go.click();
+const t0 = Date.now();
+for (const [name, at] of [['1-dark', 900], ['2-charge', 2500], ['3-strike', 3800], ['4-surge', 4500], ['5-alive', 6500], ['6-done', 8200]]) {
+  const wait = at - (Date.now() - t0);
+  if (wait > 0) await page.waitForTimeout(wait);
+  const stage = await page.getByTestId('awakening').getAttribute('data-stage');
+  await page.screenshot({ path: `${out}/wake-${w}-${name}.png` });
+  console.log(name, 'stage', stage);
+}
+const sw = await page.evaluate(() => document.documentElement.scrollWidth);
+const btn = await page.getByTestId('awaken-done').boundingBox();
+console.log('scrollWidth', sw, 'done button', JSON.stringify(btn), 'errors', JSON.stringify(errors));
+await page.getByTestId('awaken-done').click();
+await page.waitForTimeout(600);
+console.log('after: awakening gone', await page.getByTestId('awakening').count() === 0, 'logo', await page.locator('.logo-alive').textContent());
+await page.screenshot({ path: `${out}/wake-${w}-7-after.png` });
+await browser.close();

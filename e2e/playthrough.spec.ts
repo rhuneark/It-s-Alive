@@ -254,8 +254,33 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.locator('.chron-now')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close chronicle' }).click();
 
-  // Halloween: it wakes.
+  // Halloween: it wakes, in a scene everyone sees once (dark lab, the spark, the strike, colour).
+  await page.goto('/?day=20');
+  const wake = page.getByTestId('awakening');
+  await expect(wake).toHaveAttribute('data-stage', 'intro');
+  await expect(wake).toContainText('19 nights');
+  await noSidewaysScroll(page);
+  await framedButtons(page);
+  await shot('awakening-intro');
+  await page.getByTestId('awaken-start').click();
+  await expect(wake).toHaveAttribute('data-stage', 'dark');
+  await expect(wake.locator('.awaken-caption')).toContainText(/19 nights\. [\d,]+ votes\./);
+  await expect(wake).toHaveAttribute('data-stage', 'strike', { timeout: 6000 });
+  await expect(wake).toHaveAttribute('data-stage', 'alive', { timeout: 6000 });
+  await expect(wake.locator('.monster.alive.aura')).toBeVisible();
+  await expect(wake.locator('.awaken-title')).toHaveText("IT'S ALIVE!");
+  await page.getByTestId('awaken-done').click({ timeout: 6000 });
+  await expect(wake).toHaveCount(0);
+  await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
+  await expect(page.getByTestId('reveal')).toHaveCount(0); // the scene showed the last stitching
+  // It can be watched again, and skipped.
+  await page.getByTestId('awaken-replay').click();
+  await expect(wake).toHaveAttribute('data-stage', 'dark');
+  await page.getByTestId('awaken-skip').click();
+  await expect(wake).toHaveCount(0);
+  // Once seen, coming back goes straight to the title.
   await openDay(page, 20);
+  await expect(wake).toHaveCount(0);
   await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
   await expect(page.locator('.monster.alive')).toBeVisible();
   await imagesLoaded(page);
@@ -265,6 +290,20 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.locator('.chron-done')).toHaveCount(19);
 
   expect(errors).toEqual([]);
+});
+
+test('the awakening skips the flashes and shaking for players who ask for less motion', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?day=20');
+  await page.getByTestId('awaken-start').click();
+  const wake = page.getByTestId('awakening');
+  await expect(wake).toHaveAttribute('data-stage', 'alive');
+  await expect(wake.locator('.awaken-title')).toBeVisible();
+  await page.getByTestId('awaken-done').click({ timeout: 3000 });
+  await expect(wake).toHaveCount(0);
+  await expect(page.locator('.logo-alive')).toBeVisible();
 });
 
 test('every night of the season fits the phone without sideways scrolling', async ({ page }) => {

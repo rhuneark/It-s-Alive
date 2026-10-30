@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { JAM_VOTE_URL, useGame, type GameModel } from './app/useGame';
 import { theme, useMusic } from './app/useMusic';
+import { Awakening } from './components/Awakening';
 import { Chronicle } from './components/Chronicle';
 import { Sketchbook } from './components/Sketchbook';
 import { Diagnostics } from './components/Diagnostics';
@@ -78,6 +79,17 @@ function Game({
     run.track('sketchbook_open');
   };
   const [diagOpen, setDiagOpen] = useState(false);
+  // Halloween: the waking scene plays once for everyone; the Awakened screen can replay it.
+  const [replay, setReplay] = useState(false);
+  const showAwakening = !game.loading && (game.awakening || replay);
+
+  /** Into the laboratory (Continue, or the end of the waking scene). */
+  const enter = () => {
+    // Start the theme inside this tap: phones only allow sound to begin from a gesture.
+    if (game.save.musicOn) theme.setWanted(true);
+    game.begin();
+    onEnter();
+  };
 
   useEffect(() => {
     if (!game.loading)
@@ -87,21 +99,16 @@ function Game({
   let screen;
   if (game.loading) screen = <Loading />;
   else if (!inGame)
+    screen = <Title game={game} onStart={enter} onSketch={openSketch} onListen={onListen} />;
+  else if (game.phase.kind === 'awakened')
     screen = (
-      <Title
+      <Awakened
         game={game}
-        onStart={() => {
-          // Start the theme inside this tap: phones only allow sound to begin from a gesture.
-          if (game.save.musicOn) theme.setWanted(true);
-          game.begin();
-          onEnter();
-        }}
+        onChronicle={() => setChronicle(true)}
         onSketch={openSketch}
-        onListen={onListen}
+        onReplay={() => setReplay(true)}
       />
     );
-  else if (game.phase.kind === 'awakened')
-    screen = <Awakened game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
   else if (game.phase.kind === 'vigil')
     screen = <Vigil game={game} onChronicle={() => setChronicle(true)} onSketch={openSketch} />;
   else if (game.phase.kind === 'preseason')
@@ -139,7 +146,26 @@ function Game({
           onClose={() => setSketchOpen(false)}
         />
       )}
-      {inGame && game.reveal && !game.resolving && !chronicle && !sketchOpen && (
+      {showAwakening && (
+        <Awakening
+          parts={game.parts}
+          spark={game.parts.spark ?? null}
+          totals={game.totals}
+          ready={game.stitched || !game.resolving}
+          autoStart={replay}
+          volume={game.save.musicOn ? game.save.musicVolume : 0}
+          onBegin={() => {
+            if (game.save.musicOn) theme.setWanted(true);
+            onListen();
+          }}
+          onDone={() => {
+            setReplay(false);
+            game.markAwake();
+            if (!inGame) enter();
+          }}
+        />
+      )}
+      {inGame && game.reveal && !game.resolving && !chronicle && !sketchOpen && !showAwakening && (
         <Reveal
           reveal={game.reveal}
           parts={game.parts}
@@ -599,10 +625,12 @@ function Awakened({
   game,
   onChronicle,
   onSketch,
+  onReplay,
 }: {
   game: GameModel;
   onChronicle: () => void;
   onSketch: () => void;
+  onReplay: () => void;
 }) {
   return (
     <div className="screen game">
@@ -621,6 +649,9 @@ function Awakened({
         </p>
         <p className="muted">What it does next… you will soon discover.</p>
       </section>
+      <button className="btn btn-primary btn-wide" onClick={onReplay} data-testid="awaken-replay">
+        Watch it wake again ⚡
+      </button>
       <SketchButton onClick={onSketch} />
     </div>
   );

@@ -34,6 +34,7 @@ import {
   votesRemaining,
   type SaveState,
 } from '../game/state';
+import { allStitched, awakeningDue, markAwakened, seasonTotals } from '../game/awakening';
 import type { Parts } from '../game/sketch';
 import { resolveDay } from '../game/tally';
 import * as run from '../sdk/run';
@@ -67,6 +68,14 @@ export interface GameModel {
   /** Last night's stitching, until the player has seen it (null for a first visit). */
   reveal: Reveal | null;
   dismissReveal: () => void;
+  /** Halloween: the creature's waking scene has not been shown to this player yet. */
+  awakening: boolean;
+  /** Every night is tallied, so the finished creature can be drawn. */
+  stitched: boolean;
+  /** What went into the creature: nights tallied and every vote cast on them. */
+  totals: { nights: number; votes: number };
+  /** The waking scene was watched or skipped. */
+  markAwake: () => void;
   select: (optionId: string | null) => void;
   cast: () => Promise<void>;
   watchAdForVote: () => Promise<void>;
@@ -290,6 +299,13 @@ export function useGame(): GameModel {
     if (r) void commit(markSeen(saveRef.current, r.night));
   }, [commit]);
 
+  const awakening = awakeningDue(save, phase);
+  const stitched = useMemo(() => allStitched(save, SCHEDULE), [save]);
+  const totals = useMemo(() => seasonTotals(save, SCHEDULE), [save]);
+  const markAwake = useCallback(() => {
+    if (!saveRef.current.sawAwakening) void commit(markAwakened(saveRef.current, SCHEDULE));
+  }, [commit]);
+
   const select = useCallback(
     (optionId: string | null) => {
       void commit(selectOption(saveRef.current, optionId));
@@ -410,6 +426,10 @@ export function useGame(): GameModel {
     armReminders,
     reveal,
     dismissReveal,
+    awakening,
+    stitched,
+    totals,
+    markAwake,
     select,
     cast,
     watchAdForVote,
