@@ -19,6 +19,11 @@ already played (rules.test.ts pins the opening nights); only later nights may ch
 moves back mid-season, `parseSave` drops cached results of days open again and `rollToDay` gives back a
 day's vote from `myPicks`, so nobody votes twice on a night.
 
+From Halloween on it is a different game: THE RAMPAGE. The creature everyone built breaks out of the
+laboratory and stomps through a new place every day, hole.io-style, in 60-second runs; it grows as it
+smashes, its parts wake one by one with powers during a run, and every midnight it grows for good by
+everything the whole community smashed that day. It runs on with no end date (the city goes on).
+
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
 - The owner also works from a LOCAL CLONE of this branch (README "Work on it from your computer") and
@@ -51,7 +56,9 @@ day's vote from `myPicks`, so nobody votes twice on a night.
   fade at the seam, follows the saved volume (`musicVolume`, 0..1, slider in the ♫ sound panel) and on/off
   (`musicOn`), and goes quiet on host pause/sleep or a hidden tab.
 - Title screen: the real creature so far, a "Tonight" card (night N, tonight's part, countdown, whether you
-  voted, streak), then only Enter/Continue, the October Jam vote button, Sketchbook and a music row
+  voted, streak; from Halloween `RampageCard`: rampage day, place, height in ft, growth last night, the
+  countdown to the next growth, everyone's rubble today), then only Enter/Continue (from Halloween
+  "Rampage! ⚡", straight into a run), the October Jam vote button, Sketchbook and a music row
   (on/off + volume, `MusicBar`); touching the music row starts the theme there. The lore panel shows to
   first-time players only. In game the ♫ button opens the same controls.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
@@ -68,7 +75,8 @@ day's vote from `myPicks`, so nobody votes twice on a night.
   useGame): `reminderPlan()` (`src/game/reminders.ts`) gives one local notification a day at 6 pm Central
   naming that night's part ("Night 5: the third eye" and the question; "Your streak bonus vote is waiting too"
   only on a night the bonus is certain: tonight if it is waiting, tomorrow once voted today), then the
-  vigil and Halloween morning, for the next 7 days (the platform's limit), skipping tonight once voted.
+  vigil and Halloween morning, then every rampage day at 6 pm ("Rampage day 3: The Market Town" and the
+  place's blurb), for the next 7 days (the platform's limit), skipping tonight once voted.
   `run.setReminders` cancels our earlier ones (payload tag `itsAliveReminder`) and schedules the plan with
   a stable id per night, so re-arming never stacks duplicates. On run.world they land in the bell inbox.
   Skipped in local dev (mock).
@@ -76,16 +84,54 @@ day's vote from `myPicks`, so nobody votes twice on a night.
   every player sees ONCE, the first time they open the game from midnight Central that begins Oct 31
   (`awakeningDue`: phase `awakened` and not `save.sawAwakening`; it also pops up for a player who has the
   game open across midnight). Intro card "Midnight has come" with "Witness the awakening" (the tap lets
-  phones play sound; it waits for every night to be tallied, `allStitched`), then ~7.6 s on `TIMELINE`:
+  phones play sound; it waits for every night to be tallied, `allStitched`, so the creature is exactly
+  the one everyone built: useGame retries failed tallies every 4 s from Halloween on, and the rampage
+  waits for it too), then ~7.6 s on `TIMELINE`:
   dark grey creature in the rain with the season's totals ("19 nights. N votes.", `seasonTotals`), the
   chosen spark gathering (its line in `SPARK_LINES`, two soft flickers, generator crackle), the strike (a
   bolt from the sky onto the head in the spark's `--aura` colour, one flash, quake, thunderclap, heavy
-  haptic), colour flooding back with jolts, then breathing and IT'S ALIVE! slamming in, and "See your
-  creature" into the Awakened screen. Skip at any point. `markAwakened` also marks every night seen, so
+  haptic), colour flooding back with jolts, then breathing and IT'S ALIVE! slamming in, and "It breaks
+  out! ⚡" (later replays: "See your creature") straight into the first rampage run, which opens with the
+  BREAKOUT (the laboratory tower shakes, bursts, and the creature rises from its rubble: IT'S LOOSE!). Skip at any point. `markAwakened` also marks every night seen, so
   no stale Reveal follows. "Watch it wake again" on the Awakened screen replays it. Each stage's resting
   style is its end state (animations only add motion), reduced-motion goes straight to the end, and
   flashes stay under 3 a second. Storm sounds are synthesized noise (`src/app/sfx.ts`) through the
   theme's unlocked AudioContext (`theme.output()`), at the music volume, silent with music off.
+- THE RAMPAGE (from Halloween; rules `src/game/rampage.ts` + `rampageRun.ts`, tests `rampage.test.ts`,
+  canvas `components/Rampage.tsx`). Rampage day = `phase.daysSinceAwakening` (0 = Halloween).
+  - The creature is the community's: `app/creatureSprite.ts` composites its real painted layers
+    (`layoutMonster` of the winners) onto one canvas, cropped to the body, with a glow in the spark's
+    colour (`AURA`) and one canvas per slot so a part lights up when it wakes. It faces front; it is
+    flipped to face where it walks, bobs and squashes as it stomps.
+  - A run (`RUN_SECONDS` 60): drag anywhere (a floating stick) or arrow keys/WASD. It smashes anything
+    up to `SMASH_RATIO` 0.75 of its height and is stopped by bigger things ("Too big to smash yet").
+    Growth is by area (`sizeAfter`, `GROWTH` 0.2, mass = 0.6 h²); speed grows with sqrt(size × start),
+    the camera keeps it at `SCREEN_FILL` 27% of the screen height and zooms out as it grows (hole.io).
+    Villagers and chickens flee (`mover`) and get flung off screen, never killed. Every run starts at
+    `BASE_SIZE`: the community's growth is shown as its real height (`communitySize` → ft, the HUD's
+    scale) and each day's place is a new challenge rather than an easier one.
+  - Powers (`POWERS`, woken at a multiple of the start size, banner names the community's parts via
+    `powerParts`): legs 1.12× faster; arms 1.3× reach; maw/head/second head 1.5× swallow small things
+    nearby; tail/spine 1.75× sweep; wings 2.05× leap and crush on landing; spark/heart/brain 2.4×
+    frenzy and lightning on the biggest thing nearby. Balance (rampage.test.ts, a "decent player"
+    bot): every place gives a full minute, wakes ≥4 parts and never flattens ≥60% of it. Re-run the
+    tests after any tuning; the powers compound, so small changes snowball.
+  - Places (`STAGES`, `stageFor(day)`): the Village, the Farmlands, the Market Town, Graveyard Hill,
+    the Baron's Estate, then the City for ever. `buildWorld(seed, stage)` (seed `<season>:r<day>`, the
+    same for everyone that day) lays out roads, houses with clutter, landmarks on 7 plots, farms,
+    graveyards, pumpkin patches, woods and crowds; the laboratory sits at the start, already rubble.
+  - Community: one shared-tally entry per run, filed under its rubble band (`r_<season>_d<day>_b<band>`,
+    `rubbleBand`, 12 bands, `bandValue`) because counts are all the tally does; a day's total is
+    `totalFromBands` of 12 counts. Closed days are cached in `save.rampage.totals`; the creature's height
+    today is `communitySize(sum of past days)` (logarithmic). Guests are NOT prompted after every run:
+    the end panel offers "Sign in to count it" (`run.isGuest`, `countAsSignedIn`).
+  - Save: `rampage` {best, runs, day, today, brokeOut, totals} (`recordRun`, `rememberRubble`).
+  - Art: village props are PixelLab pixflux sprites (`tools/art/props.py gen|sheet|pick`, picks in
+    `art/props.json`, shipped in `public/art/props/<kind>.png`, trimmed). Small figures drew a moon
+    behind themselves with "night" in the prompt: those use `PLAIN`. Debris colours come from each sprite.
+  - Sounds (`sfx.ts`): `thud` per smash (weighted), `roar` at the breakout, `chime` when a part wakes.
+  - Mock only: `?runSeconds=N` shortens runs; `window.__rampage` is the live run and `window.__steer`
+    steers it (tests and screenshot scripts drive a greedy player with these).
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
   opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
   Sign in / Try music again buttons. Use it to debug on a phone.
@@ -95,22 +141,26 @@ day's vote from `myPicks`, so nobody votes twice on a night.
 src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, tally, state (save reducers),
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
                sketch (Sketchbook designs), reveal (last night's stitching), awakening (Halloween scene),
+               rampage + rampageRun (the rampage: places, powers, growth, one run; rampage.test.ts),
                reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
-               sfx: synthesized storm sounds for the awakening
+               sfx: synthesized storm and rampage sounds; creatureSprite: the community's creature
+               as one sprite (plus glow and per-part canvases) for the rampage
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
                Sketchbook (players design their own monster), Reveal (last night's stitching),
-               Awakening (the Halloween waking scene),
+               Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),
                SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, vigil, awakened
 public/art/    shipped art: husk/<region>.png, parts/<key>.png (painted layers, also the card art),
+               props/<kind>.png (the rampage's village),
                icons/spark_*.png (the spark is an effect), lab.png (room with its props painted in)
 public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audio/theme.mp3
 art/           NOT shipped: picks.json, picked/ (chosen scene-sized paintings, husk.png, bg_lab.png),
                raw/ (git-ignored candidates)
-tools/art/     husk.py (inpaint/edit parts into the husk), process.py (layers), pixellab.py, prompts.py
+tools/art/     husk.py (inpaint/edit parts into the husk), process.py (layers), pixellab.py, prompts.py,
+               props.py (rampage props)
 scripts/       simulate.ts (Monte-Carlo checks), shot.mjs (dev screenshots)
 e2e/           Playwright full-season playthrough at 375x667 and 390x844
 ```
@@ -203,7 +253,8 @@ appStorage keys (`testLab`, `save_test`, `testVotes`) are deleted on boot. Use l
 ## Dev
 
 - `npm run dev` — mock SDK. Add `?day=N` to time-travel to voting day N (`?day=19` = the vigil,
-  `?day=20` = Halloween); mock only.
+  `?day=20` = Halloween = rampage day 0, `?day=21` = rampage day 1, ...); mock only. `&runSeconds=6`
+  for short rampage runs.
 - `node scripts/shot.mjs "?day=5" out.png 375 667 start` — screenshot with the dev server on :5173.
 - Playwright (e2e, shot.mjs) uses the sandbox's `/opt/pw-browsers/chromium` when it exists, else its
   own browser (`npx playwright install chromium` on a local clone). `.gitattributes` keeps LF endings.

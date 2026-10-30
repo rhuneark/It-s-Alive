@@ -1,9 +1,11 @@
 /**
  * The daily reminders a player gets once they have tapped Continue or opened the
- * Sketchbook: one a day naming that night's part, then the vigil and the waking.
+ * Sketchbook: one a day naming that night's part, then the vigil, the waking, and
+ * every day of the rampage after it (where it is loose today).
  * Pure; run.setReminders() schedules them as local notifications.
  */
 import type { Question } from './catalog';
+import { stageFor } from './rampage';
 import { DAY_MS, dayIndexAt, votingDays, type Season } from './schedule';
 
 const HOUR_MS = 3_600_000;
@@ -37,7 +39,8 @@ export function reminderPlan(
   const today = dayIndexAt(nowMs, season);
   const halloween = votingDays(season);
   const out: Reminder[] = [];
-  for (let day = Math.max(0, today); day <= halloween; day++) {
+  // From Halloween on the rampage goes on; the 7-day horizon decides how far ahead.
+  for (let day = Math.max(0, today); day <= Math.max(today, halloween) + 7; day++) {
     const hour = day === halloween ? AWAKE_HOUR : REMINDER_HOUR;
     const atMs = season.startMs + day * DAY_MS + hour * HOUR_MS;
     if (atMs <= nowMs || atMs - nowMs > REMINDER_HORIZON_MS) continue;
@@ -62,12 +65,20 @@ export function reminderPlan(
         title: 'The vigil',
         body: 'Every part is stitched. At midnight, the lightning comes.',
       });
-    } else {
+    } else if (day === halloween) {
       out.push({
         id,
         atMs,
         title: "It's alive!",
-        body: 'The creature woke at midnight. Come and see what everyone made.',
+        body: 'The creature woke at midnight and broke out of the laboratory. Come and rampage!',
+      });
+    } else {
+      const stage = stageFor(day - halloween);
+      out.push({
+        id,
+        atMs,
+        title: `Rampage day ${day - halloween + 1}: ${stage.name}`,
+        body: `${stage.blurb} Everything smashed before midnight makes it grow.`,
       });
     }
   }

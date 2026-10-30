@@ -255,7 +255,8 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await page.getByRole('button', { name: 'Close chronicle' }).click();
 
   // Halloween: it wakes, in a scene everyone sees once (dark lab, the spark, the strike, colour).
-  await page.goto('/?day=20');
+  // (runSeconds: mock only, a short rampage run.)
+  await page.goto('/?day=20&runSeconds=6');
   const wake = page.getByTestId('awakening');
   await expect(wake).toHaveAttribute('data-stage', 'intro');
   await expect(wake).toContainText('19 nights');
@@ -269,25 +270,60 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(wake).toHaveAttribute('data-stage', 'alive', { timeout: 6000 });
   await expect(wake.locator('.monster.alive.aura')).toBeVisible();
   await expect(wake.locator('.awaken-title')).toHaveText("IT'S ALIVE!");
-  await page.getByTestId('awaken-done').click({ timeout: 6000 });
+  // ...and breaks out of the laboratory into its first rampage.
+  await expect(page.getByTestId('awaken-done')).toHaveText('It breaks out! ⚡', { timeout: 6000 });
+  await page.getByTestId('awaken-done').click();
   await expect(wake).toHaveCount(0);
+  const rampage = page.getByTestId('rampage');
+  await expect(rampage).toHaveAttribute('data-phase', 'intro', { timeout: 10_000 });
+  await expect(page.getByTestId('rampage-title')).toHaveText("IT'S LOOSE!", { timeout: 5000 });
+  await expect(rampage).toHaveAttribute('data-phase', 'play', { timeout: 5000 });
+  await shot('rampage');
+  // It is the creature the village built, growing as it smashes (steered here like a player).
+  await page.keyboard.down('ArrowUp');
+  await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
+  await page.keyboard.up('ArrowUp');
+  await expect(page.getByTestId('rampage-score')).toHaveText(/\d/);
+  await expect(page.getByTestId('rampage-count')).toContainText('Added to the creature');
+  await framedButtons(page);
+  await shot('rampage-over');
+  // Again starts a fresh run (no breakout this time); back to the lab shows the hub.
+  await page.getByTestId('rampage-again').click();
+  await expect(rampage).toHaveAttribute('data-phase', 'play', { timeout: 10_000 });
+  await expect(page.getByTestId('rampage-title')).toHaveCount(0, { timeout: 3000 });
+  await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
+  await page.getByTestId('rampage-quit').click();
+  await expect(rampage).toHaveCount(0);
   await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
+  await expect(page.getByTestId('rampage-card')).toContainText('Rampage day 1');
+  await expect(page.getByTestId('rampage-card')).toContainText('Your best');
   await expect(page.getByTestId('reveal')).toHaveCount(0); // the scene showed the last stitching
-  // It can be watched again, and skipped.
+  await noSidewaysScroll(page);
+  await framedButtons(page);
+  // The waking can be watched again, and skipped.
   await page.getByTestId('awaken-replay').click();
   await expect(wake).toHaveAttribute('data-stage', 'dark');
   await page.getByTestId('awaken-skip').click();
   await expect(wake).toHaveCount(0);
-  // Once seen, coming back goes straight to the title.
-  await openDay(page, 20);
+  // Once seen, coming back goes to the title, whose big button is now the rampage.
+  await page.goto('/?day=20&runSeconds=4');
+  await expect(page.getByTestId('start')).toHaveText('Rampage! ⚡');
+  await expect(page.getByTestId('tonight')).toContainText('The Village');
   await expect(wake).toHaveCount(0);
-  await expect(page.locator('.logo-alive')).toHaveText("IT'S ALIVE!");
-  await expect(page.locator('.monster.alive')).toBeVisible();
   await imagesLoaded(page);
   await noSidewaysScroll(page);
   await shot('alive');
+  await page.getByTestId('start').click();
+  await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
+  await page.getByTestId('rampage-quit').click();
   await page.getByRole('button', { name: 'Chronicle' }).click();
   await expect(page.locator('.chron-done')).toHaveCount(19);
+  await page.getByRole('button', { name: 'Close chronicle' }).click();
+
+  // The next day it is loose somewhere new, and taller for what everyone smashed.
+  await page.goto('/?day=21&runSeconds=4');
+  await expect(page.getByTestId('tonight')).toContainText('Rampage day 2 · The Farmlands');
+  await expect(page.getByTestId('tonight')).toContainText(/grew \d+ ft last night/);
 
   expect(errors).toEqual([]);
 });

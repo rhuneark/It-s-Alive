@@ -59,6 +59,66 @@ export interface SaveState {
   seenNight: number;
   /** The player has watched (or skipped) the creature waking on Halloween. */
   sawAwakening: boolean;
+  /** The rampage (from Halloween on). */
+  rampage: RampageSave;
+}
+
+export interface RampageSave {
+  /** The player's best rubble in one run, and how many runs they have played. */
+  best: number;
+  runs: number;
+  /** Rampage day (0 = Halloween) that `today` counts for, and the player's rubble on it. */
+  day: number;
+  today: number;
+  /** The player has seen the creature break out of the laboratory (the first run's intro). */
+  brokeOut: boolean;
+  /** The whole community's rubble on each closed rampage day (final once the day is over). */
+  totals: Record<string, number>;
+}
+
+function newRampage(): RampageSave {
+  return { best: 0, runs: 0, day: -1, today: 0, brokeOut: false, totals: {} };
+}
+
+function parseRampage(raw: unknown): RampageSave {
+  const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<RampageSave>;
+  const totals: Record<string, number> = {};
+  if (r.totals && typeof r.totals === 'object')
+    for (const [k, v] of Object.entries(r.totals))
+      if (/^\d+$/.test(k) && typeof v === 'number' && Number.isFinite(v) && v >= 0) totals[k] = v;
+  return {
+    best: clampInt(r.best, 0, 1e9),
+    runs: clampInt(r.runs, 0, 1e9),
+    day: clampInt(r.day, -1, 10_000),
+    today: clampInt(r.today, 0, 1e9),
+    brokeOut: r.brokeOut === true,
+    totals,
+  };
+}
+
+/** A finished run: the player's best and today's rubble (the community's is in the shared tally). */
+export function recordRun(save: SaveState, rampageDay: number, rubble: number): SaveState {
+  const r = save.rampage;
+  const today = r.day === rampageDay ? r.today : 0;
+  return {
+    ...save,
+    rampage: {
+      ...r,
+      best: Math.max(r.best, rubble),
+      runs: r.runs + 1,
+      day: rampageDay,
+      today: today + rubble,
+      brokeOut: true,
+    },
+  };
+}
+
+/** Cache a closed rampage day's community rubble (it no longer changes). */
+export function rememberRubble(save: SaveState, rampageDay: number, total: number): SaveState {
+  return {
+    ...save,
+    rampage: { ...save.rampage, totals: { ...save.rampage.totals, [String(rampageDay)]: total } },
+  };
 }
 
 export function newSave(season: string, day: number): SaveState {
@@ -79,6 +139,7 @@ export function newSave(season: string, day: number): SaveState {
     sketch: null,
     seenNight: -1,
     sawAwakening: false,
+    rampage: newRampage(),
   };
 }
 
@@ -130,6 +191,7 @@ export function parseSave(raw: string | null, season: string, day: number): Save
       sketch: data.sketch == null ? null : cleanSketch(data.sketch),
       seenNight: typeof data.seenNight === 'number' ? Math.min(data.seenNight, day - 1) : -1,
       sawAwakening: data.sawAwakening === true,
+      rampage: parseRampage(data.rampage),
     };
     return rollToDay(save, day);
   } catch {

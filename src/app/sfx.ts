@@ -120,3 +120,93 @@ export function thunderclap(volume: number): void {
     },
   ]);
 }
+
+/** A smash: from a crunch (small things) to a crash that shakes the ground (big ones). */
+export function thud(volume: number, weight: number): void {
+  const w = Math.max(0, Math.min(1, weight));
+  play(volume, [
+    {
+      at: 0,
+      seconds: 0.18 + 0.6 * w,
+      brown: w > 0.3,
+      filter: 'lowpass',
+      from: 900 + 1400 * (1 - w),
+      to: 80,
+      peak: 0.18 + 0.7 * w,
+      attack: 0.005,
+    },
+  ]);
+}
+
+/** The creature's roar as it breaks out: a long, rough bellow. */
+export function roar(volume: number): void {
+  play(volume, [
+    {
+      at: 0,
+      seconds: 1.8,
+      brown: false,
+      filter: 'bandpass',
+      from: 380,
+      to: 140,
+      peak: 0.55,
+      attack: 0.18,
+    },
+    {
+      at: 0.05,
+      seconds: 1.9,
+      brown: true,
+      filter: 'lowpass',
+      from: 600,
+      to: 90,
+      peak: 0.9,
+      attack: 0.25,
+    },
+  ]);
+  tones(volume, [
+    { at: 0, freq: 82, to: 55, seconds: 1.7, peak: 0.12, type: 'sawtooth' },
+    { at: 0, freq: 123, to: 80, seconds: 1.6, peak: 0.08, type: 'sawtooth' },
+  ]);
+}
+
+/** A part waking: a short eerie rising chime. */
+export function chime(volume: number): void {
+  tones(volume, [
+    { at: 0, freq: 392, to: 392, seconds: 0.5, peak: 0.12, type: 'triangle' },
+    { at: 0.09, freq: 587, to: 587, seconds: 0.55, peak: 0.1, type: 'triangle' },
+    { at: 0.18, freq: 784, to: 790, seconds: 0.8, peak: 0.09, type: 'sine' },
+  ]);
+}
+
+interface Tone {
+  at: number;
+  freq: number;
+  /** Glides to this frequency. */
+  to: number;
+  seconds: number;
+  peak: number;
+  type: OscillatorType;
+}
+
+function tones(volume: number, list: Tone[]): void {
+  const ctx = theme.output();
+  if (!ctx || volume <= 0) return;
+  try {
+    for (const t of list) {
+      const at = ctx.currentTime + 0.01 + t.at;
+      const osc = ctx.createOscillator();
+      osc.type = t.type;
+      osc.frequency.setValueAtTime(t.freq, at);
+      osc.frequency.exponentialRampToValueAtTime(t.to, at + t.seconds);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, t.peak * volume), at + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + t.seconds);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(at);
+      osc.stop(at + t.seconds + 0.05);
+    }
+  } catch {
+    // No sound is better than a broken scene.
+  }
+}

@@ -13,13 +13,14 @@
  */
 import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { HapticFeedbackStyle } from '@series-inc/rundot-game-sdk';
-import { simulatedCrowd } from '../game/crowd';
+import { simulatedCrowd, simulatedRubble } from '../game/crowd';
 import type { Reminder } from '../game/reminders';
 import { DAY_MS, SEASON } from '../game/schedule';
 
 const INIT_TIMEOUT_MS = 8000;
 const SAVE_KEY = 'save';
 const DEV_VOTES_KEY = 'devVotes';
+const DEV_RUBBLE_KEY = 'devRubble';
 /** Left behind by the retired Test Lab; removed once on boot. */
 const RETIRED_KEYS = ['testLab', 'save_test', 'testVotes'];
 
@@ -235,6 +236,91 @@ export async function fetchCounts(
     return results.map((r) => (r && Number.isFinite(r.count) ? r.count : 0));
   } catch (err) {
     warn('fetchCounts', err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------- the rampage's rubble
+
+function rubbleType(season: string, day: number, band: number): string {
+  return `r_${season}_d${day}_b${band}`;
+}
+
+/** A guest (not signed in). Their runs only count once they sign in. */
+export function isGuest(): boolean {
+  if (sandboxed()) return false;
+  try {
+    return RundotGameAPI.accessGate.isAnonymous();
+  } catch {
+    return true;
+  }
+}
+
+export type RubbleResult = 'counted' | 'guest' | 'failed';
+
+/**
+ * Add one run to the community's rubble for a rampage day, filed under its band (the shared tally
+ * can only count entries). Guests are not asked to sign in here, after every run: they choose to.
+ */
+export async function recordRubble(
+  season: string,
+  day: number,
+  band: number,
+): Promise<RubbleResult> {
+  await ready();
+  if (sandboxed()) {
+    try {
+      const raw = await RundotGameAPI.appStorage.getItem(DEV_RUBBLE_KEY);
+      const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {};
+      const today = (all[String(day)] ??= []);
+      today[band] = (today[band] ?? 0) + 1;
+      await RundotGameAPI.appStorage.setItem(DEV_RUBBLE_KEY, JSON.stringify(all));
+      return 'counted';
+    } catch (err) {
+      warn('dev rubble', err);
+      return 'failed';
+    }
+  }
+  if (isGuest()) return 'guest';
+  try {
+    await RundotGameAPI.ugc.create({
+      contentType: rubbleType(season, day, band),
+      data: { season, day, band },
+      title: 'rampage',
+    });
+    return 'counted';
+  } catch (err) {
+    warn('recordRubble', err);
+    return 'failed';
+  }
+}
+
+/** Runs per rubble band for one rampage day, from everyone. Null if a count could not be read. */
+export async function fetchRubble(
+  season: string,
+  day: number,
+  bands: number,
+): Promise<number[] | null> {
+  await ready();
+  if (sandboxed()) {
+    const crowd = simulatedRubble(`${season}:${day}`, bands);
+    try {
+      const raw = await RundotGameAPI.appStorage.getItem(DEV_RUBBLE_KEY);
+      const mine = (raw ? (JSON.parse(raw) as Record<string, number[]>) : {})[String(day)] ?? [];
+      return crowd.map((n, b) => n + (mine[b] ?? 0));
+    } catch {
+      return crowd;
+    }
+  }
+  try {
+    const results = await Promise.all(
+      Array.from({ length: bands }, (_, b) =>
+        withRetry(() => RundotGameAPI.ugc.count({ contentType: rubbleType(season, day, b) })),
+      ),
+    );
+    return results.map((r) => (r && Number.isFinite(r.count) ? r.count : 0));
+  } catch (err) {
+    warn('fetchRubble', err);
     return null;
   }
 }

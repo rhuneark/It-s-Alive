@@ -38,7 +38,7 @@ interface Props {
   /** The spark of life chosen on the last night (its colour and line). */
   spark: string | null;
   totals: { nights: number; votes: number };
-  /** The finished creature can be drawn (every night tallied, or we stopped waiting). */
+  /** Every night is tallied: the creature that wakes is exactly the one everyone built. */
   ready: boolean;
   /** A replay: the player already tapped, so the scene starts straight away. */
   autoStart?: boolean;
@@ -46,6 +46,8 @@ interface Props {
   volume: number;
   /** The player tapped to begin (a gesture: the theme may start here). */
   onBegin?: () => void;
+  /** The last button (after IT'S ALIVE!). */
+  doneLabel?: string;
   onDone: (how: 'watched' | 'skipped') => void;
 }
 
@@ -57,6 +59,7 @@ export function Awakening({
   autoStart = false,
   volume,
   onBegin,
+  doneLabel = 'See your creature',
   onDone,
 }: Props) {
   const [stage, setStage] = useState<Stage>(autoStart ? 'dark' : 'intro');
@@ -200,7 +203,7 @@ export function Awakening({
                 data-testid="awaken-done"
                 autoFocus
               >
-                See your creature
+                {doneLabel}
               </button>
             )}
           </div>

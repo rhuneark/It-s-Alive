@@ -8,6 +8,7 @@ import type { SlotId } from '../game/catalog';
 import { reminderPlan } from '../game/reminders';
 import { pendingReveal, type Reveal } from '../game/reveal';
 import {
+  DAY_MS,
   SEASON,
   closedDays,
   dayIndexAt,
@@ -21,6 +22,8 @@ import {
   grantAdVote,
   markSeen,
   markStarted,
+  recordRun,
+  rememberRubble,
   newSave,
   parseSave,
   recordVote,
@@ -35,12 +38,37 @@ import {
   type SaveState,
 } from '../game/state';
 import { allStitched, awakeningDue, markAwakened, seasonTotals } from '../game/awakening';
+import {
+  RUBBLE_BANDS,
+  communitySize,
+  rubbleBand,
+  stageFor,
+  totalFromBands,
+  type Stage,
+} from '../game/rampage';
+import type { RunResult } from '../game/rampageRun';
 import type { Parts } from '../game/sketch';
 import { resolveDay } from '../game/tally';
 import * as run from '../sdk/run';
 
 /** The game's October Jam page, where players vote for it (Community Pick). */
 export const JAM_VOTE_URL = 'https://run.world/jams/octoberjam?game=GORVjkIRThUz5n2tmAms';
+
+export interface RampageInfo {
+  /** 0 = Halloween. */
+  day: number;
+  stage: Stage;
+  /** Same place for everyone on a day. */
+  seed: string;
+  /** Its real height today (world units): it grows every midnight with the community's rubble. */
+  size: number;
+  /** How much it grew at the last midnight. */
+  grewBy: number;
+  /** Everyone's rubble so far today (null until counted). */
+  today: number | null;
+  /** Until midnight Central, when today's rubble makes it grow. */
+  growsInMs: number;
+}
 
 export interface Toast {
   id: number;
@@ -76,6 +104,12 @@ export interface GameModel {
   totals: { nights: number; votes: number };
   /** The waking scene was watched or skipped. */
   markAwake: () => void;
+  /** The rampage (from Halloween on): today's place and how big the community has made it. */
+  rampage: RampageInfo | null;
+  /** A run ended: keep the player's stats and add its rubble to the community's tally. */
+  finishRun: (result: RunResult) => Promise<run.RubbleResult>;
+  /** A guest chose to sign in so a run counts. */
+  countAsSignedIn: (rubble: number) => Promise<run.RubbleResult>;
   select: (optionId: string | null) => void;
   cast: () => Promise<void>;
   watchAdForVote: () => Promise<void>;
@@ -301,10 +335,92 @@ export function useGame(): GameModel {
 
   const awakening = awakeningDue(save, phase);
   const stitched = useMemo(() => allStitched(save, SCHEDULE), [save]);
+  // From Halloween on the creature must be the one everyone built: keep asking for any night
+  // whose tally failed until every part is known.
+  useEffect(() => {
+    if (loading || stitched || resolving || phase.kind !== 'awakened') return;
+    const id = setTimeout(() => void resolvePast(), 4000);
+    return () => clearTimeout(id);
+  }, [loading, stitched, resolving, phase.kind, resolvePast]);
   const totals = useMemo(() => seasonTotals(save, SCHEDULE), [save]);
   const markAwake = useCallback(() => {
     if (!saveRef.current.sawAwakening) void commit(markAwakened(saveRef.current, SCHEDULE));
   }, [commit]);
+
+  // ------------------------------------------------------------- the rampage
+  const rampageDay = phase.kind === 'awakened' ? phase.daysSinceAwakening : -1;
+  const [todayRubble, setTodayRubble] = useState<number | null>(null);
+  const rubbleBusy = useRef(false);
+
+  /** Count closed rampage days once (they are final), then today's so far. */
+  const refreshRubble = useCallback(async () => {
+    const d = phaseAt(run.now(), SEASON);
+    if (d.kind !== 'awakened' || rubbleBusy.current) return;
+    rubbleBusy.current = true;
+    try {
+      for (let past = 0; past < d.daysSinceAwakening; past++) {
+        if (saveRef.current.rampage.totals[String(past)] !== undefined) continue;
+        const counts = await run.fetchRubble(SEASON.id, past, RUBBLE_BANDS);
+        if (!counts) break;
+        void commit(rememberRubble(saveRef.current, past, totalFromBands(counts)));
+      }
+      const counts = await run.fetchRubble(SEASON.id, d.daysSinceAwakening, RUBBLE_BANDS);
+      if (counts) setTodayRubble(totalFromBands(counts));
+    } finally {
+      rubbleBusy.current = false;
+    }
+  }, [commit]);
+
+  useEffect(() => {
+    if (!loading && rampageDay >= 0) void refreshRubble();
+  }, [loading, rampageDay, refreshRubble]);
+
+  const rampage = useMemo<RampageInfo | null>(() => {
+    if (rampageDay < 0) return null;
+    const before = (day: number) => {
+      let sum = 0;
+      for (let d = 0; d < day; d++) sum += save.rampage.totals[String(d)] ?? 0;
+      return sum;
+    };
+    const size = communitySize(before(rampageDay));
+    const nextMidnight = SEASON.startMs + (dayIndexAt(now, SEASON) + 1) * DAY_MS;
+    return {
+      day: rampageDay,
+      stage: stageFor(rampageDay),
+      seed: `${SEASON.id}:r${rampageDay}`,
+      size,
+      grewBy: rampageDay > 0 ? size - communitySize(before(rampageDay - 1)) : 0,
+      today: todayRubble,
+      growsInMs: Math.max(0, nextMidnight - now),
+    };
+  }, [rampageDay, save.rampage.totals, todayRubble, now]);
+
+  const finishRun = useCallback(
+    async (result: RunResult) => {
+      const d = rampageDay < 0 ? 0 : rampageDay;
+      void commit(recordRun(saveRef.current, d, result.rubble));
+      run.track('rampage_end', {
+        day: d,
+        rubble: result.rubble,
+        peak: result.peak,
+        powers: result.powers.length,
+      });
+      const how = await run.recordRubble(SEASON.id, d, rubbleBand(result.rubble));
+      void refreshRubble();
+      return how;
+    },
+    [commit, rampageDay, refreshRubble],
+  );
+
+  const countAsSignedIn = useCallback(
+    async (rubble: number) => {
+      if (!(await run.signIn())) return 'guest' as const;
+      const how = await run.recordRubble(SEASON.id, Math.max(0, rampageDay), rubbleBand(rubble));
+      void refreshRubble();
+      return how;
+    },
+    [rampageDay, refreshRubble],
+  );
 
   const select = useCallback(
     (optionId: string | null) => {
@@ -430,6 +546,9 @@ export function useGame(): GameModel {
     stitched,
     totals,
     markAwake,
+    rampage,
+    finishRun,
+    countAsSignedIn,
     select,
     cast,
     watchAdForVote,

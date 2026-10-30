@@ -309,9 +309,16 @@ describe('daily reminders', () => {
       `Night 19: the ${schedule[18]!.part.toLowerCase()}`,
       'The vigil',
       "It's alive!",
+      'Rampage day 2: The Farmlands',
+      'Rampage day 3: The Market Town',
+      'Rampage day 4: Graveyard Hill',
     ]);
-    expect(end.at(-1)!.atMs).toBe(LIVE_SEASON.awakenMs + 10 * 3_600_000);
-    expect(reminderPlan(LIVE_SEASON.awakenMs + DAY_MS, LIVE_SEASON, schedule, false)).toEqual([]);
+    expect(end[3]!.atMs).toBe(LIVE_SEASON.awakenMs + 10 * 3_600_000);
+    // the rampage goes on: a reminder every evening, a week ahead, wherever it is loose
+    const later = reminderPlan(LIVE_SEASON.awakenMs + 9 * DAY_MS, LIVE_SEASON, schedule, false);
+    expect(later).toHaveLength(7);
+    expect(later.every((r) => r.title.startsWith('Rampage day'))).toBe(true);
+    expect(later.at(-1)!.title).toContain('The City');
   });
 
   it('mentions the streak vote only on nights it is certain', () => {
