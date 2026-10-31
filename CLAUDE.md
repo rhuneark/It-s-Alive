@@ -462,8 +462,9 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   Rubik, the creature + Awaken home, on top of 1.24.0's vigil storm, awakening and rampage) was
   submitted with the publish workflow on Oct 31, 04:28 UTC, half an hour before Halloween began in
   Central (1.24.0 on Oct 30, 1.20.0 on Oct 23, 1.16.0 on Oct 13, 1.14.0 on Oct 11); RUN reviews it
-  and makes it public on approval. The next version (commit ba1c7ff: the painted home street and the
-  cleaner Awaken sheet) was submitted the same way at 05:07 UTC. Pushes after that deploy NEW private versions only: a fix
+  and makes it public on approval. 1.30.0 (commit ba1c7ff: the painted home street and the cleaner
+  Awaken sheet) was submitted the same way at 05:07 UTC, and 1.31.0 (commit 66da254: villagers who
+  fight back, the pixel UI and the oozing Awaken button) at 18:51 UTC. Pushes after that deploy NEW private versions only: a fix
   reaches public players only when the owner asks to publish again (each submission must be a higher
   version and goes through review). Name, tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`
