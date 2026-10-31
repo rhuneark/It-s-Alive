@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { theme } from '../app/useMusic';
 import * as run from '../sdk/run';
 
@@ -26,11 +26,22 @@ const JUMPS: Array<[day: number, label: string]> = [
 export function Diagnostics({ preview, onPreview, onClose }: Props) {
   const [, setTick] = useState(0);
   const [busy, setBusy] = useState(false);
-  // Only the game's owners and editors (checked by RUN's server) get test mode.
-  const [owner, setOwner] = useState(false);
-  useEffect(() => {
-    void run.canPreview().then(setOwner);
-  }, []);
+  // Test mode is for the game's owner (see run.canPreview); the check's answer is shown below.
+  const [access, setAccess] = useState<run.PreviewAccess>({ allowed: false, detail: 'checking…' });
+  const check = () => void run.canPreview().then(setAccess);
+  useEffect(check, []);
+  // Last resort when RUN can't confirm the owner: tap the title 5 times.
+  const titleTaps = useRef<number[]>([]);
+  const tapTitle = () => {
+    const now = Date.now();
+    titleTaps.current = [...titleTaps.current.filter((t) => now - t < 3000), now];
+    if (titleTaps.current.length >= 5) {
+      titleTaps.current = [];
+      run.unlockPreview();
+      check();
+    }
+  };
+  const owner = access.allowed;
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
@@ -43,6 +54,7 @@ export function Diagnostics({ preview, onPreview, onClose }: Props) {
     ['Local dev mode', d.mock ? 'yes' : 'no'],
     ['Signed in', d.signedIn],
     ['Account', d.user],
+    ['Owner check', access.detail],
     ['Music file', m.source],
     ['Music player', m.element],
     ['Audio output', `${m.context}${m.routed ? ', volume control on' : ''}`],
@@ -59,7 +71,9 @@ export function Diagnostics({ preview, onPreview, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-head">
-          <h2 className="title-sm">Diagnostics</h2>
+          <h2 className="title-sm" onClick={tapTitle} data-testid="diag-title">
+            Diagnostics
+          </h2>
           <button className="btn btn-secondary btn-small" onClick={onClose}>
             Close
           </button>

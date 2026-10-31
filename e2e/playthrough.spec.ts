@@ -369,6 +369,7 @@ test('hidden diagnostics: tapping the build stamp 5 times shows device info', as
   await expect(diag).toContainText('Build');
   await expect(diag).toContainText('Signed in');
   await expect(diag).toContainText('Music file');
+  await expect(diag).toContainText('Owner check');
   await expect(diag).toContainText(/playing|paused/);
   await expect(diag).not.toContainText('Test Lab');
 });

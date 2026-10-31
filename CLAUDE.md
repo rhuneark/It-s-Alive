@@ -266,8 +266,12 @@ the props share its perspective. Never composite props onto the room: they float
 - Local dev: `?day=N` (below). It is ignored on RUN (live mode), and RUN does not pass the page's
   query to the game anyway.
 - On the deployed build: OWNER TEST MODE (owner's request, Oct 31). Tap the build stamp 5 times; the
-  Diagnostics panel shows "Test mode (owner only)" when `run.canPreview()` (RUN's server-verified
-  `app.getMyRole()` is owner or editor; always in local dev) with jumps to the vigil (19), Halloween
+  Diagnostics panel shows "Test mode (owner only)" when `run.canPreview()` allows it: always in local
+  dev; on RUN when `app.getMyRole()` says owner or editor (raced against 4 s: inside the app it has
+  hung or said "none" for the owner, on Oct 10 and again Oct 31), or the signed-in account is the
+  owner's handle `rhuneark`, or after tapping the panel's "Diagnostics" title 5 times (a hand unlock
+  for this session; harmless, test mode cannot change anything real). The panel's "Owner check" row
+  shows what the role check answered. Jumps: the vigil (19), Halloween
   (20) and rampage days 2, 3 and 6 (21, 22, 25). `run.setPreview(day)` switches the clock
   (`devDayOverride`) and the save key (`save_preview`, a fresh throwaway save each jump; the real
   `save` is never touched) at once. In test mode the past nights are read from the REAL tallies (the

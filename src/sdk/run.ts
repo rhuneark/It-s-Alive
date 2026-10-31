@@ -88,17 +88,58 @@ function fakeWrites(): boolean {
 
 // ---------------------------------------------------------------- owner test mode
 
-/** Owners and editors of the game (checked by RUN's server) may use test mode; anyone in local dev. */
-export async function canPreview(): Promise<boolean> {
+/** The game's owner on RUN (its link is w.run/rhuneark/its-alive). */
+const OWNER_HANDLE = 'rhuneark';
+const ROLE_TIMEOUT_MS = 4000;
+/** Test mode unlocked by hand (Diagnostics' title tapped 5 times) for this session. */
+let previewUnlocked = false;
+
+export interface PreviewAccess {
+  allowed: boolean;
+  /** What the owner check found, shown in Diagnostics. */
+  detail: string;
+}
+
+/**
+ * Who may use test mode: anyone in local dev; on RUN, the game's owners and editors (RUN's
+ * server-verified role), or the owner's account by name, because the role check has not always
+ * answered inside the app; or anyone who unlocked it by hand this session. Test mode can't
+ * change anything real, so the hand unlock is only a convenience gate.
+ */
+export async function canPreview(): Promise<PreviewAccess> {
   await ready();
-  if (isMock()) return true;
+  if (isMock()) return { allowed: true, detail: 'local dev' };
+  let name = '';
   try {
-    const role = await RundotGameAPI.app.getMyRole();
-    return role === 'owner' || role === 'editor';
+    name = RundotGameAPI.getProfile()?.username ?? '';
+  } catch {
+    // no profile: a guest
+  }
+  const byName = name.toLowerCase() === OWNER_HANDLE;
+  let detail: string;
+  let role = 'none';
+  try {
+    const started = Date.now();
+    const answer = await Promise.race([
+      RundotGameAPI.app.getMyRole(),
+      new Promise<'timed out'>((resolve) =>
+        setTimeout(() => resolve('timed out'), ROLE_TIMEOUT_MS),
+      ),
+    ]);
+    role = String(answer);
+    detail = `role ${role} (${Date.now() - started} ms)`;
   } catch (err) {
     warn('getMyRole', err);
-    return false;
+    detail = `role check failed: ${err instanceof Error ? err.message : String(err)}`;
   }
+  detail += `, account ${name || 'none'}`;
+  const allowed = role === 'owner' || role === 'editor' || byName || previewUnlocked;
+  return { allowed, detail: previewUnlocked ? `${detail}, unlocked by hand` : detail };
+}
+
+/** The hand unlock (Diagnostics' title tapped 5 times), for this session. */
+export function unlockPreview(): void {
+  previewUnlocked = true;
 }
 
 /** The day test mode pretends it is, or null when it is off. */
