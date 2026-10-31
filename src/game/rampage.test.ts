@@ -19,34 +19,58 @@ import {
   type World,
 } from './rampage';
 import { RampageRun, type Steer } from './rampageRun';
+import { rngFor } from './rng';
 
-/** A decent player: head for the nearest thing it can smash; give up on one it is stuck behind. */
-function player() {
+/** Nothing it cannot smash stands between it and (x, y). */
+function clearPath(run: RampageRun, x: number, y: number): boolean {
+  const dx = x - run.x;
+  const dy = y - run.y;
+  const len2 = dx * dx + dy * dy || 1;
+  const body = run.reach * 0.6;
+  for (const p of run.props) {
+    if (!p.alive || p.mover || canSmash(run.size, p.kind)) continue;
+    const t = Math.max(0, Math.min(1, ((p.x - run.x) * dx + (p.y - run.y) * dy) / len2));
+    if (Math.hypot(run.x + dx * t - p.x, run.y + dy * t - p.y) < p.r + body) return false;
+  }
+  return true;
+}
+
+/** A decent player: head for the nearest thing it can smash with nothing big in the way; give up on one it is stuck behind. */
+function player(seed = 'player') {
   let target = -1;
   let stuck = 0;
   let lx = 0;
   let ly = 0;
+  // Boxed in among big buildings: wander off a moment, as a player would steer around them.
+  let wander = 0;
+  let away: Steer = { x: 0, y: 0 };
+  const turn = rngFor(seed);
   const banned = new Map<number, number>();
   return (run: RampageRun): Steer => {
+    if (wander > 0) {
+      wander--;
+      lx = run.x;
+      ly = run.y;
+      return away;
+    }
     stuck = Math.hypot(run.x - lx, run.y - ly) < (run.size * 0.2) / 30 ? stuck + 1 : 0;
     lx = run.x;
     ly = run.y;
-    if (stuck > 20 && target >= 0) {
-      banned.set(target, run.time + 4);
+    if (stuck > 20) {
+      if (target >= 0) banned.set(target, run.time + 4);
       target = -1;
       stuck = 0;
+      const a = turn() * Math.PI * 2;
+      away = { x: Math.cos(a), y: Math.sin(a) };
+      wander = 25;
     }
     if (!run.props[target]?.alive) target = -1;
     if (target < 0) {
-      let best = Infinity;
-      for (const p of run.props) {
-        if (!p.alive || p.h > run.size * 0.75 || (banned.get(p.id) ?? 0) > run.time) continue;
-        const d = Math.hypot(p.x - run.x, p.y - run.y);
-        if (d < best) {
-          best = d;
-          target = p.id;
-        }
-      }
+      const options = run.props
+        .filter((p) => p.alive && p.h <= run.size * 0.75 && (banned.get(p.id) ?? 0) <= run.time)
+        .map((p) => ({ id: p.id, x: p.x, y: p.y, d: Math.hypot(p.x - run.x, p.y - run.y) }))
+        .sort((a, b) => a.d - b.d);
+      target = (options.slice(0, 12).find((o) => clearPath(run, o.x, o.y)) ?? options[0])?.id ?? -1;
     }
     const t = run.props[target];
     if (!t) return { x: 0, y: 0 };
@@ -55,9 +79,9 @@ function player() {
   };
 }
 
-function play(world: World, start: number) {
+function play(world: World, start: number, seed?: string) {
   const run = new RampageRun(world, start, 'test');
-  const steer = player();
+  const steer = player(seed);
   const events = [];
   while (!run.over) events.push(...run.step(1 / 30, steer(run)));
   events.push(...run.step(1 / 30, { x: 0, y: 0 }));
@@ -154,11 +178,15 @@ describe('a run', () => {
   });
 
   it('gives every place a full minute: a decent run wakes most of its parts but never flattens it', () => {
+    // The middle of three tries, so one run boxed into a corner by the bot does not decide it.
+    const middle = (xs: number[]) => xs.sort((a, b) => a - b)[1];
     for (const stage of STAGES) {
       const place = buildWorld('balance', stage);
-      const { run } = play(place, BASE_SIZE);
-      expect(run.powers.length, stage.id).toBeGreaterThanOrEqual(4);
-      expect(run.smashed / place.props.length, stage.id).toBeLessThan(0.6);
+      const runs = ['player', 'player:2', 'player:3'].map(
+        (seed) => play(place, BASE_SIZE, seed).run,
+      );
+      expect(middle(runs.map((r) => r.powers.length)), stage.id).toBeGreaterThanOrEqual(4);
+      expect(middle(runs.map((r) => r.smashed / place.props.length)), stage.id).toBeLessThan(0.6);
     }
   });
 
@@ -177,6 +205,19 @@ describe('a run', () => {
     huge.y = church.y + church.r + 40;
     for (let i = 0; i < 30; i++) huge.step(1 / 30, { x: 0, y: -1 });
     expect(huge.props.find((p) => p.id === church.id)!.alive).toBe(false);
+  });
+
+  it('claws at the nearest thing it can smash on its own, arm after arm', () => {
+    const run = new RampageRun(world, BASE_SIZE);
+    const crate = run.props.find((p) => p.kind === 'crate')!;
+    run.x = crate.x - run.reach * 1.5;
+    run.y = crate.y;
+    const events = [];
+    for (let i = 0; i < 30; i++) events.push(...run.step(1 / 30, { x: 0, y: 0 }));
+    const claws = events.filter((e) => e.type === 'attack');
+    expect(claws.length).toBeGreaterThan(0);
+    expect(events.some((e) => e.type === 'smash' && e.by === 'claw')).toBe(true);
+    if (claws.length > 1) expect(claws[1]!.side).toBe(-claws[0]!.side);
   });
 
   it('frightens villagers into running away', () => {

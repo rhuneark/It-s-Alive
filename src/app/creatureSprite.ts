@@ -24,6 +24,11 @@ export interface CreatureSprite {
   glow: HTMLCanvasElement;
   /** Each slot's own layers, on the same canvas size as `glow`. */
   parts: Map<string, HTMLCanvasElement>;
+  /** Slots back to front, the order the parts are drawn in (see creatureRig.ts). */
+  order: string[];
+  /** Add to a 224x200 scene point to get the same point on the `glow` canvas. */
+  originX: number;
+  originY: number;
   /** Where the feet are on the `glow` canvas (px). */
   footX: number;
   footY: number;
@@ -113,8 +118,9 @@ export async function buildCreatureSprite(
   gctx.filter = 'none';
 
   const partCanvases = new Map<string, HTMLCanvasElement>();
-  const slots = new Set(pieces.map((p) => p.slot));
-  for (const slot of slots) {
+  const order: string[] = [];
+  for (const p of pieces) if (!order.includes(p.slot)) order.push(p.slot);
+  for (const slot of order) {
     const c = canvas(glow.width, glow.height);
     const ctx = c.getContext('2d')!;
     ctx.translate(PAD - x0, PAD - y0);
@@ -131,6 +137,9 @@ export async function buildCreatureSprite(
     body,
     glow,
     parts: partCanvases,
+    order,
+    originX: PAD - x0,
+    originY: PAD - y0,
     footX: PAD + (SCENE_W / 2 - 0.5 - x0),
     footY: PAD + (feet - y0),
     height: feet - y0,

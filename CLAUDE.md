@@ -113,22 +113,48 @@ everything the whole community smashed that day. It runs on with no end date (th
 - THE RAMPAGE (from Halloween; rules `src/game/rampage.ts` + `rampageRun.ts`, tests `rampage.test.ts`,
   canvas `components/Rampage.tsx`). Rampage day = `phase.daysSinceAwakening` (0 = Halloween).
   - The creature is the community's: `app/creatureSprite.ts` composites its real painted layers
-    (`layoutMonster` of the winners) onto one canvas, cropped to the body, with a glow in the spark's
-    colour (`AURA`) and one canvas per slot so a part lights up when it wakes. It faces front; it is
-    flipped to face where it walks, bobs and squashes as it stomps.
+    (`layoutMonster` of the winners), cropped to the body, plus one canvas per slot (`parts`, `order`).
+    `app/creatureRig.ts` (`drawRig`, a `Pose`) animates each part on the husk's own joints: legs stride,
+    arms swing and claw (`clawSwing`: raised wide, slashed across), the third arm writhes, wings beat
+    (hard in a leap), the tail lashes, the head bobs and rears back to roar with arms spread; whatever
+    is painted on the head or chest moves with it. The rig is drawn on a small canvas, its glow (spark
+    colour, `AURA`) blurred there (cheap) and the whole scaled up; it faces front and is flipped to face
+    where it walks or what it claws, and swells as parts wake.
   - A run (`RUN_SECONDS` 60): drag anywhere (a floating stick) or arrow keys/WASD. It smashes anything
     up to `SMASH_RATIO` 0.75 of its height and is stopped by bigger things ("Too big to smash yet").
-    Growth is by area (`sizeAfter`, `GROWTH` 0.2, mass = 0.6 h²); speed grows with sqrt(size × start),
-    the camera keeps it at `SCREEN_FILL` 27% of the screen height and zooms out as it grows (hole.io).
+    CLAWS (owner's request: auto attack): every `CLAW_EVERY` 0.9 s (0.6 once its arms wake) it rakes
+    the nearest smashable thing within 2× its reach on its own (event `attack`, arms in turn, smash by
+    `claw`). Growth is by area (`sizeAfter`, `GROWTH` 0.2, mass = 0.6 h²); speed grows with
+    sqrt(size × start). It starts SMALL on screen (`FILL_START` 14% of the screen's height) and looms
+    larger with every part woken (+`FILL_PER_POWER` 2.8%) while the camera zooms out as it grows.
     Villagers and chickens flee (`mover`) and get flung off screen, never killed. Every run starts at
     `BASE_SIZE`: the community's growth is shown as its real height (`communitySize` → ft, the HUD's
     scale) and each day's place is a new challenge rather than an easier one.
-  - Powers (`POWERS`, woken at a multiple of the start size, banner names the community's parts via
+  - Scenes (owner's request: "each one feels like a cinematic of it growing… a horror shot"). Intro
+    (`INTRO_SECONDS` 2.8): black, a heartbeat, lightning strikes it in the ruins of its lab, it rears
+    and roars, RAMPAGE!, the camera pulls back. Each power that wakes is a 2.1 s scene (`CINE_SECONDS`;
+    the run is paused, so no time is lost; a tap after 0.8 s cuts it short): close-up, the night closes
+    in, lightning onto it, it swells and roars, its parts glow, the heart pounds red at the edges, and
+    a blood-red title (`WAKES`: "It strides / reaches / hungers / lashes / leaps / rages") under "<the
+    community's parts> awaken". The end: one more roar in close-up (`OUTRO_SECONDS` 1.6) before the
+    panel. Something 120+ tall coming down plays in slow motion (0.3× for 0.45 s).
+  - The night: darkness (`NIGHT` 0.7) on a quarter-resolution canvas with pools of light cut out of it:
+    the creature's own glow, lamps, lit windows, jack-o'-lanterns, the torches every third villager
+    carries, and the fires left burning (9 s) where it smashed buildings, haystacks and carts; rubble
+    stays on the ground. The vignette, the heartbeat (red, pounding in the last 10 s with its sound and
+    in every scene) and lightning flashes are drawn into that small canvas too (full-screen fills were
+    the cost). A storm: a strike every 6-14 s (two flickers: under 3 flashes a second), thunder, rain.
+    Reduced-motion players get no flashes, shaking, slow motion, rain or storm strikes.
+  - Townsfolk: idle sway, a stroll, or a panicked sprint (leaning in, bouncing, squashing); a red "!"
+    when one starts to flee, screams over their heads ("AAAH!", "RUN!", "MONSTER!", "HELP!"…), and the
+    flung ones shriek.
+  - Powers (`POWERS`, woken at a multiple of the start size, named after the community's parts via
     `powerParts`): legs 1.12× faster; arms 1.3× reach; maw/head/second head 1.5× swallow small things
     nearby; tail/spine 1.75× sweep; wings 2.05× leap and crush on landing; spark/heart/brain 2.4×
     frenzy and lightning on the biggest thing nearby. Balance (rampage.test.ts, a "decent player"
-    bot): every place gives a full minute, wakes ≥4 parts and never flattens ≥60% of it. Re-run the
-    tests after any tuning; the powers compound, so small changes snowball.
+    bot that steers around what it cannot smash, `clearPath`; the middle of three tries): every place
+    gives a full minute, wakes ≥4 parts and never flattens ≥60% of it. Re-run the tests after any
+    tuning; the powers and claws compound, so small changes snowball.
   - Places (`STAGES`, `stageFor(day)`): the Village, the Farmlands, the Market Town, Graveyard Hill,
     the Baron's Estate, then the City for ever. `buildWorld(seed, stage)` (seed `<season>:r<day>`, the
     same for everyone that day) lays out roads, houses with clutter, landmarks on 7 plots, farms,
@@ -139,11 +165,15 @@ everything the whole community smashed that day. It runs on with no end date (th
     today is `communitySize(sum of past days)` (logarithmic). Guests are NOT prompted after every run:
     the end panel offers "Sign in to count it" (`run.isGuest`, `countAsSignedIn`).
   - Save: `rampage` {best, runs, day, today, brokeOut, totals} (`recordRun`, `rememberRubble`,
-    `markBrokeOut`). Runs start from the menu with a short "RAMPAGE!" intro (no breakout in runs).
+    `markBrokeOut`). Runs start from the menu with the intro scene (no breakout in runs).
   - Art: village props are PixelLab pixflux sprites (`tools/art/props.py gen|sheet|pick`, picks in
     `art/props.json`, shipped in `public/art/props/<kind>.png`, trimmed). Small figures drew a moon
     behind themselves with "night" in the prompt: those use `PLAIN`. Debris colours come from each sprite.
-  - Sounds (`sfx.ts`): `thud` per smash (weighted), `roar` at the breakout, `chime` when a part wakes.
+  - Emergence storyboard (owner's request, Oct 31): 8 shots with ChatGPT prompts and reference renders
+    of the real creature, a private claude.ai artifact (https://claude.ai/artifact/EzyonHTDkPjBQBvAgVnC6s).
+    Frames the owner sends back (shot-1..shot-8, 1080x1920) are meant for the breakout (`LooseScene`).
+  - Sounds (`sfx.ts`): `thud` per smash (weighted) and heavy footsteps once it is big, `swipe` per
+    claw, `roar` (breakout, intro, every waking, the end), `chime` when a part wakes, `heartbeat`.
   - Mock only: `?runSeconds=N` shortens runs; `window.__rampage` is the live run and `window.__steer`
     steers it (tests and screenshot scripts drive a greedy player with these).
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
@@ -160,8 +190,8 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
                useStorm: the vigil's lightning; sfx: synthesized storm and rampage sounds;
-               creatureSprite: the community's creature
-               as one sprite (plus glow and per-part canvases) for the rampage
+               creatureSprite: the community's creature as one sprite (plus glow and per-part canvases);
+               creatureRig: its parts animated on their joints, for the rampage
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
                Sketchbook (players design their own monster), Reveal (last night's stitching),
                Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),

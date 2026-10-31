@@ -28,7 +28,7 @@ export interface LiveProp extends Prop {
   vy: number;
 }
 
-export type SmashBy = 'stomp' | 'maw' | 'tail' | 'leap' | 'bolt';
+export type SmashBy = 'claw' | 'stomp' | 'maw' | 'tail' | 'leap' | 'bolt';
 
 export type RunEvent =
   | { type: 'smash'; prop: LiveProp; by: SmashBy }
@@ -38,6 +38,8 @@ export type RunEvent =
   | { type: 'land'; radius: number }
   | { type: 'sweep'; radius: number }
   | { type: 'bolt'; prop: LiveProp }
+  /** It clawed something within reach (1 its right arm, -1 its left). */
+  | { type: 'attack'; prop: LiveProp; side: 1 | -1 }
   | { type: 'end' };
 
 export interface RunResult {
@@ -71,6 +73,10 @@ const LEAP_RATIO = 1.15;
 const BOLT_EVERY = 3;
 const BOLT_RANGE = 4;
 const BOLT_RATIO = 1.3;
+/** It claws the nearest thing it can smash, this often (faster once its arms wake). */
+const CLAW_EVERY = 0.9;
+const CLAW_FAST = 0.6;
+const CLAW_RANGE = 2;
 const FRENZY = 1.3;
 const FLEE_RANGE = 5;
 const FLEE_SPEED = 95;
@@ -98,6 +104,8 @@ export class RampageRun {
   readonly powers: PowerId[] = [];
   private leapIn = LEAP_EVERY;
   private sweepIn = SWEEP_EVERY;
+  private clawIn = 0.5;
+  private side: 1 | -1 = 1;
   private boltIn = BOLT_EVERY;
   private ended = false;
   private lastBlocked = -1;
@@ -293,6 +301,25 @@ export class RampageRun {
         events.push({ type: 'bolt', prop: struck });
         this.smash(struck, 'bolt', events);
       }
+    }
+
+    // Claws: it lashes out at the nearest thing it can smash, on its own.
+    if ((this.clawIn -= dt) <= 0) {
+      let target: LiveProp | null = null;
+      let best = Infinity;
+      this.near(this.x, this.y, this.reach * CLAW_RANGE, (p, d) => {
+        if (d < best && canSmash(this.size, p.kind)) {
+          best = d;
+          target = p;
+        }
+      });
+      const prey = target as LiveProp | null;
+      if (prey && this.air <= 0) {
+        events.push({ type: 'attack', prop: prey, side: this.side });
+        this.smash(prey, 'claw', events);
+        this.side = this.side === 1 ? -1 : 1;
+        this.clawIn = this.has('reach') ? CLAW_FAST : CLAW_EVERY;
+      } else this.clawIn = 0.12;
     }
 
     this.moveCrowd(dt);

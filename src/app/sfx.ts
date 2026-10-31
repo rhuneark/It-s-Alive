@@ -1,5 +1,5 @@
 /**
- * Storm sounds for the awakening, made from filtered noise (no audio files to ship). They play
+ * Storm and rampage sounds, made from filtered noise and tones (no audio files to ship). They play
  * through the theme's AudioContext, which the player's taps have already unlocked, scaled by the
  * music volume. Silent when there is no audio output yet; never throws.
  */
@@ -165,6 +165,30 @@ export function roar(volume: number): void {
   tones(volume, [
     { at: 0, freq: 82, to: 55, seconds: 1.7, peak: 0.12, type: 'sawtooth' },
     { at: 0, freq: 123, to: 80, seconds: 1.6, peak: 0.08, type: 'sawtooth' },
+  ]);
+}
+
+/** A claw slashing the air. */
+export function swipe(volume: number): void {
+  play(volume, [
+    {
+      at: 0,
+      seconds: 0.16,
+      brown: false,
+      filter: 'bandpass',
+      from: 1800,
+      to: 5200,
+      peak: 0.22,
+      attack: 0.03,
+    },
+  ]);
+}
+
+/** A heartbeat in the dark: lub, dub. */
+export function heartbeat(volume: number): void {
+  tones(volume, [
+    { at: 0, freq: 62, to: 40, seconds: 0.22, peak: 0.55, type: 'sine' },
+    { at: 0.24, freq: 54, to: 36, seconds: 0.26, peak: 0.4, type: 'sine' },
   ]);
 }
 

@@ -1971,49 +1971,105 @@ b {
   animation: slam 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 
-.rampage-banner {
+/* A part wakes: the night closes in, lightning strikes, and the title tears onto the screen. */
+.rampage-cine {
   position: absolute;
-  top: calc(var(--safe-top) + 112px);
-  left: 16px;
-  right: 16px;
+  top: calc(var(--safe-top) + 9%);
+  left: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 10px 14px;
+  gap: 4px;
+  padding: 0 16px;
   text-align: center;
-  color: var(--parchment);
-  background: rgba(13, 10, 16, 0.86);
-  border: 2px solid var(--bile);
-  border-radius: 8px;
-  box-shadow: 0 0 24px rgba(155, 224, 106, 0.35);
   pointer-events: none;
-  animation: banner 2.8s ease forwards;
+  animation: cine-out 2.1s ease forwards;
 }
 
-.rampage-banner b {
+.rampage-cine-parts {
   font-family: var(--font-head);
-  font-size: 18px;
-  color: var(--bile);
-}
-
-.rampage-banner span {
+  font-weight: 800;
   font-size: 15px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--parchment);
+  text-shadow:
+    0 2px 0 #000,
+    0 0 12px #000;
+  animation: cine-parts 2.1s ease both;
 }
 
-@keyframes banner {
-  0% {
+.rampage-cine-word {
+  font-family: var(--font-title);
+  font-weight: 400;
+  font-size: clamp(48px, 15vw, 84px);
+  line-height: 1.05;
+  white-space: nowrap;
+  color: #d0121e;
+  text-shadow:
+    0 0 20px rgba(255, 30, 30, 0.55),
+    0 3px 0 #000,
+    0 8px 18px #000;
+  animation: cine-word 2.1s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.rampage-cine-text {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 18px;
+  color: var(--parchment);
+  text-shadow:
+    0 2px 0 #000,
+    0 0 10px #000;
+  animation: cine-parts 2.1s 0.15s ease both;
+}
+
+@keyframes cine-parts {
+  0%,
+  6% {
     opacity: 0;
-    transform: translateY(-10px) scale(0.95);
+    transform: translateY(-6px);
   }
-  10%,
-  80% {
+  18%,
+  100% {
     opacity: 1;
     transform: none;
   }
+}
+
+@keyframes cine-word {
+  0%,
+  14% {
+    opacity: 0;
+    transform: scale(2.4);
+    filter: blur(6px);
+  }
+  24% {
+    opacity: 1;
+    transform: scale(0.92) rotate(-2deg);
+    filter: none;
+  }
+  28% {
+    transform: scale(1.05) rotate(1.5deg);
+  }
+  32% {
+    transform: scale(1) rotate(-1deg);
+  }
+  36%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes cine-out {
+  0%,
+  85% {
+    opacity: 1;
+  }
   100% {
     opacity: 0;
-    transform: translateY(-6px);
   }
 }
 

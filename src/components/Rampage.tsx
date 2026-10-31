@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { drawRig, type Pose } from '../app/creatureRig';
 import { buildCreatureSprite, loadImage, type CreatureSprite } from '../app/creatureSprite';
-import { chime, roar, thud, thunderclap } from '../app/sfx';
+import { chime, distantThunder, heartbeat, roar, swipe, thud, thunderclap } from '../app/sfx';
 import type { SlotId } from '../game/catalog';
 import {
   BASE_SIZE,
@@ -12,6 +13,8 @@ import {
   buildWorld,
   feet,
   powerParts,
+  type Power,
+  type PowerId,
   type PropKind,
   type Stage,
 } from '../game/rampage';
@@ -19,9 +22,13 @@ import { RampageRun, type LiveProp, type RunEvent, type RunResult } from '../gam
 import * as run from '../sdk/run';
 
 /**
- * The rampage: the creature everyone built, loose in the day's place. Drag anywhere (or use the
- * arrow keys) to steer; it smashes what is smaller than it, grows, and wakes its parts' powers.
- * The rules live in game/rampageRun.ts; this draws them on a canvas and plays the effects.
+ * The rampage: the creature everyone built, loose in the day's place at night. Drag anywhere (or
+ * use the arrow keys) to steer; it claws at whatever is in reach on its own, smashes what is
+ * smaller than it, grows, and wakes its parts' powers. It starts small on screen and looms larger
+ * with every part that wakes, each one a short scene: the night closes in, lightning strikes it,
+ * it swells and roars. The village is dark but for lamps, windows, jack-o'-lanterns, villagers'
+ * torches and the fires it leaves; the storm lights it all now and then. The rules live in
+ * game/rampageRun.ts; this draws them on a canvas and plays the effects.
  */
 
 /** The spark of life chosen on the last night tints the creature's glow. */
@@ -34,13 +41,67 @@ export const AURA: Record<string, string> = {
 };
 
 const KINDS = Object.keys(PROPS) as PropKind[];
-/** The creature fills this share of the screen's height, however big it gets. */
-const SCREEN_FILL = 0.27;
+/** The creature's share of the screen's height: small at first, looming larger as parts wake. */
+const FILL_START = 0.14;
+const FILL_PER_POWER = 0.028;
+/** Close-ups: the intro, each part waking, the end. */
+const FILL_CLOSE = 0.5;
 /** Drag this far (css px) for full speed. */
 const STICK = 56;
-const READY_SECONDS = 1.1;
+const INTRO_SECONDS = 2.8;
+const CINE_SECONDS = 2.1;
+const OUTRO_SECONDS = 1.6;
+const ATTACK_SECONDS = 0.3;
+/** How dark the night is away from any light (0..1), and the darkness layer's resolution. */
+const NIGHT = 0.7;
+const DARK_SCALE = 4;
+/** Room around the rig for arms and wings flung wide (sprite px). */
+const RIG_PAD = 48;
+
+/** What the creature becomes as each power wakes, in the scene's big title. */
+const WAKES: Record<PowerId, string> = {
+  stride: 'It strides',
+  reach: 'It reaches',
+  maw: 'It hungers',
+  tail: 'It lashes',
+  wings: 'It leaps',
+  spark: 'It rages',
+};
+
+const SCREAMS = ['AAAH!', 'RUN!', 'MONSTER!', 'HELP!', "IT'S LOOSE!", 'FLEE!', 'NOOO!'];
+const FLUNG_SCREAMS = ['AAAAAH!', 'WAAAH!', 'EEEK!'];
+/** What is left burning when it is smashed. */
+const BURNS: ReadonlySet<PropKind> = new Set([
+  'haystack',
+  'cart',
+  'scarecrow',
+  'stall',
+  'wagon',
+  'cottage',
+  'forge',
+  'house',
+  'tavern',
+  'windmill',
+  'watchtower',
+  'church',
+  'manor',
+  'townhall',
+]);
+/** Buildings with lamplit windows. */
+const WINDOWS: ReadonlySet<PropKind> = new Set([
+  'cottage',
+  'forge',
+  'house',
+  'tavern',
+  'windmill',
+  'watchtower',
+  'church',
+  'manor',
+  'townhall',
+]);
 
 type Phase = 'loading' | 'intro' | 'play' | 'over';
+type Mode = Phase | 'cine' | 'outro';
 
 interface Hud {
   left: number;
@@ -50,9 +111,10 @@ interface Hud {
   progress: number;
 }
 
-interface Banner {
+interface Cine {
   id: number;
-  title: string;
+  word: string;
+  parts: string;
   text: string;
 }
 
@@ -66,7 +128,7 @@ interface Particle {
   size: number;
   color: string;
   life: number;
-  /** Pulls it back down (world units/s²); dust just drifts. */
+  /** Pulls it back down (world units/s²); dust and smoke just drift. */
   g: number;
 }
 
@@ -85,12 +147,43 @@ interface Flung {
 }
 
 interface Effect {
-  kind: 'ring' | 'bolt';
+  kind: 'ring' | 'bolt' | 'slash';
   x: number;
   y: number;
   radius: number;
   life: number;
   max: number;
+  /** Slashes: which way the claw swept (1 to the right). */
+  dir?: number;
+}
+
+interface Scream {
+  text: string;
+  x: number;
+  y: number;
+  born: number;
+}
+
+interface Fire {
+  x: number;
+  y: number;
+  r: number;
+  h: number;
+  born: number;
+  seed: number;
+}
+
+interface Scar {
+  x: number;
+  y: number;
+  r: number;
+  bits: Array<[number, number, number, string]>;
+}
+
+interface Drop {
+  x: number;
+  y: number;
+  v: number;
 }
 
 interface Props {
@@ -133,7 +226,7 @@ export function Rampage({
     next: null,
     progress: 0,
   });
-  const [banner, setBanner] = useState<Banner | null>(null);
+  const [cine, setCine] = useState<Cine | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -146,6 +239,7 @@ export function Rampage({
     const ctx = cv.getContext('2d')!;
     let alive = true;
     let raf = 0;
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const sparkKind = parts.spark?.replace('spark_', '') ?? 'lightning';
     const aura = AURA[sparkKind] ?? AURA['lightning']!;
     const world = buildWorld(seed, stage);
@@ -153,26 +247,58 @@ export function Rampage({
     const sim = new RampageRun(world, BASE_SIZE, `${seed}:${Math.random()}`, seconds);
 
     let sprite: CreatureSprite | null = null;
+    const rig = document.createElement('canvas');
+    const rctx = rig.getContext('2d')!;
+    const lit = document.createElement('canvas');
+    const lctx = lit.getContext('2d')!;
     const imgs = new Map<PropKind, HTMLImageElement>();
     const colors = new Map<PropKind, string[]>();
     let ground: CanvasPattern | null = null;
     const particles: Particle[] = [];
     const flung: Flung[] = [];
     const effects: Effect[] = [];
+    const screams: Scream[] = [];
+    const fires: Fire[] = [];
+    const scars: Scar[] = [];
+    const rain: Drop[] = [];
+    const scared = new Map<number, number>();
+    let mode: Mode = 'loading';
+    let sceneAt = 0; // when the current scene (intro, waking, end) began (s)
+    let sceneT = 0; // how far into it the last frame was (s)
     let shake = 0;
     let flash = 0;
+    let reveal = 0;
+    let punch = 0;
+    let dark = 0.97;
     let walk = 0;
+    let stride = 0;
     let lastStep = 0;
-    let highlight: { slots: readonly SlotId[]; until: number } | null = null;
-    let stage0 = 0; // when the intro began (s)
-    let mode: Phase = 'loading';
+    let attack = 0;
+    let attackSide: 1 | -1 = 1;
+    let face: 1 | -1 = 1;
+    const lunge = { x: 0, y: 0 };
+    let roarUntil = 0;
+    let rear = 0;
+    let swell = 0;
+    let beat = 0;
+    let glow = 0;
+    let glowSlots: readonly string[] = [];
+    let slowUntil = 0;
+    let lastSlow = -10;
+    let nextStrike = 0;
+    const flickers: number[] = [];
+    let nextBeat = 0;
     let lastHud = 0;
     let lastHaptic = 0;
     let lastThud = 0;
+    let lastSwipe = 0;
+    let lastScream = -10;
     let lastBlockHint = -10;
     let hintShown = false;
-    let bannerId = 0;
-    const cam = { x: world.start.x, y: world.start.y - 160, z: 1 };
+    let cineId = 0;
+    let progress = 0;
+    let outcome: RunResult | null = null;
+    const cam = { x: world.start.x, y: world.start.y - 60, z: 1 };
 
     // ------------------------------------------------------------- input
     const keys = new Set<string>();
@@ -199,7 +325,9 @@ export function Rampage({
       return { x, y };
     };
     const down = (e: PointerEvent) => {
-      if (mode !== 'play' && mode !== 'intro') return;
+      if (mode !== 'play' && mode !== 'intro' && mode !== 'cine') return;
+      // A tap cuts a part's waking scene short once it has struck.
+      if (mode === 'cine' && performance.now() / 1000 - sceneAt > 0.8) endCine();
       anchor = { x: e.clientX, y: e.clientY };
       finger = { ...anchor };
       box.setPointerCapture?.(e.pointerId);
@@ -234,13 +362,46 @@ export function Rampage({
     window.addEventListener('keyup', keyup);
 
     // ------------------------------------------------------------- setup
+    // The night is drawn on a small canvas and stretched: soft pools of light cut out of it.
+    const night = document.createElement('canvas');
+    const nctx = night.getContext('2d')!;
+    let shade: CanvasGradient | null = null;
+    let blood: CanvasGradient | null = null;
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       cv.width = Math.round(box.clientWidth * dpr);
       cv.height = Math.round(box.clientHeight * dpr);
+      night.width = Math.max(1, Math.ceil(cv.width / DARK_SCALE));
+      night.height = Math.max(1, Math.ceil(cv.height / DARK_SCALE));
+      const W = cv.width;
+      const H = cv.height;
+      const nw = night.width;
+      const nh = night.height;
+      shade = nctx.createRadialGradient(nw / 2, nh * 0.45, nh * 0.22, nw / 2, nh * 0.45, nh * 0.8);
+      shade.addColorStop(0, 'rgba(4, 6, 16, 0)');
+      shade.addColorStop(1, 'rgba(2, 3, 10, 0.75)');
+      blood = nctx.createRadialGradient(nw / 2, nh / 2, nh * 0.3, nw / 2, nh / 2, nh * 0.75);
+      blood.addColorStop(0, 'rgba(120, 0, 0, 0)');
+      blood.addColorStop(1, 'rgba(150, 0, 10, 0.85)');
+      rain.length = 0;
+      if (!calm)
+        for (let i = 0; i < 70; i++)
+          rain.push({ x: Math.random() * W, y: Math.random() * H, v: (0.9 + Math.random()) * H });
     };
     resize();
     window.addEventListener('resize', resize);
+
+    const hole = lightSprite('rgba(0, 0, 0, 1)', 'rgba(0, 0, 0, 0.75)');
+    const warm = lightSprite('rgba(255, 186, 96, 0.95)', 'rgba(255, 120, 40, 0.3)');
+    const cold = lightSprite(aura, withAlpha(aura, 0.22));
+
+    const enter = (m: Mode, now: number) => {
+      mode = m;
+      sceneAt = now;
+      sceneT = 0;
+    };
+    /** True on the frame the current scene passes `at` seconds. */
+    const at = (t: number, s: number) => sceneT < s && t >= s;
 
     void (async () => {
       const [built] = await Promise.all([
@@ -257,12 +418,17 @@ export function Rampage({
       ]);
       if (!alive) return;
       sprite = built;
+      if (sprite) {
+        rig.width = lit.width = sprite.glow.width + RIG_PAD * 2;
+        rig.height = lit.height = sprite.glow.height + RIG_PAD * 2;
+      }
       ground = makeGround(ctx, stage.id);
-      mode = 'intro';
+      const now = performance.now() / 1000;
+      enter('intro', now);
       setPhase('intro');
-      stage0 = performance.now() / 1000;
-      setTitle('RAMPAGE!');
-      roar(volume * 0.7);
+      cam.z = (cv.height * FILL_CLOSE) / sim.size;
+      cam.y = sim.y - sim.size * 0.55;
+      nextStrike = now + 7;
       let last = performance.now();
       const frame = (nowMs: number) => {
         if (!alive) return;
@@ -276,65 +442,240 @@ export function Rampage({
     })();
 
     // ------------------------------------------------------------- update
-    const update = (dt: number, now: number) => {
-      shake = Math.max(0, shake - dt * 30);
-      flash = Math.max(0, flash - dt * 2.5);
+    const update = (realDt: number, now: number) => {
+      const dt = now < slowUntil ? realDt * 0.3 : realDt;
+      shake = Math.max(0, shake - realDt * 30);
+      flash = Math.max(0, flash - realDt * 3);
+      reveal = Math.max(0, reveal - realDt * 1.6);
+      punch = Math.max(0, punch - realDt * 0.4);
+      const t = now - sceneAt;
+
+      // The storm: now and then lightning lights the whole place (two flickers, strikes far apart).
+      if (!calm && mode !== 'loading' && now >= nextStrike) {
+        nextStrike = now + 6 + Math.random() * 8;
+        flickers.push(now, now + 0.36);
+        if (Math.random() < 0.4) thunderclap(volume * 0.35);
+        else distantThunder(volume * 0.7);
+      }
+      while (flickers.length && now >= flickers[0]!) {
+        flickers.shift();
+        lightUp(0.35, now);
+        reveal = 1;
+      }
+
       if (mode === 'intro') {
-        const t = now - stage0;
-        if (t >= READY_SECONDS) {
-          mode = 'play';
+        // Black. A heartbeat. Lightning shows it standing in the ruins of its laboratory; it
+        // rears up and roars, and the camera pulls back over the village.
+        if (at(t, 0.05)) heartbeat(volume);
+        if (at(t, 0.5)) strikeIt(now);
+        if (at(t, 0.95)) {
+          roarUntil = now + 1.3;
+          roar(volume * 0.8);
+          setTitle('RAMPAGE!');
+          if (!calm) shake = Math.max(shake, 12);
+          run.haptic('heavy');
+        }
+        if (t >= INTRO_SECONDS) {
+          enter('play', now);
           setPhase('play');
           setTitle(null);
           if (!hintShown) {
             hintShown = true;
-            setHint('Drag anywhere to steer. Smash anything smaller than you!');
+            setHint('Drag anywhere to steer. It claws whatever is in reach!');
           }
         }
       } else if (mode === 'play') {
         const events = sim.step(dt, steer());
         for (const e of events) handle(e, now);
         if (sim.moving) {
-          walk += dt * 9;
+          // Heavier, slower strides as it grows.
+          walk += dt * (8 / Math.pow(sim.size / sim.start, 0.35));
           if (walk - lastStep > Math.PI) {
             lastStep = walk;
+            const ratio = sim.size / sim.start;
             dust(sim.x, sim.y, sim.size * 0.25, 4);
+            if (ratio > 1.5 && now - lastThud > 0.2) {
+              lastThud = now;
+              thud(volume * 0.3, 0.45);
+              if (!calm) shake = Math.max(shake, 1 + ratio);
+            }
           }
         }
+        // The last ten seconds: its heart pounds.
+        if (sim.timeLeft < 10 && now >= nextBeat) {
+          nextBeat = now + 0.7;
+          heartbeat(volume * 0.5);
+        }
+      } else if (mode === 'cine') {
+        if (at(t, 0.3)) {
+          strikeIt(now);
+          glow = 1.6;
+        }
+        if (at(t, 0.55)) {
+          roarUntil = now + 1.2;
+          roar(volume * 0.75);
+          chime(volume * 0.8);
+          effects.push({
+            kind: 'ring',
+            x: sim.x,
+            y: sim.y,
+            radius: sim.size * 1.6,
+            life: 0.7,
+            max: 0.7,
+          });
+        }
+        if (at(t, 0.85)) heartbeat(volume * 0.8);
+        if (t >= (calm ? 1.4 : CINE_SECONDS)) endCine();
+      } else if (mode === 'outro') {
+        if (at(t, 0.15)) {
+          roarUntil = now + 1.3;
+          roar(volume * 0.7);
+        }
+        if (t >= OUTRO_SECONDS) {
+          enter('over', now);
+          setPhase('over');
+          if (outcome) setResult(outcome);
+        }
       }
-      // Camera: keep the creature at the same height on screen, however big it gets.
+      sceneT = now - sceneAt;
+
+      // Its pose.
+      attack = Math.max(0, attack - dt);
+      rear += ((now < roarUntil ? 1 : 0) - rear) * Math.min(1, realDt * 7);
+      if (mode === 'cine') {
+        // It swells as the strike hits, and settles a little bigger.
+        const grow = Math.min(1, Math.max(0, (t - 0.3) / 0.5));
+        const settle = Math.min(1, Math.max(0, (t - 1.5) / 0.6));
+        swell = Math.sin((grow * Math.PI) / 2) * (1 - settle * 0.7);
+      } else swell = Math.max(0, swell - realDt * 1.5);
+      beat += ((sim.air > 0 ? 1 : 0) - beat) * Math.min(1, realDt * 8);
+      if (mode !== 'cine') glow = Math.max(0, glow - realDt * 0.9);
+      stride += ((mode === 'play' && sim.moving ? 1 : 0) - stride) * Math.min(1, realDt * 6);
+
+      // Camera: small at first, looming larger with each part woken; close in for every scene.
+      const next = sim.nextPower();
+      progress = next ? next.progress : 1;
+      const play = FILL_START + FILL_PER_POWER * sim.powers.length + 0.02 * progress;
+      let fill = play;
+      let ease = 2.2;
+      if (mode === 'intro') {
+        fill = t < 1.5 ? FILL_CLOSE : play;
+        ease = t < 1.5 ? 6 : 1.6;
+      } else if (mode === 'cine') {
+        fill = FILL_CLOSE;
+        ease = 4;
+      } else if (mode === 'outro' || mode === 'over') {
+        fill = 0.42;
+        ease = 2.5;
+      }
+      const close = mode !== 'play';
       const framing = sim.size;
-      const target = (cv.height * SCREEN_FILL) / framing;
-      cam.z += (target - cam.z) * Math.min(1, dt * 2.5);
+      const target = ((cv.height * fill) / framing) * (1 + punch);
+      cam.z += (target - cam.z) * Math.min(1, realDt * ease);
       const fx = sim.x;
-      const fy = sim.y - framing * 0.45;
-      cam.x += (fx - cam.x) * Math.min(1, dt * 6);
-      cam.y += (fy - cam.y) * Math.min(1, dt * 6);
+      // Close-ups sit it low on the screen, under the scene's title.
+      const fy = sim.y - framing * (close ? 0.66 : 0.45);
+      cam.x += (fx - cam.x) * Math.min(1, realDt * 6);
+      cam.y += (fy - cam.y) * Math.min(1, realDt * 6);
       // Never show past the edge of the map.
       const halfW = cv.width / cam.z / 2;
       const halfH = cv.height / cam.z / 2;
       cam.x = halfW * 2 < WORLD_W ? Math.max(halfW, Math.min(WORLD_W - halfW, cam.x)) : WORLD_W / 2;
       cam.y = halfH * 2 < WORLD_H ? Math.max(halfH, Math.min(WORLD_H - halfH, cam.y)) : WORLD_H / 2;
-      tickParticles(dt);
+
+      // The night: pitch black at first, closing in for every scene, lifted by lightning.
+      const darkTarget = mode === 'intro' ? (t < 1.4 ? 0.96 : NIGHT) : close ? 0.9 : NIGHT;
+      dark += (darkTarget - dark) * Math.min(1, realDt * (mode === 'intro' ? 1.5 : 3));
+
+      tickParticles(dt, now);
+      tickRain(realDt);
       if (now - lastHud > 0.12 && mode === 'play') {
         lastHud = now;
-        const next = sim.nextPower();
         setHud({
           left: sim.timeLeft,
           rubble: sim.rubble,
           feet: feet(sim.size * scale),
           next: next ? (powerParts(next.power, parts)[0] ?? next.power.id) : null,
-          progress: next ? next.progress : 1,
+          progress,
         });
       }
+    };
+
+    /** A lightning flash, never more than 3 a second whatever strikes at once. */
+    let lastFlash = -10;
+    const lightUp = (amount: number, now: number) => {
+      if (now - lastFlash < 0.34) return;
+      lastFlash = now;
+      flash = Math.max(flash, amount);
+    };
+
+    /** Lightning onto the creature itself (the intro, and every part that wakes). */
+    const strikeIt = (now: number) => {
+      effects.push({
+        kind: 'bolt',
+        x: sim.x,
+        y: sim.y - sim.size * 0.55,
+        radius: sim.size * 0.6,
+        life: 0.45,
+        max: 0.45,
+      });
+      thunderclap(volume * 0.8);
+      run.haptic('heavy');
+      nextStrike = Math.max(nextStrike, now + 4);
+      if (calm) return;
+      lightUp(0.75, now);
+      reveal = 1;
+      shake = Math.max(shake, 16);
+    };
+
+    const startCine = (power: Power, now: number) => {
+      enter('cine', now);
+      glowSlots = power.slots;
+      const names = powerParts(power, parts);
+      setCine({
+        id: ++cineId,
+        word: WAKES[power.id],
+        parts: names.length
+          ? `${names.join(' & ')} ${names.length > 1 ? 'awaken' : 'awakens'}`
+          : 'Its body awakens',
+        text: power.effect,
+      });
+      setHint(null);
+      heartbeat(volume);
+      run.haptic('heavy');
+    };
+
+    const endCine = () => {
+      if (mode !== 'cine') return;
+      enter('play', performance.now() / 1000);
+      setCine(null);
     };
 
     const handle = (e: RunEvent, now: number) => {
       if (e.type === 'smash') {
         const p = e.prop;
         const weight = Math.min(1, p.h / sim.size);
-        if (p.mover) fling(p);
-        else debris(p.x, p.y, p.h, p.kind, Math.round(4 + weight * 18));
-        shake = Math.max(shake, weight * 9);
+        if (p.mover) {
+          fling(p);
+          if (now - lastScream > 0.35) {
+            lastScream = now;
+            screams.push({ text: pick(FLUNG_SCREAMS), x: p.x, y: p.y - p.h, born: now });
+          }
+        } else {
+          const away = Math.atan2(p.y - sim.y, p.x - sim.x);
+          debris(p.x, p.y, p.h, p.kind, Math.round(4 + weight * 18), e.by === 'claw' ? away : null);
+          scar(p);
+          if (BURNS.has(p.kind) && fires.length < 30)
+            fires.push({ x: p.x, y: p.y, r: p.r, h: p.h, born: now, seed: Math.random() * 10 });
+          // Something big comes down in slow motion.
+          if (!calm && p.h >= 120 && weight > 0.5 && now - lastSlow > 2.5) {
+            lastSlow = now;
+            slowUntil = now + 0.45;
+            punch = 0.1;
+          }
+        }
+        if (!calm) shake = Math.max(shake, weight * 10);
+        swell = Math.max(swell, weight * 0.35);
         if (now - lastThud > 0.07) {
           lastThud = now;
           thud(volume * 0.8, weight);
@@ -344,27 +685,44 @@ export function Rampage({
           run.haptic(weight > 0.5 ? 'medium' : 'light');
         }
         if (hintShown) setHint(null);
+      } else if (e.type === 'attack') {
+        const p = e.prop;
+        const dx = p.x - sim.x;
+        const dy = p.y - sim.y;
+        const d = Math.hypot(dx, dy) || 1;
+        const onRight = dx > 0;
+        // It turns to its prey and rakes it with one arm, then the other.
+        face = Math.abs(dx) > sim.size * 0.05 ? (onRight ? 1 : -1) : sim.facing > 0 ? 1 : -1;
+        attackSide = e.side;
+        attack = ATTACK_SECONDS;
+        lunge.x = dx / d;
+        lunge.y = dy / d;
+        effects.push({
+          kind: 'slash',
+          x: p.x,
+          y: p.y - p.h * 0.5,
+          radius: Math.max(p.h * 0.9, sim.size * 0.3),
+          life: 0.32,
+          max: 0.32,
+          dir: onRight ? 1 : -1,
+        });
+        if (now - lastSwipe > 0.12) {
+          lastSwipe = now;
+          swipe(volume * 0.7);
+        }
       } else if (e.type === 'blocked') {
-        shake = Math.max(shake, 3);
+        if (!calm) shake = Math.max(shake, 3);
         if (now - lastBlockHint > 3) {
           lastBlockHint = now;
           setHint(`Too big to smash yet: grow first!`);
           setTimeout(() => setHint((h) => (h?.startsWith('Too big') ? null : h)), 1800);
         }
       } else if (e.type === 'power') {
-        const names = powerParts(e.power, parts);
-        setBanner({
-          id: ++bannerId,
-          title: `${names.length ? names.join(' & ') : 'Its body'} ${names.length > 1 ? 'awaken' : 'awakens'}!`,
-          text: e.power.effect,
-        });
-        highlight = { slots: e.power.slots, until: now + 1.8 };
-        chime(volume);
-        run.haptic('success');
+        startCine(e.power, now);
       } else if (e.type === 'land') {
         effects.push({ kind: 'ring', x: sim.x, y: sim.y, radius: e.radius, life: 0.45, max: 0.45 });
         dust(sim.x, sim.y, e.radius * 0.6, 14);
-        shake = Math.max(shake, 14);
+        if (!calm) shake = Math.max(shake, 14);
         thud(volume, 0.9);
         run.haptic('heavy');
       } else if (e.type === 'sweep') {
@@ -378,25 +736,32 @@ export function Rampage({
           life: 0.35,
           max: 0.35,
         });
-        flash = Math.max(flash, 0.5);
+        if (!calm) lightUp(0.4, now);
         thunderclap(volume * 0.5);
       } else if (e.type === 'end') {
-        mode = 'over';
-        setPhase('over');
+        enter('outro', now);
+        setCine(null);
         setHint(null);
-        const r = sim.result();
-        setResult(r);
+        outcome = sim.result();
         run.haptic('success');
-        endRef.current(r);
+        endRef.current(outcome);
       }
     };
 
     // ------------------------------------------------------------- effects
-    const debris = (x: number, y: number, h: number, kind: PropKind, n: number) => {
+    const debris = (
+      x: number,
+      y: number,
+      h: number,
+      kind: PropKind,
+      n: number,
+      toward: number | null,
+    ) => {
       const pal = colors.get(kind) ?? ['#6b5a48', '#8a7a62', '#3c332b'];
       for (let i = 0; i < n; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = (0.4 + Math.random()) * h * 1.6;
+        const a =
+          toward === null ? Math.random() * Math.PI * 2 : toward + (Math.random() - 0.5) * 1.6;
+        const sp = (0.4 + Math.random()) * h * (toward === null ? 1.6 : 2.6);
         particles.push({
           x: x + (Math.random() - 0.5) * h * 0.4,
           y: y + (Math.random() - 0.5) * h * 0.15,
@@ -429,6 +794,21 @@ export function Rampage({
         });
       }
     };
+    /** What it smashed leaves rubble on the ground. */
+    const scar = (p: LiveProp) => {
+      if (p.h < 26) return;
+      const pal = colors.get(p.kind) ?? ['#3c332b'];
+      const bits: Scar['bits'] = [];
+      for (let i = 0; i < 5; i++)
+        bits.push([
+          (Math.random() - 0.5) * p.r * 1.6,
+          (Math.random() - 0.5) * p.r * 0.6,
+          p.h * (0.06 + Math.random() * 0.08),
+          pal[i % pal.length]!,
+        ]);
+      scars.push({ x: p.x, y: p.y, r: p.r, bits });
+      if (scars.length > 600) scars.shift();
+    };
     const fling = (p: LiveProp) => {
       const a = Math.atan2(p.y - sim.y, p.x - sim.x);
       const sp = sim.size * (2 + Math.random() * 1.5);
@@ -446,7 +826,7 @@ export function Rampage({
         life: 1.4,
       });
     };
-    const tickParticles = (dt: number) => {
+    const tickParticles = (dt: number, now: number) => {
       for (let i = particles.length - 1; i >= 0; i--) {
         const q = particles[i]!;
         q.life -= dt;
@@ -472,16 +852,66 @@ export function Rampage({
         effects[i]!.life -= dt;
         if (effects[i]!.life <= 0) effects.splice(i, 1);
       }
-      if (particles.length > 500) particles.splice(0, particles.length - 500);
+      for (let i = fires.length - 1; i >= 0; i--) {
+        const f = fires[i]!;
+        const age = now - f.born;
+        if (age > 9) {
+          fires.splice(i, 1);
+          continue;
+        }
+        // Embers and smoke rise from what burns.
+        if (Math.random() < dt * 5)
+          particles.push({
+            x: f.x + (Math.random() - 0.5) * f.r,
+            y: f.y,
+            z: f.h * 0.2,
+            vx: (Math.random() - 0.5) * f.h * 0.3,
+            vy: 0,
+            vz: f.h * (0.5 + Math.random() * 0.6),
+            size: f.h * 0.03,
+            color: Math.random() < 0.5 ? '#ffb347' : '#ff6a1a',
+            life: 0.8 + Math.random() * 0.6,
+            g: 0,
+          });
+        if (Math.random() < dt * 2.5)
+          particles.push({
+            x: f.x + (Math.random() - 0.5) * f.r * 0.6,
+            y: f.y,
+            z: f.h * 0.35,
+            vx: f.h * 0.15,
+            vy: 0,
+            vz: f.h * 0.35,
+            size: f.h * (0.18 + Math.random() * 0.15),
+            color: 'rgba(28, 24, 26, 0.45)',
+            life: 1.6,
+            g: 0,
+          });
+      }
+      for (let i = screams.length - 1; i >= 0; i--)
+        if (now - screams[i]!.born > 1.2) screams.splice(i, 1);
+      if (particles.length > 600) particles.splice(0, particles.length - 600);
+    };
+    const tickRain = (dt: number) => {
+      const W = cv.width;
+      const H = cv.height;
+      for (const d of rain) {
+        d.y += d.v * dt;
+        d.x -= d.v * 0.22 * dt;
+        if (d.y > H) {
+          d.y -= H + 20;
+          d.x = Math.random() * W * 1.2;
+        }
+      }
     };
 
     // ------------------------------------------------------------- draw
     const draw = (now: number) => {
       const W = cv.width;
       const H = cv.height;
+      const dpr = W / Math.max(1, box.clientWidth);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = '#0b0f0c';
+      ctx.fillStyle = '#05070a';
       ctx.fillRect(0, 0, W, H);
       const z = cam.z;
       const sx = (Math.random() - 0.5) * shake * 2;
@@ -494,7 +924,7 @@ export function Rampage({
       const vx1 = (W - ox) / z;
       const vy1 = (H - oy) / z;
 
-      // ground and roads
+      // ground, roads and the rubble it has left
       ctx.fillStyle = ground ?? '#1d2a1c';
       ctx.fillRect(
         Math.max(0, vx0),
@@ -517,10 +947,23 @@ export function Rampage({
           ctx.stroke();
         }
       }
+      for (const s of scars) {
+        if (s.x < vx0 - s.r || s.x > vx1 + s.r || s.y < vy0 - s.r || s.y > vy1 + s.r) continue;
+        ctx.fillStyle = 'rgba(14, 11, 9, 0.6)';
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, s.r * 1.2, s.r * 0.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        for (const [bx, by, bs, c] of s.bits) {
+          ctx.fillStyle = c;
+          ctx.fillRect(s.x + bx - bs / 2, s.y + by - bs / 2, bs, bs * 0.7);
+        }
+      }
 
-      // what is in view, back to front
+      // what is in view, back to front, and the lights among it
       const margin = 500;
       const items: Array<{ y: number; draw: () => void }> = [];
+      const holes: Array<[number, number, number, number]> = [];
+      const glows: Array<[number, number, number, number]> = [];
       ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
       for (const p of sim.props) {
         if (!p.alive) continue;
@@ -530,9 +973,34 @@ export function Rampage({
         ctx.ellipse(p.x, p.y, p.r * 1.1, p.r * 0.45, 0, 0, Math.PI * 2);
         ctx.fill();
         items.push({ y: p.y, draw: () => drawProp(p, now) });
+        const flicker = 0.9 + 0.1 * Math.sin(now * 13 + p.id * 1.7);
+        if (p.kind === 'lamp') {
+          holes.push([p.x, p.y - p.h * 0.5, p.h * 1.9, 0.9]);
+          glows.push([p.x, p.y - p.h * 0.9, p.h * 0.55, 0.7 * flicker]);
+        } else if (p.kind === 'pumpkin') {
+          holes.push([p.x, p.y - p.h * 0.3, p.h * 2.2, 0.55 * flicker]);
+          glows.push([p.x, p.y - p.h * 0.35, p.h * 1.1, 0.45 * flicker]);
+        } else if (torch(p)) {
+          const hx = p.x + (p.vx < 0 ? -1 : 1) * p.h * 0.22;
+          holes.push([hx, p.y - p.h * 0.6, p.h * 2.6, 0.8 * flicker]);
+          glows.push([hx, p.y - p.h * 0.85, p.h * 0.8, 0.6 * flicker]);
+        } else if (WINDOWS.has(p.kind) && p.id % 2 === 0) {
+          holes.push([p.x, p.y - p.h * 0.35, p.h * 0.8, 0.45]);
+          glows.push([p.x, p.y - p.h * 0.4, p.h * 0.4, 0.22 * flicker]);
+        }
       }
+      for (const f of fires) {
+        if (f.x < vx0 - margin || f.x > vx1 + margin || f.y < vy0 - 40 || f.y > vy1 + margin)
+          continue;
+        const k = fireStrength(f, now);
+        items.push({ y: f.y, draw: () => drawFire(f, now, k) });
+        const flicker = 0.85 + 0.15 * Math.sin(now * 17 + f.seed);
+        holes.push([f.x, f.y - f.h * 0.25, f.h * 1.5, 0.9 * k * flicker]);
+        glows.push([f.x, f.y - f.h * 0.3, f.h * 0.9, 0.55 * k * flicker]);
+      }
+      const air = airHeight();
       if (sprite) {
-        const air = airHeight();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
         ctx.beginPath();
         ctx.ellipse(
           sim.x,
@@ -556,21 +1024,117 @@ export function Rampage({
         ctx.fillRect(q.x - q.size / 2, q.y - q.z - q.size / 2, q.size, q.size);
       }
       ctx.globalAlpha = 1;
-      for (const e of effects) drawEffect(e, vy0);
 
-      // night: a cold vignette, a lightning flash, and the steering stick
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      const g = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.25, W / 2, H * 0.45, H * 0.8);
-      g.addColorStop(0, 'rgba(10, 14, 30, 0)');
-      g.addColorStop(1, 'rgba(6, 8, 20, 0.6)');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
-      if (flash > 0) {
-        ctx.fillStyle = `rgba(230, 240, 255, ${flash * 0.6})`;
-        ctx.fillRect(0, 0, W, H);
+      // The night, on a small canvas stretched over the screen: pools of light cut out of it (the
+      // creature's own glow, then the village's), a cold vignette, the heart pounding red at the
+      // edges, and lightning.
+      const close = mode !== 'play';
+      const cx = sim.x * z + ox;
+      const cy = (sim.y - sim.size * 0.5 - air) * z + oy;
+      const body = sim.size * z;
+      const shadeAlpha = Math.max(0, dark * (1 - reveal * 0.85));
+      const nw = night.width;
+      const nh = night.height;
+      nctx.globalCompositeOperation = 'source-over';
+      nctx.globalAlpha = 1;
+      nctx.clearRect(0, 0, nw, nh);
+      if (shadeAlpha > 0.01) {
+        nctx.fillStyle = `rgba(3, 4, 12, ${shadeAlpha})`;
+        nctx.fillRect(0, 0, nw, nh);
+        nctx.globalCompositeOperation = 'destination-out';
+        const stamp = (x: number, y: number, r: number, a: number) => {
+          if (r <= 0 || a <= 0) return;
+          nctx.globalAlpha = Math.min(1, a);
+          nctx.drawImage(
+            hole,
+            (x - r) / DARK_SCALE,
+            (y - r) / DARK_SCALE,
+            (r * 2) / DARK_SCALE,
+            (r * 2) / DARK_SCALE,
+          );
+        };
+        if (close) stamp(cx, cy, body * 0.95, 1);
+        else {
+          stamp(cx, cy, Math.max(H * 0.34, body * 1.5), 1);
+          stamp(cx, cy, Math.max(H * 0.6, body * 2.6), 0.35);
+        }
+        for (const [x, y, r, a] of holes) stamp(x * z + ox, y * z + oy, r * z, close ? a * 0.5 : a);
+        nctx.globalCompositeOperation = 'source-over';
       }
-      if (anchor && finger) {
-        const dpr = W / box.clientWidth;
+      if (shade) {
+        nctx.globalAlpha = 1;
+        nctx.fillStyle = shade;
+        nctx.fillRect(0, 0, nw, nh);
+      }
+      if (blood) {
+        const hurry = mode === 'play' && sim.timeLeft < 10;
+        const strength = close ? 0.55 : hurry ? 0.5 : 0.16;
+        const period = hurry || close ? 0.7 : 1;
+        const p = (now % period) / period;
+        const pulse =
+          Math.exp(-(((p - 0.05) / 0.06) ** 2)) + 0.6 * Math.exp(-(((p - 0.3) / 0.06) ** 2));
+        nctx.globalAlpha = Math.min(1, strength * (0.35 + 0.65 * pulse));
+        nctx.fillStyle = blood;
+        nctx.fillRect(0, 0, nw, nh);
+      }
+      if (flash > 0) {
+        nctx.globalAlpha = 1;
+        nctx.fillStyle = `rgba(230, 240, 255, ${flash * 0.6})`;
+        nctx.fillRect(0, 0, nw, nh);
+      }
+      nctx.globalAlpha = 1;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(night, 0, 0, W, H);
+      ctx.imageSmoothingEnabled = false;
+
+      // Lightning, claw marks and shockwaves blaze over the dark; warm halos, and the creature's
+      // cold one.
+      ctx.setTransform(z, 0, 0, z, ox, oy);
+      for (const e of effects) drawEffect(e, vy0);
+      ctx.globalCompositeOperation = 'lighter';
+      for (const [x, y, r, a] of glows) {
+        ctx.globalAlpha = Math.min(1, a);
+        ctx.drawImage(warm, x - r, y - r, r * 2, r * 2);
+      }
+      const halo = sim.size * (0.7 + glow * 0.5);
+      ctx.globalAlpha = Math.min(1, 0.22 + glow * 0.35);
+      ctx.drawImage(cold, sim.x - halo, sim.y - sim.size * 0.5 - air - halo, halo * 2, halo * 2);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Rain, screams, and the steering stick.
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (rain.length) {
+        ctx.strokeStyle = 'rgba(170, 190, 230, 0.22)';
+        ctx.lineWidth = Math.max(1, dpr);
+        ctx.beginPath();
+        const len = H * 0.03;
+        for (const d of rain) {
+          ctx.moveTo(d.x, d.y);
+          ctx.lineTo(d.x + len * 0.22, d.y - len);
+        }
+        ctx.stroke();
+      }
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.lineJoin = 'round';
+      for (const s of screams) {
+        const age = now - s.born;
+        const px = s.x * z + ox;
+        const py = s.y * z + oy - age * 34 * dpr;
+        if (px < -60 * dpr || px > W + 60 * dpr || py < -20 || py > H + 40 * dpr) continue;
+        const pop = age < 0.12 ? 0.6 + (age / 0.12) * 0.5 : 1.1 - Math.min(0.1, age - 0.12);
+        ctx.globalAlpha = Math.max(0, Math.min(1, (1.2 - age) / 0.35));
+        ctx.font = `800 ${Math.round(15 * dpr * pop)}px Cinzel, serif`;
+        ctx.lineWidth = 4 * dpr;
+        ctx.strokeStyle = '#14080a';
+        ctx.strokeText(s.text, px, py);
+        ctx.fillStyle = '#ffe2c4';
+        ctx.fillText(s.text, px, py);
+      }
+      ctx.globalAlpha = 1;
+      if (anchor && finger && mode === 'play') {
         const rect = box.getBoundingClientRect();
         const ax = (anchor.x - rect.left) * dpr;
         const ay = (anchor.y - rect.top) * dpr;
@@ -595,9 +1159,12 @@ export function Rampage({
     const airHeight = () =>
       sim.air > 0 ? Math.sin(Math.PI * (1 - sim.air / 0.55)) * sim.size * 0.55 : 0;
 
+    /** Some villagers carry torches. */
+    const torch = (p: LiveProp) =>
+      p.mover && (p.kind === 'villager' || p.kind === 'farmer') && p.id % 3 === 0;
+
     const drawProp = (p: LiveProp, now: number) => {
       const img = imgs.get(p.kind);
-      const hop = p.mover && (p.vx || p.vy) ? Math.abs(Math.sin(now * 14 + p.id)) * p.h * 0.08 : 0;
       if (!img) {
         ctx.fillStyle = '#4a4038';
         ctx.fillRect(p.x - p.r, p.y - p.h, p.r * 2, p.h);
@@ -605,39 +1172,127 @@ export function Rampage({
       }
       const h = p.h;
       const w = (h * img.width) / img.height;
+      if (!p.mover) {
+        ctx.drawImage(img, p.x - w / 2, p.y + p.r * 0.3 - h, w, h);
+        return;
+      }
+      // Townsfolk: idle sway, a stroll, or a panicked sprint (leaning in, bouncing, arms flailing).
+      const speed = Math.hypot(p.vx, p.vy);
+      const fleeing = speed > 40;
+      if (fleeing && !scared.has(p.id)) {
+        scared.set(p.id, now);
+        if (now - lastScream > 0.45 && Math.random() < 0.45) {
+          lastScream = now;
+          screams.push({ text: pick(SCREAMS), x: p.x, y: p.y - h * 1.1, born: now });
+        }
+      } else if (!fleeing && speed < 30) scared.delete(p.id);
+      const ph = now * (fleeing ? 18 : 8) + p.id;
+      const hop = fleeing
+        ? Math.abs(Math.sin(ph)) * h * 0.16
+        : speed > 1
+          ? Math.abs(Math.sin(ph)) * h * 0.05
+          : 0;
+      const dir = p.vx < 0 ? -1 : 1;
+      const lean = fleeing ? 0.2 * dir + Math.sin(ph * 2) * 0.08 : Math.sin(ph) * 0.03;
+      const sq = fleeing ? 1 + Math.sin(ph * 2) * 0.07 : 1 + Math.sin(now * 2 + p.id) * 0.02;
       ctx.save();
       ctx.translate(p.x, p.y + p.r * 0.3 - hop);
-      if (p.mover && p.vx < 0) ctx.scale(-1, 1);
+      ctx.rotate(lean);
+      ctx.scale(dir * (2 - sq), sq);
       ctx.drawImage(img, -w / 2, -h, w, h);
       ctx.restore();
+      if (torch(p)) {
+        const fx = p.x + dir * h * 0.22;
+        const fy = p.y - h * 0.78 - hop;
+        const f = 0.8 + 0.2 * Math.sin(now * 20 + p.id);
+        ctx.fillStyle = '#5a3a1e';
+        ctx.fillRect(fx - h * 0.02, fy, h * 0.04, h * 0.28);
+        ctx.fillStyle = '#ff7a1a';
+        ctx.fillRect(fx - h * 0.06, fy - h * 0.12 * f, h * 0.12, h * 0.14 * f);
+        ctx.fillStyle = '#ffd36a';
+        ctx.fillRect(fx - h * 0.03, fy - h * 0.07 * f, h * 0.06, h * 0.08 * f);
+      }
+      const since = scared.get(p.id);
+      if (since !== undefined && now - since < 0.8) {
+        const k = Math.min(1, (now - since) / 0.1);
+        ctx.font = `800 ${h * 0.55 * k}px Cinzel, serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.lineWidth = h * 0.08;
+        ctx.strokeStyle = '#1a0a0a';
+        ctx.strokeText('!', p.x, p.y - h * 1.05 - hop);
+        ctx.fillStyle = '#ff4a3a';
+        ctx.fillText('!', p.x, p.y - h * 1.05 - hop);
+      }
+    };
+
+    const fireStrength = (f: Fire, now: number) => {
+      const age = now - f.born;
+      return Math.min(1, age / 0.3) * Math.min(1, (9 - age) / 3);
+    };
+    const drawFire = (f: Fire, now: number, k: number) => {
+      if (k <= 0) return;
+      // Tongues of flame licking up from the ruin, each tapering to a flickering tip.
+      const tongues = 5;
+      const layers = [
+        ['#b8280a', 1, 1],
+        ['#ff7f1e', 0.66, 0.78],
+        ['#ffd65e', 0.34, 0.5],
+      ] as const;
+      for (const [color, wide, tall] of layers) {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i < tongues; i++) {
+          const x = f.x + (i - (tongues - 1) / 2) * f.r * 0.3;
+          const lick = 0.55 + 0.45 * Math.sin(now * 9 + i * 1.9 + f.seed);
+          const fh = f.h * 0.34 * lick * k * tall * (i === 2 ? 1.3 : i % 2 ? 1 : 0.8);
+          const fw = f.r * 0.42 * wide;
+          const sway = Math.sin(now * 6 + i * 2.3 + f.seed) * fw * 0.5;
+          ctx.moveTo(x - fw / 2, f.y);
+          ctx.quadraticCurveTo(x - fw * 0.45, f.y - fh * 0.5, x + sway, f.y - fh);
+          ctx.quadraticCurveTo(x + fw * 0.45, f.y - fh * 0.5, x + fw / 2, f.y);
+          ctx.closePath();
+        }
+        ctx.fill();
+      }
     };
 
     const drawCreature = (now: number, air: number) => {
       if (!sprite) return;
+      const pose: Pose = {
+        t: now,
+        walk,
+        stride,
+        attack: attack > 0 ? 1 - attack / ATTACK_SECONDS : 0,
+        side: attackSide,
+        roar: rear,
+        swell,
+        beat,
+        glowSlots,
+        glow,
+      };
+      rctx.setTransform(1, 0, 0, 1, 0, 0);
+      rctx.clearRect(0, 0, rig.width, rig.height);
+      rctx.imageSmoothingEnabled = false;
+      rctx.translate(RIG_PAD, RIG_PAD);
+      drawRig(rctx, sprite, pose);
+      // Its glow, blurred at the sprite's own size (cheap), then scaled up with it.
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.clearRect(0, 0, lit.width, lit.height);
+      lctx.shadowColor = aura;
+      lctx.shadowBlur = 3 + glow * 4 + (mode === 'play' ? 0 : 2);
+      lctx.drawImage(rig, 0, 0);
       const k = sim.size / sprite.height;
-      const bob = sim.moving ? Math.abs(Math.sin(walk)) * sim.size * 0.035 : 0;
-      const squash = sim.moving ? 1 + Math.sin(walk * 2) * 0.02 : 1 + Math.sin(now * 2.2) * 0.012;
+      const f = attack > 0 ? face : sim.facing > 0 ? 1 : -1;
+      const reachOut =
+        attack > 0 ? Math.sin(Math.PI * (1 - attack / ATTACK_SECONDS)) * sim.size * 0.08 : 0;
+      const squash = 1 + Math.sin(walk * 2) * 0.025 * stride;
+      // Swelling as a part wakes (and a little gulp with every big smash).
+      const big = 1 + swell * 0.15;
       ctx.save();
-      ctx.translate(sim.x, sim.y - bob - air);
-      ctx.scale(sim.facing * (2 - squash), squash);
-      ctx.drawImage(
-        sprite.glow,
-        -sprite.footX * k,
-        -sprite.footY * k,
-        sprite.glow.width * k,
-        sprite.glow.height * k,
-      );
-      if (highlight && now < highlight.until) {
-        const pulse = 0.55 + 0.45 * Math.sin(now * 12);
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = pulse * Math.min(1, (highlight.until - now) / 0.6);
-        for (const slot of highlight.slots) {
-          const c = sprite.parts.get(slot);
-          if (c) ctx.drawImage(c, -sprite.footX * k, -sprite.footY * k, c.width * k, c.height * k);
-        }
-        ctx.globalAlpha = 1;
-        ctx.globalCompositeOperation = 'source-over';
-      }
+      ctx.translate(sim.x + lunge.x * reachOut, sim.y - air + lunge.y * reachOut * 0.5);
+      ctx.scale(f * k * big * (2 - squash), k * big * squash);
+      ctx.drawImage(lit, -(sprite.footX + RIG_PAD), -(sprite.footY + RIG_PAD));
       ctx.restore();
     };
 
@@ -671,17 +1326,48 @@ export function Rampage({
         );
         ctx.stroke();
         ctx.globalAlpha = 1;
+      } else if (e.kind === 'slash') {
+        // Three claw marks raked across it, drawn in fast and fading.
+        const R = e.radius;
+        const dir = e.dir ?? 1;
+        const grow = Math.min(1, t / 0.25);
+        ctx.save();
+        ctx.translate(e.x, e.y);
+        ctx.scale(dir, 1);
+        ctx.globalAlpha = 1 - Math.max(0, (t - 0.25) / 0.75);
+        ctx.shadowColor = aura;
+        ctx.shadowBlur = 10;
+        ctx.lineCap = 'round';
+        for (let i = -1; i <= 1; i++) {
+          const off = i * R * 0.22;
+          const x0 = -R * 0.55 + off;
+          const y0 = -R * 0.5 - off * 0.4;
+          const x1 = R * 0.5 + off;
+          const y1 = R * 0.45 - off * 0.4;
+          ctx.strokeStyle = '#fff6ea';
+          ctx.lineWidth = R * 0.07 * (1 - t * 0.6);
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.quadraticCurveTo(
+            (x0 + x1) / 2 + R * 0.25,
+            (y0 + y1) / 2 - R * 0.2,
+            x0 + (x1 - x0) * grow,
+            y0 + (y1 - y0) * grow,
+          );
+          ctx.stroke();
+        }
+        ctx.restore();
       } else {
         ctx.strokeStyle = '#fff';
         ctx.shadowColor = aura;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 16;
         ctx.globalAlpha = 1 - t;
-        ctx.lineWidth = sim.size * 0.05;
+        ctx.lineWidth = Math.max(sim.size * 0.05, e.radius * 0.08);
         ctx.beginPath();
         let x = e.x + (Math.random() - 0.5) * 80;
         let y = top;
         ctx.moveTo(x, y);
-        const steps = 7;
+        const steps = 8;
         for (let i = 1; i <= steps; i++) {
           y = top + ((e.y - e.radius * 0.5 - top) * i) / steps;
           x = e.x + (i === steps ? 0 : (Math.random() - 0.5) * e.radius * 0.6);
@@ -715,7 +1401,7 @@ export function Rampage({
     <div className="rampage" ref={host} data-testid="rampage" data-phase={phase}>
       <canvas ref={canvasRef} className="rampage-canvas" />
       {phase === 'loading' && <p className="rampage-loading">The creature stirs…</p>}
-      {(phase === 'play' || phase === 'intro') && (
+      {phase === 'play' && !cine && (
         <div className="rampage-hud">
           <div className="rampage-stat">
             <span className="rampage-label">Rubble</span>
@@ -744,18 +1430,14 @@ export function Rampage({
           {title}
         </p>
       )}
-      {banner && phase === 'play' && (
-        <div
-          key={banner.id}
-          className="rampage-banner"
-          data-testid="rampage-banner"
-          onAnimationEnd={() => setBanner((b) => (b?.id === banner.id ? null : b))}
-        >
-          <b>{banner.title}</b>
-          <span>{banner.text}</span>
+      {cine && (
+        <div key={cine.id} className="rampage-cine" data-testid="rampage-cine" aria-live="polite">
+          <span className="rampage-cine-parts">{cine.parts}</span>
+          <b className="rampage-cine-word">{cine.word}</b>
+          <span className="rampage-cine-text">{cine.text}</span>
         </div>
       )}
-      {hint && phase === 'play' && <p className="rampage-hint">{hint}</p>}
+      {hint && phase === 'play' && !cine && <p className="rampage-hint">{hint}</p>}
       {phase === 'over' && result && (
         <div className="rampage-over" data-testid="rampage-over">
           <p className="eyebrow">{stage.name}</p>
@@ -823,6 +1505,30 @@ function testSeconds(): number {
   if (!run.isMock()) return RUN_SECONDS;
   const n = Number(new URLSearchParams(window.location.search).get('runSeconds'));
   return Number.isFinite(n) && n > 0 ? n : RUN_SECONDS;
+}
+
+function pick<T>(list: readonly T[]): T {
+  return list[Math.floor(Math.random() * list.length)]!;
+}
+
+/** The same rgba colour with another alpha. */
+function withAlpha(rgba: string, a: number): string {
+  return rgba.replace(/[\d.]+\)\s*$/, `${a})`);
+}
+
+/** A soft round pool of light, to stamp out of the night or add onto it. */
+function lightSprite(inner: string, mid: string): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 64;
+  const x = c.getContext('2d')!;
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, inner);
+  g.addColorStop(0.45, mid);
+  g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  x.fillStyle = g;
+  x.fillRect(0, 0, 64, 64);
+  return c;
 }
 
 /** A few colours from a sprite, for its debris. */
