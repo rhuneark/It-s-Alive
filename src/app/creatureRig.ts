@@ -119,3 +119,53 @@ export function drawRig(ctx: CanvasRenderingContext2D, sprite: CreatureSprite, p
     ctx.restore();
   }
 }
+
+/** Room around the rig for arms and wings flung wide (sprite px). */
+export const RIG_PAD = 48;
+
+/**
+ * The creature posed and glowing, on a small canvas of its own (sprite pixels) to scale up and
+ * draw: the glow is blurred at this small size, which is cheap, rather than on the screen.
+ */
+export class RigCanvas {
+  /** The posed creature with its glow. */
+  readonly canvas = document.createElement('canvas');
+  private readonly rig = document.createElement('canvas');
+  private readonly rctx: CanvasRenderingContext2D;
+  private readonly lctx: CanvasRenderingContext2D;
+
+  constructor(
+    readonly sprite: CreatureSprite,
+    private readonly aura: string,
+  ) {
+    this.rig.width = this.canvas.width = sprite.glow.width + RIG_PAD * 2;
+    this.rig.height = this.canvas.height = sprite.glow.height + RIG_PAD * 2;
+    this.rctx = this.rig.getContext('2d')!;
+    this.lctx = this.canvas.getContext('2d')!;
+  }
+
+  /** Where its feet are on `canvas` (px). */
+  get footX(): number {
+    return this.sprite.footX + RIG_PAD;
+  }
+
+  get footY(): number {
+    return this.sprite.footY + RIG_PAD;
+  }
+
+  /** Pose it, with a glow `blur` sprite pixels wide. */
+  draw(pose: Pose, blur: number): HTMLCanvasElement {
+    const r = this.rctx;
+    r.setTransform(1, 0, 0, 1, 0, 0);
+    r.clearRect(0, 0, this.rig.width, this.rig.height);
+    r.imageSmoothingEnabled = false;
+    r.translate(RIG_PAD, RIG_PAD);
+    drawRig(r, this.sprite, pose);
+    const l = this.lctx;
+    l.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    l.shadowColor = this.aura;
+    l.shadowBlur = blur;
+    l.drawImage(this.rig, 0, 0);
+    return this.canvas;
+  }
+}

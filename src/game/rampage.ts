@@ -160,6 +160,21 @@ export function powerParts(power: Power, parts: Partial<Record<SlotId, string>>)
   return names;
 }
 
+/** What a run made of it, by how many times taller it grew. */
+export const RANKS: ReadonlyArray<readonly [below: number, title: string]> = [
+  [1.3, 'A Stirring Thing'],
+  [1.75, 'Village Nuisance'],
+  [2.4, 'Terror of the Town'],
+  [3.5, 'Doom of the Valley'],
+  [5, 'Colossus'],
+  [Infinity, 'The End of All Things'],
+];
+
+export function rankFor(start: number, peak: number): string {
+  const ratio = peak / Math.max(1, start);
+  return (RANKS.find(([below]) => ratio < below) ?? RANKS[RANKS.length - 1]!)[1];
+}
+
 // ---------------------------------------------------------------- the community
 
 /**

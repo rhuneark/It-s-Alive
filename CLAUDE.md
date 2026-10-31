@@ -65,16 +65,20 @@ everything the whole community smashed that day. It runs on with no end date (th
   creature (Web Animations) and rolls thunder (near strikes sooner and louder). Rain falls behind the
   page (`.storm-rain`; `.app` sits above it). Two flickers per strike, strikes ≥ 1.2 s apart: under
   3 flashes a second. Nothing strikes for reduced-motion players.
-- From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx): `LooseScene`
-  (canvas: the community's creature looming over the night village of the day's place, bigger the
-  taller the community made it, lightning in its spark colour; the first time a player sees it, the
-  BREAKOUT plays there: the laboratory tower shakes, bursts, the creature rises, IT'S LOOSE!, then
-  `markBrokeOut`), "Loose in <place>" and its blurb, the big glowing "Rampage! ⚡" (`.btn-rampage`), the
-  `RampageCard` (rampage day, place, height in ft, growth last night, countdown to the next growth,
-  everyone's rubble today, your best), the jam button, "Watch it wake again", Sketchbook and the music
-  row. The scene is not mounted while the waking scene or a run covers the menu (`covered`), so the
-  breakout is never played unseen. The lore panel shows to
-  first-time players only. In game the ♫ button opens the same controls.
+- From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx), styled like the
+  run (owner's request, Oct 31: "base the new UI on the new game"): a full-width hero, `LooseScene`
+  (canvas: the community's creature, ALIVE through `RigCanvas` (breathing, tail lashing, rearing up
+  with lightning in its spark colour), looming over the burning night village of the day's place,
+  bigger the taller the community made it; smoke, rain, fires along the near row and villagers with
+  torches fleeing across it; the first time a player sees it, the BREAKOUT plays there: the
+  laboratory tower shakes, bursts, the creature rises, IT'S LOOSE!, then `markBrokeOut`), the logo and
+  Chronicle over it; under it "Rampage · day N", "Loose in <place>" in blood red and its blurb; three
+  stat tiles (`rampage-card`: height in ft, growth last night, countdown to the next growth); the big
+  heartbeat "Rampage! ⚡" (`.btn-rampage`); your best and today's rubble; the day's BOUNTIES on a
+  parchment notice nailed up in the square (`bounty-board`, ticked off as done); everyone's rubble
+  today and where it marches tomorrow (`next`); the jam button; "Watch it wake" and Sketchbook side by
+  side; the music row. The scene is not mounted while the waking scene or a run covers the menu
+  (`covered`), so the breakout is never played unseen. In game the ♫ button opens the same controls.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
   `JAM_VOTE_URL` (useGame.ts, from `rundot jam promo`). Games cannot open outside pages: RUN's frame is
   sandboxed `allow-scripts allow-downloads` (no popups, no top navigation), so `window.open` fails preflight
@@ -138,6 +142,24 @@ everything the whole community smashed that day. It runs on with no end date (th
     a blood-red title (`WAKES`: "It strides / reaches / hungers / lashes / leaps / rages") under "<the
     community's parts> awaken". The end: one more roar in close-up (`OUTRO_SECONDS` 1.6) before the
     panel. Something 120+ tall coming down plays in slow motion (0.3× for 0.45 s).
+  - Chains and bounties (Oct 31, "spruce it up"). Smashes less than `CHAIN_GAP` 0.8 s apart build a
+    CHAIN; every `CHAIN_STEP` 20 of it adds ×0.25 to the rubble each smash earns (`chainMultiplier`,
+    up to ×2; `RampageRun.liveChain`, `bestChain`). Three BOUNTIES a day (`src/game/bounty.ts`,
+    `bountiesFor(seed, world)`, the same for everyone): easy (smash N of a small thing the place is
+    full of, +150), middling (send N villagers flying, or a chain of 100, +250) and hard (topple a
+    house or tavern, wake all six parts, or grow four times taller, +400). A run that completes one
+    gets its bonus rubble (event `bounty`, `done`); the save keeps the day's done ids
+    (`rampage.bounties`, reset each day by `recordRun`). rampage.test.ts: the bot always does the
+    easy one, does most overall, and not every day all three. RANKS by how many times taller a run
+    grew ("A Stirring Thing" … "The End of All Things", `rankFor`).
+  - The run's screen: a dark HUD band (rubble, a blood-red clock that pounds in the last 10 s,
+    height), "Next to wake" with that part's own painted layer (`PartIcon.tsx`: `layerKey` of the
+    community's parts; the spark's icon) over a stitched seam filling with blood; the chain meter
+    (hotter colours per ×0.25); the bounties ticked off at the bottom left; floating "+N" rubble over
+    anything worth 20+; a gold "Bounty!" pop-up; "<The church> falls!" with a roar and slow motion
+    when a landmark comes down (`LANDMARKS`). The end card: the place, "The rampage rests", the rank,
+    the rubble (a "New best!" stamp), the six parts as icons (lit if woken), height and longest
+    chain, the bounties with ticks, whether it counted, and the buttons.
   - The night: darkness (`NIGHT` 0.7) on a quarter-resolution canvas with pools of light cut out of it:
     the creature's own glow, lamps, lit windows, jack-o'-lanterns, the torches every third villager
     carries, and the fires left burning (9 s) where it smashed buildings, haystacks and carts; rubble
@@ -186,13 +208,16 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
                sketch (Sketchbook designs), reveal (last night's stitching), awakening (Halloween scene),
                rampage + rampageRun (the rampage: places, powers, growth, one run; rampage.test.ts),
+               bounty (the day's three bounties),
                reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
                useStorm: the vigil's lightning; sfx: synthesized storm and rampage sounds;
                creatureSprite: the community's creature as one sprite (plus glow and per-part canvases);
-               creatureRig: its parts animated on their joints, for the rampage
+               creatureRig: its parts animated on their joints (`drawRig`, and `RigCanvas` to draw
+               it posed and glowing), for the rampage and its menu
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
+               PartIcon (a part as the village painted it, for the rampage's HUD and end card),
                Sketchbook (players design their own monster), Reveal (last night's stitching),
                Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),
                LooseScene (the rampage menu's picture and the breakout),

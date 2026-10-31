@@ -74,10 +74,12 @@ export interface RampageSave {
   brokeOut: boolean;
   /** The whole community's rubble on each closed rampage day (final once the day is over). */
   totals: Record<string, number>;
+  /** The day's bounties the player has completed (ids, for rampage day `day`). */
+  bounties: string[];
 }
 
 function newRampage(): RampageSave {
-  return { best: 0, runs: 0, day: -1, today: 0, brokeOut: false, totals: {} };
+  return { best: 0, runs: 0, day: -1, today: 0, brokeOut: false, totals: {}, bounties: [] };
 }
 
 function parseRampage(raw: unknown): RampageSave {
@@ -93,13 +95,26 @@ function parseRampage(raw: unknown): RampageSave {
     today: clampInt(r.today, 0, 1e9),
     brokeOut: r.brokeOut === true,
     totals,
+    bounties: Array.isArray(r.bounties)
+      ? r.bounties.filter((b): b is string => typeof b === 'string' && b.length < 40).slice(0, 8)
+      : [],
   };
 }
 
-/** A finished run: the player's best and today's rubble (the community's is in the shared tally). */
-export function recordRun(save: SaveState, rampageDay: number, rubble: number): SaveState {
+/**
+ * A finished run: the player's best, today's rubble (the community's is in the shared tally) and
+ * the day's bounties done so far.
+ */
+export function recordRun(
+  save: SaveState,
+  rampageDay: number,
+  rubble: number,
+  bounties: readonly string[] = [],
+): SaveState {
   const r = save.rampage;
-  const today = r.day === rampageDay ? r.today : 0;
+  const sameDay = r.day === rampageDay;
+  const today = sameDay ? r.today : 0;
+  const done = sameDay ? r.bounties : [];
   return {
     ...save,
     rampage: {
@@ -109,6 +124,7 @@ export function recordRun(save: SaveState, rampageDay: number, rubble: number): 
       day: rampageDay,
       today: today + rubble,
       brokeOut: true,
+      bounties: [...done, ...bounties.filter((b) => !done.includes(b))],
     },
   };
 }

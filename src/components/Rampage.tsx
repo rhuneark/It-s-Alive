@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { drawRig, type Pose } from '../app/creatureRig';
+import { RigCanvas, type Pose } from '../app/creatureRig';
 import { buildCreatureSprite, loadImage, type CreatureSprite } from '../app/creatureSprite';
 import { chime, distantThunder, heartbeat, roar, swipe, thud, thunderclap } from '../app/sfx';
+import type { Bounty } from '../game/bounty';
 import type { SlotId } from '../game/catalog';
 import {
   BASE_SIZE,
@@ -13,6 +14,7 @@ import {
   buildWorld,
   feet,
   powerParts,
+  rankFor,
   type Power,
   type PowerId,
   type PropKind,
@@ -20,6 +22,7 @@ import {
 } from '../game/rampage';
 import { RampageRun, type LiveProp, type RunEvent, type RunResult } from '../game/rampageRun';
 import * as run from '../sdk/run';
+import { PowerIcon } from './PartIcon';
 
 /**
  * The rampage: the creature everyone built, loose in the day's place at night. Drag anywhere (or
@@ -55,9 +58,6 @@ const ATTACK_SECONDS = 0.3;
 /** How dark the night is away from any light (0..1), and the darkness layer's resolution. */
 const NIGHT = 0.7;
 const DARK_SCALE = 4;
-/** Room around the rig for arms and wings flung wide (sprite px). */
-const RIG_PAD = 48;
-
 /** What the creature becomes as each power wakes, in the scene's big title. */
 const WAKES: Record<PowerId, string> = {
   stride: 'It strides',
@@ -107,9 +107,37 @@ interface Hud {
   left: number;
   rubble: number;
   feet: number;
-  next: string | null;
+  next: Power | null;
   progress: number;
+  /** The chain of smashes going now (0: none) and the rubble multiplier it earns. */
+  chain: number;
+  mult: number;
+  /** How far the run has got with each of the day's bounties. */
+  bounty: number[];
 }
+
+interface Callout {
+  id: number;
+  text: string;
+  bonus?: number;
+}
+
+interface Pop {
+  text: string;
+  x: number;
+  y: number;
+  born: number;
+  big: boolean;
+}
+
+/** The great buildings: each one coming down gets its own moment. */
+const LANDMARKS: Partial<Record<PropKind, string>> = {
+  windmill: 'The windmill',
+  watchtower: 'The watchtower',
+  church: 'The church',
+  manor: 'The manor',
+  townhall: 'The town hall',
+};
 
 interface Cine {
   id: number;
@@ -193,6 +221,8 @@ interface Props {
   seed: string;
   /** The creature's real height is its run size times this (it grew with the community). */
   scale: number;
+  /** The day's three bounties (the same for everyone). */
+  bounties: readonly Bounty[];
   volume: number;
   best: number;
   /** Whether the finished run reached the community's tally ('pending' while it is sent). */
@@ -208,6 +238,7 @@ export function Rampage({
   stage,
   seed,
   scale,
+  bounties,
   volume,
   best,
   contribution,
@@ -225,8 +256,13 @@ export function Rampage({
     feet: feet(BASE_SIZE * scale),
     next: null,
     progress: 0,
+    chain: 0,
+    mult: 1,
+    bounty: bounties.map(() => 0),
   });
   const [cine, setCine] = useState<Cine | null>(null);
+  const [falls, setFalls] = useState<Callout | null>(null);
+  const [reward, setReward] = useState<Callout | null>(null);
   const [title, setTitle] = useState<string | null>(null);
   const [hint, setHint] = useState<string | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -244,13 +280,10 @@ export function Rampage({
     const aura = AURA[sparkKind] ?? AURA['lightning']!;
     const world = buildWorld(seed, stage);
     const seconds = testSeconds();
-    const sim = new RampageRun(world, BASE_SIZE, `${seed}:${Math.random()}`, seconds);
+    const sim = new RampageRun(world, BASE_SIZE, `${seed}:${Math.random()}`, seconds, bounties);
 
     let sprite: CreatureSprite | null = null;
-    const rig = document.createElement('canvas');
-    const rctx = rig.getContext('2d')!;
-    const lit = document.createElement('canvas');
-    const lctx = lit.getContext('2d')!;
+    let rig: RigCanvas | null = null;
     const imgs = new Map<PropKind, HTMLImageElement>();
     const colors = new Map<PropKind, string[]>();
     let ground: CanvasPattern | null = null;
@@ -258,6 +291,8 @@ export function Rampage({
     const flung: Flung[] = [];
     const effects: Effect[] = [];
     const screams: Scream[] = [];
+    const pops: Pop[] = [];
+    let calloutId = 0;
     const fires: Fire[] = [];
     const scars: Scar[] = [];
     const rain: Drop[] = [];
@@ -418,10 +453,7 @@ export function Rampage({
       ]);
       if (!alive) return;
       sprite = built;
-      if (sprite) {
-        rig.width = lit.width = sprite.glow.width + RIG_PAD * 2;
-        rig.height = lit.height = sprite.glow.height + RIG_PAD * 2;
-      }
+      if (sprite) rig = new RigCanvas(sprite, aura);
       ground = makeGround(ctx, stage.id);
       const now = performance.now() / 1000;
       enter('intro', now);
@@ -481,7 +513,7 @@ export function Rampage({
           setTitle(null);
           if (!hintShown) {
             hintShown = true;
-            setHint('Drag anywhere to steer. It claws whatever is in reach!');
+            setHint('Drag anywhere to steer. Keep smashing to build a chain!');
           }
         }
       } else if (mode === 'play') {
@@ -595,8 +627,11 @@ export function Rampage({
           left: sim.timeLeft,
           rubble: sim.rubble,
           feet: feet(sim.size * scale),
-          next: next ? (powerParts(next.power, parts)[0] ?? next.power.id) : null,
+          next: next ? next.power : null,
           progress,
+          chain: sim.liveChain,
+          mult: sim.liveChain ? sim.multiplier : 1,
+          bounty: bounties.map((b) => sim.progress(b)),
         });
       }
     };
@@ -673,7 +708,29 @@ export function Rampage({
             slowUntil = now + 0.45;
             punch = 0.1;
           }
+          // A great building falling is a moment of its own.
+          const name = LANDMARKS[p.kind];
+          if (name) {
+            setFalls({ id: ++calloutId, text: `${name} falls!` });
+            roar(volume * 0.6);
+            if (!calm) {
+              lightUp(0.5, now);
+              shake = Math.max(shake, 18);
+              slowUntil = now + 0.7;
+            }
+            run.haptic('heavy');
+          }
         }
+        // What it earned, over what it smashed (the small stuff adds up quietly).
+        if (e.points >= 20)
+          pops.push({
+            text: `+${e.points.toLocaleString('en-US')}`,
+            x: p.x,
+            y: p.y - p.h * 0.6,
+            born: now,
+            big: e.points >= 200,
+          });
+        if (pops.length > 24) pops.shift();
         if (!calm) shake = Math.max(shake, weight * 10);
         swell = Math.max(swell, weight * 0.35);
         if (now - lastThud > 0.07) {
@@ -738,6 +795,10 @@ export function Rampage({
         });
         if (!calm) lightUp(0.4, now);
         thunderclap(volume * 0.5);
+      } else if (e.type === 'bounty') {
+        setReward({ id: ++calloutId, text: e.bounty.text, bonus: e.bounty.bonus });
+        chime(volume);
+        run.haptic('success');
       } else if (e.type === 'end') {
         enter('outro', now);
         setCine(null);
@@ -889,6 +950,7 @@ export function Rampage({
       }
       for (let i = screams.length - 1; i >= 0; i--)
         if (now - screams[i]!.born > 1.2) screams.splice(i, 1);
+      for (let i = pops.length - 1; i >= 0; i--) if (now - pops[i]!.born > 1) pops.splice(i, 1);
       if (particles.length > 600) particles.splice(0, particles.length - 600);
     };
     const tickRain = (dt: number) => {
@@ -1133,6 +1195,21 @@ export function Rampage({
         ctx.fillStyle = '#ffe2c4';
         ctx.fillText(s.text, px, py);
       }
+      // The rubble it earns, rising in gold (red-gold once a chain multiplies it).
+      const hot = sim.liveChain > 0 && sim.multiplier > 1;
+      for (const q of pops) {
+        const age = now - q.born;
+        const px = q.x * z + ox;
+        const py = q.y * z + oy - age * 46 * dpr;
+        if (px < -60 * dpr || px > W + 60 * dpr || py < -20 || py > H + 40 * dpr) continue;
+        ctx.globalAlpha = Math.max(0, Math.min(1, (1 - age) / 0.3));
+        ctx.font = `800 ${Math.round((q.big ? 20 : 14) * dpr)}px Cinzel, serif`;
+        ctx.lineWidth = 3 * dpr;
+        ctx.strokeStyle = '#1a0d04';
+        ctx.strokeText(q.text, px, py);
+        ctx.fillStyle = hot ? '#ffb347' : '#ffe08a';
+        ctx.fillText(q.text, px, py);
+      }
       ctx.globalAlpha = 1;
       if (anchor && finger && mode === 'play') {
         const rect = box.getBoundingClientRect();
@@ -1258,7 +1335,7 @@ export function Rampage({
     };
 
     const drawCreature = (now: number, air: number) => {
-      if (!sprite) return;
+      if (!sprite || !rig) return;
       const pose: Pose = {
         t: now,
         walk,
@@ -1271,17 +1348,7 @@ export function Rampage({
         glowSlots,
         glow,
       };
-      rctx.setTransform(1, 0, 0, 1, 0, 0);
-      rctx.clearRect(0, 0, rig.width, rig.height);
-      rctx.imageSmoothingEnabled = false;
-      rctx.translate(RIG_PAD, RIG_PAD);
-      drawRig(rctx, sprite, pose);
-      // Its glow, blurred at the sprite's own size (cheap), then scaled up with it.
-      lctx.setTransform(1, 0, 0, 1, 0, 0);
-      lctx.clearRect(0, 0, lit.width, lit.height);
-      lctx.shadowColor = aura;
-      lctx.shadowBlur = 3 + glow * 4 + (mode === 'play' ? 0 : 2);
-      lctx.drawImage(rig, 0, 0);
+      const lit = rig.draw(pose, 3 + glow * 4 + (mode === 'play' ? 0 : 2));
       const k = sim.size / sprite.height;
       const f = attack > 0 ? face : sim.facing > 0 ? 1 : -1;
       const reachOut =
@@ -1292,7 +1359,7 @@ export function Rampage({
       ctx.save();
       ctx.translate(sim.x + lunge.x * reachOut, sim.y - air + lunge.y * reachOut * 0.5);
       ctx.scale(f * k * big * (2 - squash), k * big * squash);
-      ctx.drawImage(lit, -(sprite.footX + RIG_PAD), -(sprite.footY + RIG_PAD));
+      ctx.drawImage(lit, -rig.footX, -rig.footY);
       ctx.restore();
     };
 
@@ -1418,11 +1485,69 @@ export function Rampage({
             <b data-testid="rampage-height">{hud.feet} ft</b>
           </div>
           {hud.next && (
-            <div className="rampage-next">
-              <span>Next to wake: {hud.next}</span>
-              <i style={{ width: `${Math.round(hud.progress * 100)}%` }} />
+            <div className="rampage-next" data-testid="rampage-next">
+              <PowerIcon power={hud.next} parts={parts} lit={false} />
+              <span className="rampage-next-text">
+                <span>Next to wake</span>
+                <b>{powerParts(hud.next, parts)[0] ?? hud.next.id}</b>
+              </span>
+              <i className="rampage-next-bar">
+                <i style={{ width: `${Math.round(hud.progress * 100)}%` }} />
+              </i>
             </div>
           )}
+        </div>
+      )}
+      {phase === 'play' && !cine && hud.chain >= 5 && (
+        <div
+          className={`rampage-chain tier-${Math.round((hud.mult - 1) * 4)}`}
+          data-testid="rampage-chain"
+        >
+          <b key={hud.mult}>{hud.chain}</b>
+          <span>{hud.mult > 1 ? `chain · ×${hud.mult} rubble` : 'chain'}</span>
+        </div>
+      )}
+      {phase === 'play' && !cine && bounties.length > 0 && (
+        <ul className="rampage-bounties" data-testid="rampage-bounties" aria-label="Bounties">
+          {bounties.map((b, i) => {
+            const got = hud.bounty[i] ?? 0;
+            const done = got >= b.target;
+            return (
+              <li key={b.id} className={done ? 'done' : ''}>
+                <i aria-hidden="true">{done ? '✓' : ''}</i>
+                <span>{b.text}</span>
+                <em>
+                  {done
+                    ? `+${b.bonus}`
+                    : b.kind === 'grow'
+                      ? `${got.toFixed(1)}×`
+                      : `${got}/${b.target}`}
+                </em>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {falls && phase === 'play' && !cine && (
+        <p
+          key={falls.id}
+          className="rampage-falls"
+          data-testid="rampage-falls"
+          onAnimationEnd={() => setFalls((f) => (f?.id === falls.id ? null : f))}
+        >
+          {falls.text}
+        </p>
+      )}
+      {reward && phase === 'play' && (
+        <div
+          key={reward.id}
+          className="rampage-reward"
+          data-testid="rampage-reward"
+          onAnimationEnd={() => setReward((r) => (r?.id === reward.id ? null : r))}
+        >
+          <span>Bounty!</span>
+          <b>{reward.text}</b>
+          <em>+{reward.bonus} rubble</em>
         </div>
       )}
       {title && (
@@ -1442,26 +1567,45 @@ export function Rampage({
         <div className="rampage-over" data-testid="rampage-over">
           <p className="eyebrow">{stage.name}</p>
           <h2 className="rampage-over-title">The rampage rests</h2>
+          <p className="rampage-rank" data-testid="rampage-rank">
+            {rankFor(result.start, result.peak)}
+          </p>
           <div className="rampage-score">
             <b data-testid="rampage-score">{result.rubble.toLocaleString('en-US')}</b>
-            <span>rubble{newBest ? ' · a new best!' : ''}</span>
+            <span>rubble</span>
+            {newBest && <em className="rampage-best">New best!</em>}
+          </div>
+          <div
+            className="rampage-powers"
+            aria-label={`Woke ${result.powers.length} of ${POWERS.length} parts`}
+          >
+            {POWERS.map((p) => (
+              <PowerIcon key={p.id} power={p} parts={parts} lit={result.powers.includes(p.id)} />
+            ))}
           </div>
           <ul className="rampage-facts">
             <li>
-              Grew to <b>{feet(result.peak * scale)} ft</b>
+              Grew to <b>{feet(result.peak * scale)} ft</b> · longest chain{' '}
+              <b>{result.bestChain}</b>
             </li>
             <li>
-              Smashed <b>{result.smashed}</b> things, frightened <b>{result.frights}</b> villagers
-            </li>
-            <li>
-              Woke <b>{result.powers.length}</b> of {POWERS.length} parts
-              {result.powers.length > 0 &&
-                `: ${result.powers
-                  .map((id) => powerParts(POWERS.find((p) => p.id === id)!, parts)[0])
-                  .filter(Boolean)
-                  .join(', ')}`}
+              Smashed <b>{result.smashed}</b> things, flung <b>{result.frights}</b> villagers
             </li>
           </ul>
+          {bounties.length > 0 && (
+            <ul className="rampage-bounty-list" data-testid="rampage-bounty-list">
+              {bounties.map((b) => {
+                const done = result.bounties.includes(b.id);
+                return (
+                  <li key={b.id} className={done ? 'done' : ''}>
+                    <i aria-hidden="true">{done ? '✓' : '✗'}</i>
+                    <span>{b.text}</span>
+                    <em>{done ? `+${b.bonus}` : ''}</em>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           <p className="muted center-text rampage-count" data-testid="rampage-count">
             {contribution === 'counted'
               ? 'Added to the creature! At midnight it grows by everything the village smashed.'

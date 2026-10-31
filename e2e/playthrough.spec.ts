@@ -283,7 +283,10 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('loose-title')).toHaveText("IT'S LOOSE!", { timeout: 5000 });
   await expect(page.getByTestId('loose-scene')).toHaveAttribute('data-loose', 'true');
   await expect(menu).toContainText('Loose in The Village');
-  await expect(page.getByTestId('rampage-card')).toContainText('Rampage day 1');
+  await expect(menu).toContainText('Rampage · day 1');
+  await expect(page.getByTestId('creature-height')).toHaveText(/\d+ ft/);
+  // The day's three bounties, on the village notice board.
+  await expect(page.getByTestId('bounty-board').locator('li')).toHaveCount(3);
   await expect(page.getByTestId('reveal')).toHaveCount(0); // the scene showed the last stitching
   await noSidewaysScroll(page);
   await framedButtons(page);
@@ -293,11 +296,15 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   const rampage = page.getByTestId('rampage');
   await expect(page.getByTestId('rampage-title')).toHaveText('RAMPAGE!', { timeout: 10_000 });
   await expect(rampage).toHaveAttribute('data-phase', 'play', { timeout: 5000 });
+  await expect(page.getByTestId('rampage-bounties').locator('li')).toHaveCount(3);
+  await expect(page.getByTestId('rampage-next')).toContainText('Next to wake');
   await shot('rampage');
   await page.keyboard.down('ArrowUp');
   await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
   await page.keyboard.up('ArrowUp');
   await expect(page.getByTestId('rampage-score')).toHaveText(/\d/);
+  await expect(page.getByTestId('rampage-rank')).not.toBeEmpty();
+  await expect(page.getByTestId('rampage-bounty-list').locator('li')).toHaveCount(3);
   await expect(page.getByTestId('rampage-count')).toContainText('Added to the creature');
   await framedButtons(page);
   await shot('rampage-over');
@@ -307,7 +314,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(rampage).toHaveAttribute('data-phase', 'over', { timeout: 15_000 });
   await page.getByTestId('rampage-quit').click();
   await expect(rampage).toHaveCount(0);
-  await expect(page.getByTestId('rampage-card')).toContainText('Your best');
+  await expect(page.getByTestId('rampage-best')).toContainText('Your best');
   // The waking can be watched again, and skipped.
   await page.getByTestId('awaken-replay').click();
   await expect(wake).toHaveAttribute('data-stage', 'dark');
@@ -329,7 +336,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   // The next day it is loose somewhere new, and taller for what everyone smashed.
   await page.goto('/?day=21&runSeconds=4');
   await expect(menu).toContainText('Loose in The Farmlands');
-  await expect(page.getByTestId('rampage-card')).toContainText(/grew \d+ ft last night/);
+  await expect(page.getByTestId('rampage-card')).toContainText(/\+\d+ ft/);
+  await expect(page.getByTestId('rampage-card')).toContainText('grew last night');
+  await expect(menu).toContainText('Tomorrow it marches on The Market Town');
 
   expect(errors).toEqual([]);
 });
@@ -388,7 +397,7 @@ test('owner test mode: jump to Halloween with a throwaway save, then back to the
   await expect(wake).toHaveAttribute('data-stage', 'intro');
   await page.getByTestId('awaken-skip').click();
   await expect(page.getByTestId('rampage-menu')).toBeVisible();
-  await expect(page.getByTestId('rampage-card')).toContainText('Rampage day 1');
+  await expect(page.getByTestId('rampage-menu')).toContainText('Rampage · day 1');
   await framedButtons(page);
   // Jump again, to a later day of the rampage.
   for (let i = 0; i < 5; i++) await page.getByTestId('build-stamp').click();

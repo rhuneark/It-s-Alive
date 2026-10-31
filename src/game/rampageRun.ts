@@ -17,8 +17,10 @@ import {
   type Power,
   type PowerId,
   type Prop,
+  type PropKind,
   type World,
 } from './rampage';
+import { bountyProgress, type Bounty } from './bounty';
 import { rngFor } from './rng';
 
 export interface LiveProp extends Prop {
@@ -31,7 +33,8 @@ export interface LiveProp extends Prop {
 export type SmashBy = 'claw' | 'stomp' | 'maw' | 'tail' | 'leap' | 'bolt';
 
 export type RunEvent =
-  | { type: 'smash'; prop: LiveProp; by: SmashBy }
+  /** `points`: the rubble it earned, times the chain's multiplier. */
+  | { type: 'smash'; prop: LiveProp; by: SmashBy; points: number }
   | { type: 'power'; power: Power }
   | { type: 'blocked'; prop: LiveProp }
   | { type: 'leap' }
@@ -40,6 +43,8 @@ export type RunEvent =
   | { type: 'bolt'; prop: LiveProp }
   /** It clawed something within reach (1 its right arm, -1 its left). */
   | { type: 'attack'; prop: LiveProp; side: 1 | -1 }
+  /** One of the day's bounties is done: its bonus is added to the rubble. */
+  | { type: 'bounty'; bounty: Bounty }
   | { type: 'end' };
 
 export interface RunResult {
@@ -49,6 +54,9 @@ export interface RunResult {
   start: number;
   peak: number;
   powers: PowerId[];
+  /** The longest chain of smashes, and the day's bounties this run completed (ids). */
+  bestChain: number;
+  bounties: string[];
 }
 
 /** Steering: a direction with a length of 0 (stand still) to 1 (full speed). */
@@ -78,6 +86,10 @@ const CLAW_EVERY = 0.9;
 const CLAW_FAST = 0.6;
 const CLAW_RANGE = 2;
 const FRENZY = 1.3;
+/** Smashes this close together (s) keep a chain going; every CHAIN_STEP of it adds to the rubble. */
+export const CHAIN_GAP = 0.8;
+export const CHAIN_STEP = 20;
+const CHAIN_MAX = 2;
 const FLEE_RANGE = 5;
 const FLEE_SPEED = 95;
 const WANDER_SPEED = 22;
@@ -102,6 +114,14 @@ export class RampageRun {
   /** Seconds left in the air (wings). */
   air = 0;
   readonly powers: PowerId[] = [];
+  /** The chain of smashes going now, and the longest one. */
+  chain = 0;
+  bestChain = 0;
+  /** The day's bounties, and the ones this run has completed. */
+  readonly bounties: readonly Bounty[];
+  readonly done: string[] = [];
+  private readonly kinds = new Map<PropKind, number>();
+  private lastSmash = -10;
   private leapIn = LEAP_EVERY;
   private sweepIn = SWEEP_EVERY;
   private clawIn = 0.5;
@@ -116,8 +136,15 @@ export class RampageRun {
   /** Seconds in this run (RUN_SECONDS; shorter in tests). */
   readonly seconds: number;
 
-  constructor(world: World, start: number, seed = 'run', seconds = RUN_SECONDS) {
+  constructor(
+    world: World,
+    start: number,
+    seed = 'run',
+    seconds = RUN_SECONDS,
+    bounties: readonly Bounty[] = [],
+  ) {
     this.start = start;
+    this.bounties = bounties;
     this.seconds = seconds;
     this.size = start;
     this.peak = start;
@@ -178,6 +205,8 @@ export class RampageRun {
       start: this.start,
       peak: Math.round(this.peak),
       powers: [...this.powers],
+      bestChain: this.bestChain,
+      bounties: [...this.done],
     };
   }
 
@@ -331,19 +360,55 @@ export class RampageRun {
         events.push({ type: 'power', power });
       }
     }
+    this.checkBounties(events);
     return events;
+  }
+
+  /** The chain still going (0 once it has lapsed: nothing smashed for CHAIN_GAP seconds). */
+  get liveChain(): number {
+    return this.time - this.lastSmash <= CHAIN_GAP ? this.chain : 0;
+  }
+
+  /** The rubble multiplier the chain going now earns (×1, ×1.25, … up to ×2). */
+  get multiplier(): number {
+    return chainMultiplier(this.chain);
+  }
+
+  /** How far this run has got with a bounty (0..its target). */
+  progress(b: Bounty): number {
+    return bountyProgress(b, {
+      kinds: this.kinds,
+      frights: this.frights,
+      bestChain: this.bestChain,
+      powers: this.powers.length,
+      ratio: this.peak / this.start,
+    });
+  }
+
+  private checkBounties(events: RunEvent[]): void {
+    for (const b of this.bounties) {
+      if (this.done.includes(b.id) || this.progress(b) < b.target) continue;
+      this.done.push(b.id);
+      this.rubble += b.bonus;
+      events.push({ type: 'bounty', bounty: b });
+    }
   }
 
   private smash(p: LiveProp, by: SmashBy, events: RunEvent[]): void {
     if (!p.alive) return;
     p.alive = false;
     this.mass += massOf(p.kind) * (this.has('spark') ? FRENZY : 1);
-    this.rubble += rubbleOf(p.kind);
+    this.chain = this.time - this.lastSmash <= CHAIN_GAP ? this.chain + 1 : 1;
+    this.lastSmash = this.time;
+    this.bestChain = Math.max(this.bestChain, this.chain);
+    const points = Math.round(rubbleOf(p.kind) * this.multiplier);
+    this.rubble += points;
     this.smashed++;
+    this.kinds.set(p.kind, (this.kinds.get(p.kind) ?? 0) + 1);
     if (p.mover) this.frights++;
     this.size = sizeAfter(this.start, this.mass);
     this.peak = Math.max(this.peak, this.size);
-    events.push({ type: 'smash', prop: p, by });
+    events.push({ type: 'smash', prop: p, by, points });
   }
 
   /** Villagers and chickens run from the creature, and wander when it is far away. */
@@ -367,4 +432,9 @@ export class RampageRun {
       p.y = Math.max(50, Math.min(WORLD_H - 50, p.y + p.vy * dt));
     }
   }
+}
+
+/** The rubble multiplier for a chain of smashes: ×1, then +0.25 every CHAIN_STEP, up to ×2. */
+export function chainMultiplier(chain: number): number {
+  return Math.min(CHAIN_MAX, 1 + Math.floor(Math.max(0, chain) / CHAIN_STEP) * 0.25);
 }

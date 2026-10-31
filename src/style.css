@@ -1873,13 +1873,20 @@ b {
 
 .rampage-hud {
   position: absolute;
-  top: calc(var(--safe-top) + 10px);
-  left: 12px;
-  right: 12px;
+  top: 0;
+  left: 0;
+  right: 0;
   display: grid;
   grid-template-columns: 1fr auto 1fr;
   align-items: start;
   gap: 8px;
+  padding: calc(var(--safe-top) + 10px) 12px 20px;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 3, 8, 0.88),
+    rgba(5, 3, 8, 0.5) 65%,
+    rgba(5, 3, 8, 0)
+  );
   pointer-events: none;
 }
 
@@ -1900,7 +1907,7 @@ b {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--brass);
+  color: #d08a68;
 }
 
 .rampage-stat b {
@@ -1909,19 +1916,25 @@ b {
 }
 
 .rampage-clock {
-  padding: 2px 12px;
+  min-width: 86px;
+  padding: 2px 14px;
   font-family: var(--font-head);
   font-weight: 800;
   font-size: 28px;
+  text-align: center;
   color: var(--parchment);
-  background: rgba(13, 10, 16, 0.72);
-  border: 2px solid var(--stone-edge);
+  background: linear-gradient(180deg, #2c0b10, #12060a);
+  border: 2px solid #7a1d22;
   border-radius: 6px;
+  box-shadow:
+    0 0 14px rgba(200, 30, 40, 0.35),
+    inset 0 0 8px rgba(0, 0, 0, 0.6);
 }
 
 .rampage-clock.hurry {
-  color: var(--blood-bright);
-  animation: hurry 1s ease-in-out infinite;
+  color: #ff5a4a;
+  border-color: var(--blood-bright);
+  animation: hurry 0.7s ease-in-out infinite;
 }
 
 @keyframes hurry {
@@ -1930,28 +1943,339 @@ b {
   }
 }
 
+/* The next part to wake: its own painted layer, stirring, over a stitched seam filling with blood. */
 .rampage-next {
-  position: relative;
   grid-column: 1 / -1;
   justify-self: center;
-  width: min(86%, 320px);
-  padding: 3px 10px 6px;
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  grid-template-rows: auto 8px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 3px;
+  width: min(92%, 340px);
+  padding: 5px 10px 6px 6px;
+  background: rgba(14, 6, 10, 0.8);
+  border: 2px solid #5a2a2e;
+  border-radius: 8px;
+}
+
+.rampage-next .power-icon {
+  grid-row: 1 / span 2;
+}
+
+.rampage-next .power-icon img {
+  filter: grayscale(0.5) brightness(0.75);
+  animation: stir 1.6s ease-in-out infinite;
+}
+
+@keyframes stir {
+  50% {
+    transform: scale(1.08) rotate(-3deg);
+    filter: grayscale(0.2) brightness(1);
+  }
+}
+
+.rampage-next-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-head);
+}
+
+.rampage-next-text span {
+  flex: none;
   font-size: 14px;
-  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #d08a68;
+}
+
+.rampage-next-text b {
+  overflow: hidden;
+  font-size: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--parchment);
-  background: rgba(13, 10, 16, 0.72);
-  border: 2px solid var(--stone-edge);
+}
+
+.rampage-next-bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  overflow: hidden;
+  background: #1a0b0e;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px #3a1a1e;
+}
+
+.rampage-next-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #8e1c22, #ff6a3a);
+  box-shadow: 0 0 8px rgba(255, 90, 50, 0.6);
+  transition: width 0.2s linear;
+}
+
+/* stitches across the seam */
+.rampage-next-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 9px, rgba(0, 0, 0, 0.6) 9px 11px);
+}
+
+/* A part, as the village painted it: dark until it wakes. */
+.power-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  background: radial-gradient(circle, rgba(60, 20, 24, 0.95), rgba(10, 4, 8, 0.95));
+  border: 2px solid #3a2228;
   border-radius: 6px;
 }
 
-.rampage-next i {
+.power-icon img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  filter: grayscale(1) brightness(0.4);
+}
+
+.power-icon i {
+  font-style: normal;
+  color: #5a3a40;
+}
+
+.power-icon.lit {
+  border-color: var(--brass);
+  box-shadow: 0 0 10px rgba(255, 120, 60, 0.5);
+}
+
+.power-icon.lit img {
+  filter: none;
+}
+
+/* The chain of smashes and what it multiplies the rubble by: hotter the longer it runs. */
+.rampage-chain {
   position: absolute;
+  top: calc(var(--safe-top) + 128px);
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-family: var(--font-head);
+  text-shadow:
+    0 2px 0 #000,
+    0 0 10px #000;
+  pointer-events: none;
+}
+
+.rampage-chain b {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffe08a;
+  animation: chain-pop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.rampage-chain span {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--parchment);
+}
+
+.rampage-chain.tier-1 b {
+  color: #ffc35a;
+}
+
+.rampage-chain.tier-2 b {
+  color: #ff9a3a;
+}
+
+.rampage-chain.tier-3 b {
+  color: #ff5f3a;
+}
+
+.rampage-chain.tier-4 b {
+  color: #ff2e2e;
+  text-shadow:
+    0 0 14px rgba(255, 40, 40, 0.85),
+    0 2px 0 #000;
+}
+
+@keyframes chain-pop {
+  from {
+    transform: scale(1.7);
+  }
+}
+
+/* The day's bounties, ticked off as the run goes. */
+.rampage-bounties {
+  position: absolute;
+  left: 10px;
+  bottom: calc(var(--safe-bottom) + 12px);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: min(80%, 310px);
+  list-style: none;
+  pointer-events: none;
+}
+
+.rampage-bounties li {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1.25;
+  color: var(--parchment);
+  background: rgba(10, 5, 8, 0.7);
+  border-left: 3px solid #7a1d22;
+  border-radius: 4px;
+}
+
+.rampage-bounties i {
+  width: 14px;
+  height: 14px;
+  font-style: normal;
+  font-size: 12px;
+  line-height: 10px;
+  text-align: center;
+  color: var(--bile);
+  border: 2px solid var(--parchment-dim);
+  border-radius: 3px;
+}
+
+.rampage-bounties em {
+  font-family: var(--font-head);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--brass);
+}
+
+.rampage-bounties li.done {
+  color: var(--parchment-dim);
+  border-left-color: var(--bile);
+}
+
+.rampage-bounties li.done span {
+  text-decoration: line-through;
+  text-decoration-color: rgba(214, 64, 58, 0.85);
+}
+
+.rampage-bounties li.done em {
+  color: var(--bile);
+}
+
+/* A great building comes down. */
+.rampage-falls {
+  position: absolute;
+  top: 30%;
   left: 0;
-  bottom: 0;
-  height: 4px;
-  background: var(--bile);
-  transition: width 0.2s linear;
+  right: 0;
+  padding: 0 14px;
+  font-family: var(--font-title);
+  font-size: clamp(36px, 11vw, 64px);
+  line-height: 1.05;
+  text-align: center;
+  color: #e3242b;
+  text-shadow:
+    0 0 18px rgba(255, 40, 40, 0.5),
+    0 3px 0 #000,
+    0 8px 16px #000;
+  pointer-events: none;
+  animation: falls 1.9s ease forwards;
+}
+
+@keyframes falls {
+  0% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(0.95);
+  }
+  18%,
+  75% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+/* A bounty done: gold. */
+.rampage-reward {
+  position: absolute;
+  top: 25%;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 220px;
+  max-width: calc(100% - 32px);
+  padding: 8px 16px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(64, 42, 10, 0.94), rgba(26, 16, 5, 0.94));
+  border: 2px solid var(--brass);
+  border-radius: 8px;
+  box-shadow: 0 0 22px rgba(255, 190, 80, 0.45);
+  pointer-events: none;
+  transform: translateX(-50%);
+  animation: reward 2.2s ease forwards;
+}
+
+.rampage-reward span {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brass);
+}
+
+.rampage-reward b {
+  font-family: var(--font-head);
+  font-size: 17px;
+  color: var(--parchment);
+}
+
+.rampage-reward em {
+  font-family: var(--font-head);
+  font-style: normal;
+  font-weight: 800;
+  font-size: 16px;
+  color: #ffe08a;
+}
+
+@keyframes reward {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.9);
+  }
+  10%,
+  80% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
 }
 
 .rampage-title {
@@ -2077,7 +2401,7 @@ b {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: calc(var(--safe-bottom) + 28px);
+  bottom: calc(var(--safe-bottom) + 112px);
   font-family: var(--font-head);
   font-weight: 700;
   font-size: 16px;
@@ -2095,26 +2419,67 @@ b {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  width: min(calc(100% - 32px), 420px);
-  max-height: calc(100% - 32px);
+  gap: 8px;
+  width: min(calc(100% - 28px), 420px);
+  max-height: calc(100% - 28px);
   overflow-y: auto;
-  padding: 18px 16px;
+  padding: 16px 16px 18px;
   text-align: center;
-  background: linear-gradient(180deg, var(--stone-2), var(--night));
-  border: 3px solid var(--brass);
+  background: linear-gradient(180deg, #210b10, #0c0508 72%);
+  border: 2px solid #7a1d22;
   border-radius: 10px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 40px rgba(180, 20, 30, 0.35),
+    0 10px 40px rgba(0, 0, 0, 0.8);
   transform: translate(-50%, -50%);
   animation: fade-in 0.4s ease-out;
+}
+
+/* claw marks raked across the corner */
+.rampage-over::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: 18px;
+  width: 54px;
+  height: 70px;
+  background: linear-gradient(
+    100deg,
+    transparent 0 18%,
+    rgba(214, 40, 40, 0.55) 18% 24%,
+    transparent 24% 44%,
+    rgba(214, 40, 40, 0.55) 44% 50%,
+    transparent 50% 70%,
+    rgba(214, 40, 40, 0.55) 70% 76%,
+    transparent 76%
+  );
+  transform: skewY(-24deg);
+  pointer-events: none;
 }
 
 .rampage-over-title {
   font-family: var(--font-title);
   font-weight: 400;
-  font-size: 40px;
+  font-size: 36px;
   line-height: 1;
   color: var(--parchment);
+}
+
+.rampage-rank {
+  font-family: var(--font-title);
+  font-size: 26px;
+  line-height: 1.1;
+  color: #e3242b;
+  text-shadow:
+    0 0 12px rgba(255, 40, 40, 0.4),
+    0 2px 0 #000;
+}
+
+.rampage-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .rampage-score b {
@@ -2122,7 +2487,8 @@ b {
   font-family: var(--font-head);
   font-size: 44px;
   line-height: 1;
-  color: var(--bile);
+  color: #ffe08a;
+  text-shadow: 0 0 16px rgba(255, 170, 60, 0.35);
 }
 
 .rampage-score span {
@@ -2130,13 +2496,82 @@ b {
   color: var(--parchment-dim);
 }
 
+.rampage-best {
+  margin-top: 4px;
+  padding: 2px 10px;
+  font-family: var(--font-head);
+  font-style: normal;
+  font-weight: 800;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1a0a04;
+  background: var(--brass);
+  border-radius: 4px;
+  transform: rotate(-4deg);
+  animation: stamp 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) 0.3s both;
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: scale(2.2) rotate(-12deg);
+  }
+}
+
+.rampage-powers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
 .rampage-facts {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   list-style: none;
-  font-size: 16px;
+  font-size: 15px;
   color: var(--parchment);
+}
+
+.rampage-bounty-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  list-style: none;
+}
+
+.rampage-bounty-list li {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 15px;
+  text-align: left;
+  color: var(--parchment-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+.rampage-bounty-list li.done {
+  color: var(--parchment);
+}
+
+.rampage-bounty-list i {
+  font-style: normal;
+  font-weight: 700;
+  color: #7a4a4a;
+}
+
+.rampage-bounty-list li.done i,
+.rampage-bounty-list em {
+  font-family: var(--font-head);
+  font-style: normal;
+  font-weight: 700;
+  color: var(--bile);
 }
 
 .rampage-count {
@@ -2318,31 +2753,30 @@ b {
 }
 
 /* ---------- the rampage menu (from Halloween on) ---------- */
-.menu-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+/* The creature over the burning village, edge to edge, fading into the page. */
+.hunt-hero {
+  position: relative;
+  height: min(54vh, 520px);
+  min-height: 310px;
+  margin: calc(-1 * (var(--safe-top) + 10px)) -16px 0;
+  overflow: hidden;
+  background: #05060d;
 }
 
-.menu-logo {
-  font-size: clamp(32px, 10vw, 44px);
-  text-align: left;
+.hunt-hero::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 12%;
+  background: linear-gradient(180deg, rgba(13, 10, 16, 0), var(--ink));
+  pointer-events: none;
 }
 
 .loose-scene {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 10 / 9;
-  max-height: 46vh;
-  overflow: hidden;
-  background: #0a0b14;
-  border: 3px solid #3a3042;
-  border-radius: 8px;
-  box-shadow:
-    inset 0 0 0 2px #000,
-    0 0 0 2px #000,
-    0 10px 30px rgba(0, 0, 0, 0.7);
+  position: absolute;
+  inset: 0;
 }
 
 .loose-scene canvas {
@@ -2360,9 +2794,10 @@ b {
 
 .loose-title {
   position: absolute;
-  top: 8%;
+  top: 20%;
   left: 0;
   right: 0;
+  z-index: 3;
   font-family: var(--font-title);
   font-size: clamp(40px, 13vw, 64px);
   text-align: center;
@@ -2383,27 +2818,266 @@ b {
   }
 }
 
-.menu-where {
+.hunt-top {
+  position: absolute;
+  top: calc(var(--safe-top) + 10px);
+  left: 14px;
+  right: 14px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.hunt-logo {
+  font-size: clamp(28px, 9vw, 38px);
+  text-align: left;
+  text-shadow:
+    0 2px 0 #000,
+    0 0 14px rgba(0, 0, 0, 0.8);
+}
+
+.hunt-where {
+  position: relative;
+  z-index: 2;
+  margin-top: -26px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   text-align: center;
 }
 
-.btn-rampage:not(:disabled) {
-  font-size: 22px;
-  min-height: 60px;
-  animation: rampage-glow 2.2s ease-in-out infinite;
+.hunt-day {
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #d08a68;
+  text-shadow: 0 2px 0 #000;
 }
 
-@keyframes rampage-glow {
-  50% {
+.hunt-place {
+  font-family: var(--font-title);
+  font-weight: 400;
+  font-size: clamp(32px, 10vw, 46px);
+  line-height: 1.05;
+  color: #e3242b;
+  text-shadow:
+    0 0 18px rgba(255, 40, 40, 0.45),
+    0 3px 0 #000;
+}
+
+.hunt-blurb {
+  font-size: 15px;
+  font-style: italic;
+  color: var(--parchment);
+  text-shadow: 0 2px 0 #000;
+}
+
+.hunt-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.hunt-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  text-align: center;
+  background: linear-gradient(180deg, #1e0b10, #110609);
+  border: 2px solid #4a1a1e;
+  border-radius: 8px;
+}
+
+.hunt-stat b {
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 19px;
+  white-space: nowrap;
+  color: var(--parchment);
+}
+
+.hunt-stat b.grew {
+  color: var(--bile);
+}
+
+.hunt-stat span {
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--parchment-dim);
+}
+
+/* The big button beats like a heart. */
+.btn-rampage:not(:disabled) {
+  min-height: 60px;
+  font-size: 22px;
+  animation: rampage-beat 1.4s ease-in-out infinite;
+}
+
+@keyframes rampage-beat {
+  0%,
+  40%,
+  100% {
+    transform: none;
+  }
+  10% {
+    transform: scale(1.03);
     box-shadow:
       inset 0 0 0 2px #2a0507,
-      inset 0 2px 0 3px rgba(255, 200, 160, 0.15),
       0 4px 0 #000,
-      0 0 26px rgba(214, 64, 58, 0.75);
+      0 0 26px rgba(214, 64, 58, 0.8);
   }
+  20% {
+    transform: none;
+  }
+  28% {
+    transform: scale(1.02);
+    box-shadow:
+      inset 0 0 0 2px #2a0507,
+      0 4px 0 #000,
+      0 0 18px rgba(214, 64, 58, 0.6);
+  }
+}
+
+.hunt-best {
+  font-size: 15px;
+  text-align: center;
+  color: var(--parchment-dim);
+}
+
+.hunt-best b {
+  font-family: var(--font-head);
+  color: #ffe08a;
+}
+
+/* The day's bounties, on a notice nailed up in the village square. */
+.bounty-board {
+  position: relative;
+  padding: 12px 16px 10px;
+  color: #2a1a10;
+  background: radial-gradient(ellipse at 30% 20%, #ebdcb6, #cfb68a 70%, #b49a6a);
+  border-radius: 3px;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.6),
+    inset 0 0 22px rgba(90, 50, 20, 0.45);
+  transform: rotate(-0.6deg);
+}
+
+.bounty-board::before,
+.bounty-board::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  width: 9px;
+  height: 9px;
+  background: radial-gradient(circle at 35% 35%, #8a8a8a, #2a2a2a);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px #000;
+}
+
+.bounty-board::before {
+  left: 8px;
+}
+
+.bounty-board::after {
+  right: 8px;
+}
+
+.bounty-board h3 {
+  font-family: var(--font-title);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1;
+  text-align: center;
+  color: #8e1c22;
+}
+
+.bounty-board ul {
+  margin-top: 4px;
+  list-style: none;
+}
+
+.bounty-board li {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 16px;
+  border-bottom: 1px dashed rgba(60, 30, 10, 0.35);
+}
+
+.bounty-board li i {
+  width: 18px;
+  height: 18px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+  color: #8e1c22;
+  border: 2px solid #5a3a1a;
+  border-radius: 3px;
+}
+
+.bounty-board li em {
+  font-family: var(--font-head);
+  font-style: normal;
+  font-weight: 800;
+  font-size: 15px;
+  color: #6e4a0c;
+}
+
+.bounty-board li.done span {
+  color: #5a4a30;
+  text-decoration: line-through;
+  text-decoration-color: #8e1c22;
+  text-decoration-thickness: 2px;
+}
+
+.bounty-board p {
+  margin-top: 6px;
+  font-size: 14px;
+  font-style: italic;
+  text-align: center;
+  color: #5a3a1a;
+}
+
+.hunt-village {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 15px;
+  text-align: center;
+  color: var(--parchment);
+}
+
+.hunt-village b {
+  font-family: var(--font-head);
+  color: var(--bile);
+}
+
+.hunt-next {
+  color: var(--parchment-dim);
+}
+
+.hunt-next b {
+  color: #e3242b;
+}
+
+.hunt-more {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.hunt-more .btn {
+  padding-inline: 8px;
+  font-size: 15px;
 }
 
 /* ---------- owner test mode ---------- */

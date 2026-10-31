@@ -245,6 +245,7 @@ function Game({
           stage={game.rampage.stage}
           seed={game.rampage.seed}
           scale={game.rampage.size / BASE_SIZE}
+          bounties={game.rampage.bounties}
           volume={game.save.musicOn ? game.save.musicVolume : 0}
           best={rampageRun.best}
           contribution={counted}
@@ -756,9 +757,10 @@ function RampageCard({ game }: { game: GameModel }) {
 }
 
 /**
- * From Halloween on: the rampage menu (title and hub in one). The creature, loose over the day's
- * place (it breaks out of the laboratory the first time), the big Rampage button, where it is and
- * how tall the village has made it, and the rest.
+ * From Halloween on: the rampage menu (title and hub in one), in the night it is loose in. The
+ * creature, alive over the burning village of the day's place, edge to edge (it breaks out of the
+ * laboratory the first time); where it is; how tall the village has made it and when it grows
+ * again; the big Rampage button; the day's bounties; and where it goes tomorrow.
  */
 function RampageMenu({
   game,
@@ -780,34 +782,67 @@ function RampageMenu({
 }) {
   const r = game.rampage;
   const { save } = game;
+  const today = r && save.rampage.day === r.day ? save.rampage.today : 0;
   return (
     <div className="screen rampage-menu" data-testid="rampage-menu">
-      <header className="menu-head">
-        <h1 className="logo menu-logo">It's Alive!</h1>
-        <button className="btn btn-secondary btn-small" onClick={onChronicle}>
-          Chronicle
-        </button>
-      </header>
-      {r && game.stitched && !covered ? (
-        <LooseScene
-          key={r.stage.id}
-          parts={game.parts}
-          stage={r.stage}
-          size={r.size}
-          breakout={!save.rampage.brokeOut}
-          volume={save.musicOn ? save.musicVolume : 0}
-          onBrokeOut={game.markBrokeOut}
-        />
-      ) : (
-        <div className="loose-scene loose-wait">
-          <p className="muted">{game.stitched ? '' : 'Gathering the parts…'}</p>
+      <section className="hunt-hero">
+        {r && game.stitched && !covered ? (
+          <LooseScene
+            key={r.stage.id}
+            parts={game.parts}
+            stage={r.stage}
+            size={r.size}
+            breakout={!save.rampage.brokeOut}
+            volume={save.musicOn ? save.musicVolume : 0}
+            onBrokeOut={game.markBrokeOut}
+          />
+        ) : (
+          <div className="loose-scene loose-wait">
+            <p className="muted">{game.stitched ? '' : 'Gathering the parts…'}</p>
+          </div>
+        )}
+        <header className="hunt-top">
+          <h1 className="logo hunt-logo">It's Alive!</h1>
+          <button className="btn btn-secondary btn-small" onClick={onChronicle}>
+            Chronicle
+          </button>
+        </header>
+      </section>
+      {r && (
+        <div className="hunt-where">
+          <p className="hunt-day">Rampage · day {r.day + 1}</p>
+          <h2 className="hunt-place">Loose in {r.stage.name}</h2>
+          <p className="hunt-blurb">{r.stage.blurb}</p>
         </div>
       )}
       {r && (
-        <div className="menu-where">
-          <p className="eyebrow">Loose in {r.stage.name}</p>
-          <p className="muted">{r.stage.blurb}</p>
-        </div>
+        <section
+          className="hunt-stats"
+          data-testid="rampage-card"
+          aria-label={`Rampage day ${r.day + 1}`}
+        >
+          <div className="hunt-stat">
+            <b data-testid="creature-height">{feet(r.size)} ft</b>
+            <span>tall</span>
+          </div>
+          <div className="hunt-stat">
+            {r.grewBy > 0 ? (
+              <>
+                <b className="grew">+{feet(r.grewBy)} ft</b>
+                <span>grew last night</span>
+              </>
+            ) : (
+              <>
+                <b>Night 1</b>
+                <span>of the rampage</span>
+              </>
+            )}
+          </div>
+          <div className="hunt-stat">
+            <b>{formatCountdown(r.growsInMs)}</b>
+            <span>till it grows</span>
+          </div>
+        </section>
       )}
       <button
         className="btn btn-primary btn-wide btn-rampage"
@@ -817,22 +852,60 @@ function RampageMenu({
       >
         {game.stitched ? 'Rampage! ⚡' : 'Gathering the parts…'}
       </button>
+      {save.rampage.runs > 0 && (
+        <p className="hunt-best" data-testid="rampage-best">
+          Your best <b>{save.rampage.best.toLocaleString('en-US')}</b> · today{' '}
+          <b>{today.toLocaleString('en-US')}</b> rubble
+        </p>
+      )}
+      {r && r.bounties.length > 0 && (
+        <section className="bounty-board" data-testid="bounty-board">
+          <h3>Today's bounties</h3>
+          <ul>
+            {r.bounties.map((b) => {
+              const done = r.done.includes(b.id);
+              return (
+                <li key={b.id} className={done ? 'done' : ''}>
+                  <i aria-hidden="true">{done ? '✓' : ''}</i>
+                  <span>{b.text}</span>
+                  <em>+{b.bonus}</em>
+                </li>
+              );
+            })}
+          </ul>
+          <p>
+            {r.done.length === r.bounties.length
+              ? 'All done today. New bounties at midnight.'
+              : `${r.done.length} of ${r.bounties.length} done · bonus rubble in any run`}
+          </p>
+        </section>
+      )}
       {r && (
-        <section className="panel tonight" data-testid="rampage-card">
-          <RampageCard game={game} />
-          {save.rampage.runs > 0 && (
-            <p className="muted small">
-              Your best: {save.rampage.best.toLocaleString('en-US')} rubble · today{' '}
-              {save.rampage.day === r.day ? save.rampage.today.toLocaleString('en-US') : 0}
-            </p>
-          )}
+        <section className="hunt-village">
+          <p>
+            {r.today === null ? (
+              'Counting the rubble…'
+            ) : (
+              <>
+                <b>{r.today.toLocaleString('en-US')}</b> rubble smashed by everyone today: at
+                midnight it all makes the creature grow
+              </>
+            )}
+          </p>
+          <p className="hunt-next">
+            Tomorrow it marches on <b>{r.next.name}</b>
+          </p>
         </section>
       )}
       <JamButton onVote={game.voteInJam} />
-      <button className="btn btn-secondary btn-wide" onClick={onReplay} data-testid="awaken-replay">
-        Watch it wake again
-      </button>
-      <SketchButton onClick={onSketch} />
+      <div className="hunt-more">
+        <button className="btn btn-secondary" onClick={onReplay} data-testid="awaken-replay">
+          Watch it wake
+        </button>
+        <button className="btn btn-secondary" onClick={onSketch} data-testid="sketch-open">
+          Sketchbook
+        </button>
+      </div>
       <MusicBar
         on={save.musicOn}
         volume={save.musicVolume}

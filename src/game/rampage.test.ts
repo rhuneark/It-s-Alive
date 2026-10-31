@@ -13,13 +13,16 @@ import {
   canSmash,
   communitySize,
   powerParts,
+  rankFor,
   rubbleBand,
   sizeAfter,
   totalFromBands,
   type World,
 } from './rampage';
-import { RampageRun, type Steer } from './rampageRun';
+import { BOUNTY_BONUS, bountiesFor, type Bounty } from './bounty';
+import { CHAIN_GAP, CHAIN_STEP, RampageRun, chainMultiplier, type Steer } from './rampageRun';
 import { rngFor } from './rng';
+import { newSave, parseSave, recordRun } from './state';
 
 /** Nothing it cannot smash stands between it and (x, y). */
 function clearPath(run: RampageRun, x: number, y: number): boolean {
@@ -228,5 +231,132 @@ describe('a run', () => {
     const before = Math.hypot(v.x - run.x, v.y - run.y);
     for (let i = 0; i < 15; i++) run.step(1 / 30, { x: 0, y: 0 });
     expect(Math.hypot(v.x - run.x, v.y - run.y)).toBeGreaterThan(before);
+  });
+});
+
+describe('chains and bounties', () => {
+  const world = buildWorld('chains');
+
+  it('multiplies the rubble of a long chain of smashes, up to double', () => {
+    expect(chainMultiplier(1)).toBe(1);
+    expect(chainMultiplier(CHAIN_STEP)).toBe(1.25);
+    expect(chainMultiplier(CHAIN_STEP * 2)).toBe(1.5);
+    expect(chainMultiplier(10_000)).toBe(2);
+
+    const run = new RampageRun(world, BASE_SIZE);
+    const crates = run.props.filter((p) => p.kind === 'crate').slice(0, 3);
+    const smashOn = (i: number) => {
+      run.x = crates[i]!.x;
+      run.y = crates[i]!.y;
+      return run.step(1 / 30, { x: 0, y: 0 });
+    };
+    smashOn(0);
+    expect(run.chain).toBeGreaterThanOrEqual(1);
+    const before = run.chain;
+    smashOn(1);
+    expect(run.chain).toBeGreaterThan(before);
+    // Too long without smashing anything: the chain starts again.
+    run.x = 60;
+    run.y = 60;
+    for (let t = 0; t < CHAIN_GAP + 0.3; t += 1 / 30) run.step(1 / 30, { x: 0, y: 0 });
+    const events = smashOn(2);
+    // (it may smash a few things at once: the chain counts only those)
+    expect(run.chain).toBe(events.filter((e) => e.type === 'smash').length);
+    const smash = events.find((e) => e.type === 'smash');
+    expect(smash && smash.type === 'smash' && smash.points).toBeGreaterThan(0);
+    expect(run.bestChain).toBeGreaterThanOrEqual(2);
+  });
+
+  it('sets three bounties a day, the same for everyone, each possible in that place', () => {
+    for (const stage of STAGES) {
+      for (const day of [0, 1, 2]) {
+        const seed = `s:r${day}:${stage.id}`;
+        const place = buildWorld(seed, stage);
+        const bounties = bountiesFor(seed, place);
+        expect(bounties).toEqual(bountiesFor(seed, buildWorld(seed, stage)));
+        expect(bounties).toHaveLength(3);
+        expect(new Set(bounties.map((b) => b.id)).size).toBe(3);
+        expect(bounties.map((b) => b.bonus)).toEqual([
+          BOUNTY_BONUS.easy,
+          BOUNTY_BONUS.middling,
+          BOUNTY_BONUS.hard,
+        ]);
+        for (const b of bounties) {
+          expect(b.text.length).toBeGreaterThan(5);
+          if (b.prop) {
+            const there = place.props.filter((p) => p.kind === b.prop).length;
+            expect(there, b.id).toBeGreaterThanOrEqual(b.target);
+          }
+        }
+      }
+    }
+  });
+
+  it('ranks a run by how many times taller it grew', () => {
+    expect(rankFor(100, 100)).toBe('A Stirring Thing');
+    expect(rankFor(100, 200)).toBe('Terror of the Town');
+    expect(rankFor(100, 900)).toBe('The End of All Things');
+  });
+
+  it('pays a bounty once per run, the moment it is done', () => {
+    const one: Bounty = {
+      id: 'smash:crate:2',
+      kind: 'smash',
+      target: 2,
+      prop: 'crate',
+      bonus: 150,
+      text: 'Smash 2 crates',
+    };
+    const run = new RampageRun(world, BASE_SIZE, 'b', 60, [one]);
+    const crates = run.props.filter((p) => p.kind === 'crate').slice(0, 3);
+    const paid: string[] = [];
+    for (const c of crates) {
+      run.x = c.x;
+      run.y = c.y;
+      for (const e of run.step(1 / 30, { x: 0, y: 0 }))
+        if (e.type === 'bounty') paid.push(e.bounty.id);
+    }
+    expect(paid).toEqual([one.id]);
+    expect(run.result().bounties).toEqual([one.id]);
+    expect(run.progress(one)).toBe(2);
+  });
+
+  it("a decent player can do most of a day's bounties, but not always all of them", () => {
+    let done = 0;
+    let all = 0;
+    let total = 0;
+    for (const stage of STAGES)
+      for (const day of [0, 1]) {
+        const seed = `s:r${day}:${stage.id}`;
+        const place = buildWorld(seed, stage);
+        const bounties = bountiesFor(seed, place);
+        const run = new RampageRun(place, BASE_SIZE, 'x', 60, bounties);
+        const steer = player();
+        while (!run.over) run.step(1 / 30, steer(run));
+        expect(run.done, `${seed}: the easy one`).toContain(bounties[0]!.id);
+        done += run.done.length;
+        total += bounties.length;
+        if (run.done.length === bounties.length) all++;
+      }
+    expect(done / total).toBeGreaterThan(0.6);
+    expect(all).toBeLessThan(STAGES.length * 2);
+  });
+
+  it("ticks off the day's bounties in the save, fresh each day", () => {
+    let save = newSave('s', 25);
+    save = recordRun(save, 5, 900, ['a', 'b']);
+    save = recordRun(save, 5, 400, ['b', 'c']);
+    expect(save.rampage.bounties).toEqual(['a', 'b', 'c']);
+    expect(save.rampage.today).toBe(1300);
+    save = recordRun(save, 6, 100, ['d']);
+    expect(save.rampage.bounties).toEqual(['d']);
+    const back = parseSave(JSON.stringify(save), 's', 25);
+    expect(back.rampage.bounties).toEqual(['d']);
+    const old = parseSave(
+      JSON.stringify({ ...save, rampage: { ...save.rampage, bounties: 'x' } }),
+      's',
+      25,
+    );
+    expect(old.rampage.bounties).toEqual([]);
   });
 });

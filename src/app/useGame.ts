@@ -39,8 +39,10 @@ import {
   type SaveState,
 } from '../game/state';
 import { allStitched, awakeningDue, markAwakened, seasonTotals } from '../game/awakening';
+import { bountiesFor, type Bounty } from '../game/bounty';
 import {
   RUBBLE_BANDS,
+  buildWorld,
   communitySize,
   rubbleBand,
   stageFor,
@@ -69,6 +71,11 @@ export interface RampageInfo {
   today: number | null;
   /** Until midnight Central, when today's rubble makes it grow. */
   growsInMs: number;
+  /** The day's three bounties (the same for everyone), and the ones the player has done today. */
+  bounties: Bounty[];
+  done: string[];
+  /** Where it goes tomorrow. */
+  next: Stage;
 }
 
 export interface Toast {
@@ -388,6 +395,13 @@ export function useGame(): GameModel {
     if (!loading && rampageDay >= 0) void refreshRubble();
   }, [loading, rampageDay, refreshRubble]);
 
+  // The day's bounties come from the day's place (the same for everyone).
+  const bounties = useMemo(() => {
+    if (rampageDay < 0) return [];
+    const seed = `${SEASON.id}:r${rampageDay}`;
+    return bountiesFor(seed, buildWorld(seed, stageFor(rampageDay)));
+  }, [rampageDay]);
+
   const rampage = useMemo<RampageInfo | null>(() => {
     if (rampageDay < 0) return null;
     const before = (day: number) => {
@@ -405,13 +419,24 @@ export function useGame(): GameModel {
       grewBy: rampageDay > 0 ? size - communitySize(before(rampageDay - 1)) : 0,
       today: todayRubble,
       growsInMs: Math.max(0, nextMidnight - now),
+      bounties,
+      done: save.rampage.day === rampageDay ? save.rampage.bounties : [],
+      next: stageFor(rampageDay + 1),
     };
-  }, [rampageDay, save.rampage.totals, todayRubble, now]);
+  }, [
+    rampageDay,
+    save.rampage.totals,
+    save.rampage.day,
+    save.rampage.bounties,
+    todayRubble,
+    now,
+    bounties,
+  ]);
 
   const finishRun = useCallback(
     async (result: RunResult) => {
       const d = rampageDay < 0 ? 0 : rampageDay;
-      void commit(recordRun(saveRef.current, d, result.rubble));
+      void commit(recordRun(saveRef.current, d, result.rubble, result.bounties));
       run.track('rampage_end', {
         day: d,
         rubble: result.rubble,
