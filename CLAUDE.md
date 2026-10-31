@@ -263,8 +263,20 @@ the props share its perspective. Never composite props onto the room: they float
 
 ## Testing nights
 
-The owner Test Lab (night jumping on the deployed build) was removed at the owner's request; its old
-appStorage keys (`testLab`, `save_test`, `testVotes`) are deleted on boot. Use local dev for any night.
+- Local dev: `?day=N` (below). It is ignored on RUN (live mode), and RUN does not pass the page's
+  query to the game anyway.
+- On the deployed build: OWNER TEST MODE (owner's request, Oct 31). Tap the build stamp 5 times; the
+  Diagnostics panel shows "Test mode (owner only)" when `run.canPreview()` (RUN's server-verified
+  `app.getMyRole()` is owner or editor; always in local dev) with jumps to the vigil (19), Halloween
+  (20) and rampage days 2, 3 and 6 (21, 22, 25). `run.setPreview(day)` switches the clock
+  (`devDayOverride`) and the save key (`save_preview`, a fresh throwaway save each jump; the real
+  `save` is never touched) at once. In test mode the past nights are read from the REAL tallies (the
+  real creature), but every write is fake (`fakeWrites`: votes and rubble stay on the device), the
+  rampage's community numbers are simulated, and reminders and analytics are not sent. A yellow
+  "TEST MODE · <day> · nothing counts · Exit" pill shows while it is on. useGame's `setPreview` pauses
+  saving while it switches (`switching`) and drops work started before a switch (`epoch`), so nothing
+  from one save lands in the other. The old Test Lab's keys (`testLab`, `save_test`, `testVotes`) are
+  still deleted on boot.
 
 ## Dev
 

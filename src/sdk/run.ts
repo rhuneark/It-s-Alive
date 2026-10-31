@@ -19,6 +19,8 @@ import { DAY_MS, SEASON } from '../game/schedule';
 
 const INIT_TIMEOUT_MS = 8000;
 const SAVE_KEY = 'save';
+/** Owner test mode's throwaway save (the real one is never touched). */
+const PREVIEW_SAVE_KEY = 'save_preview';
 const DEV_VOTES_KEY = 'devVotes';
 const DEV_RUBBLE_KEY = 'devRubble';
 /** Left behind by the retired Test Lab; removed once on boot. */
@@ -28,6 +30,10 @@ let readyPromise: Promise<void> | null = null;
 let clockOffsetMs = 0;
 /** Dev only (?day=N): the night to pretend it is (-1 before launch, 19 the vigil, 20 Halloween). */
 let devDayOverride: number | null = null;
+/** ?day=N in local dev, kept so leaving test mode goes back to it. */
+let urlDayOverride: number | null = null;
+/** Owner test mode on the live build: the day it pretends to be (null when off). */
+let previewDay: number | null = null;
 
 function warn(label: string, err: unknown): void {
   console.warn(`[run] ${label}:`, err);
@@ -59,7 +65,8 @@ export function ready(): Promise<void> {
       if (isMock()) {
         // Dev-only time travel for testing: ?day=N jumps to voting day N.
         const param = new URLSearchParams(window.location.search).get('day');
-        if (param !== null && /^-?\d+$/.test(param)) devDayOverride = Number(param);
+        if (param !== null && /^-?\d+$/.test(param))
+          devDayOverride = urlDayOverride = Number(param);
       } else {
         quiet(RundotGameAPI.appStorage.removeMultipleItems(RETIRED_KEYS), 'retire test lab');
       }
@@ -72,6 +79,43 @@ export function ready(): Promise<void> {
 /** True when votes are fake and private (local dev). */
 export function sandboxed(): boolean {
   return isMock();
+}
+
+/** Nothing written counts: local dev, or the owner's test mode on the live build. */
+function fakeWrites(): boolean {
+  return isMock() || previewDay !== null;
+}
+
+// ---------------------------------------------------------------- owner test mode
+
+/** Owners and editors of the game (checked by RUN's server) may use test mode; anyone in local dev. */
+export async function canPreview(): Promise<boolean> {
+  await ready();
+  if (isMock()) return true;
+  try {
+    const role = await RundotGameAPI.app.getMyRole();
+    return role === 'owner' || role === 'editor';
+  } catch (err) {
+    warn('getMyRole', err);
+    return false;
+  }
+}
+
+/** The day test mode pretends it is, or null when it is off. */
+export function previewing(): number | null {
+  return previewDay;
+}
+
+/**
+ * Turn the owner's test mode on (pretend it is `day`, on its own throwaway save) or off (null).
+ * Takes effect at once (the save key and the clock switch together). In test mode the past nights
+ * are still read from the real tallies (it is the real creature), but nothing is written to them:
+ * votes and rubble stay on this device, the rampage's community numbers are made up, and no
+ * reminders or analytics are sent.
+ */
+export function setPreview(day: number | null): void {
+  previewDay = day;
+  devDayOverride = day ?? urlDayOverride;
 }
 
 /** Ask RUN to sign the player in (voting needs an account). */
@@ -140,7 +184,9 @@ export function now(): number {
 export async function loadSave(): Promise<string | null> {
   await ready();
   try {
-    return await RundotGameAPI.appStorage.getItem(SAVE_KEY);
+    return await RundotGameAPI.appStorage.getItem(
+      previewDay === null ? SAVE_KEY : PREVIEW_SAVE_KEY,
+    );
   } catch (err) {
     warn('loadSave', err);
     return null;
@@ -150,7 +196,7 @@ export async function loadSave(): Promise<string | null> {
 export async function writeSave(json: string): Promise<boolean> {
   await ready();
   try {
-    await RundotGameAPI.appStorage.setItem(SAVE_KEY, json);
+    await RundotGameAPI.appStorage.setItem(previewDay === null ? SAVE_KEY : PREVIEW_SAVE_KEY, json);
     return true;
   } catch (err) {
     warn('writeSave', err);
@@ -180,7 +226,7 @@ export type CastResult = { ok: true } | { ok: false; reason: 'login' | 'offline'
 /** Record one vote in the shared tally. Callers must check the player has a vote left first. */
 export async function castVote(season: string, day: number, optionId: string): Promise<CastResult> {
   await ready();
-  if (sandboxed()) {
+  if (fakeWrites()) {
     const all = await readDevVotes();
     const today = (all[String(day)] ??= {});
     today[optionId] = (today[optionId] ?? 0) + 1;
@@ -248,7 +294,7 @@ function rubbleType(season: string, day: number, band: number): string {
 
 /** A guest (not signed in). Their runs only count once they sign in. */
 export function isGuest(): boolean {
-  if (sandboxed()) return false;
+  if (fakeWrites()) return false;
   try {
     return RundotGameAPI.accessGate.isAnonymous();
   } catch {
@@ -268,7 +314,7 @@ export async function recordRubble(
   band: number,
 ): Promise<RubbleResult> {
   await ready();
-  if (sandboxed()) {
+  if (fakeWrites()) {
     try {
       const raw = await RundotGameAPI.appStorage.getItem(DEV_RUBBLE_KEY);
       const all = raw ? (JSON.parse(raw) as Record<string, number[]>) : {};
@@ -302,7 +348,7 @@ export async function fetchRubble(
   bands: number,
 ): Promise<number[] | null> {
   await ready();
-  if (sandboxed()) {
+  if (fakeWrites()) {
     const crowd = simulatedRubble(`${season}:${day}`, bands);
     try {
       const raw = await RundotGameAPI.appStorage.getItem(DEV_RUBBLE_KEY);
@@ -454,7 +500,7 @@ const REMINDER_TAG = 'itsAliveReminder';
  * arming again (every Continue, Sketchbook or vote) never stacks duplicates.
  */
 export function setReminders(plan: readonly Reminder[]): void {
-  if (isMock()) return;
+  if (fakeWrites()) return;
   void ready().then(async () => {
     const n = RundotGameAPI.notifications;
     try {
@@ -498,12 +544,14 @@ export async function copyText(text: string): Promise<boolean> {
 }
 
 export function track(event: string, payload?: Record<string, unknown>): void {
+  if (previewDay !== null) return;
   void ready().then(() =>
     quiet(RundotGameAPI.analytics.recordCustomEvent(event, payload), `track ${event}`),
   );
 }
 
 export function funnel(step: number, name: string): void {
+  if (previewDay !== null) return;
   void ready().then(() =>
     quiet(RundotGameAPI.analytics.trackFunnelStep(step, name, 'monster', 1), `funnel ${name}`),
   );

@@ -113,6 +113,10 @@ export interface GameModel {
   countAsSignedIn: (rubble: number) => Promise<run.RubbleResult>;
   /** The player has seen it break out of the laboratory. */
   markBrokeOut: () => void;
+  /** Owner test mode: the day it pretends to be (null when off). */
+  preview: number | null;
+  /** Turn test mode on at a day (fresh throwaway save) or off (null), and reload. */
+  setPreview: (day: number | null) => Promise<void>;
   select: (optionId: string | null) => void;
   cast: () => Promise<void>;
   watchAdForVote: () => Promise<void>;
@@ -159,9 +163,14 @@ export function useGame(): GameModel {
   const resolvingRef = useRef(false);
 
   /** Apply a change and persist it straight away (awaitable when it must land before moving on). */
+  // Test mode switches saves: nothing is written mid-switch, and work started before a switch
+  // (an `epoch` ago) is dropped rather than saved into the other save.
+  const switching = useRef(false);
+  const epoch = useRef(0);
   const commit = useCallback((next: SaveState): Promise<boolean> => {
     saveRef.current = next;
     setSave(next);
+    if (switching.current) return Promise.resolve(false);
     return run.writeSave(serializeSave(next));
   }, []);
 
@@ -360,15 +369,16 @@ export function useGame(): GameModel {
     const d = phaseAt(run.now(), SEASON);
     if (d.kind !== 'awakened' || rubbleBusy.current) return;
     rubbleBusy.current = true;
+    const mine = epoch.current;
     try {
       for (let past = 0; past < d.daysSinceAwakening; past++) {
         if (saveRef.current.rampage.totals[String(past)] !== undefined) continue;
         const counts = await run.fetchRubble(SEASON.id, past, RUBBLE_BANDS);
-        if (!counts) break;
+        if (!counts || epoch.current !== mine) return;
         void commit(rememberRubble(saveRef.current, past, totalFromBands(counts)));
       }
       const counts = await run.fetchRubble(SEASON.id, d.daysSinceAwakening, RUBBLE_BANDS);
-      if (counts) setTodayRubble(totalFromBands(counts));
+      if (counts && epoch.current === mine) setTodayRubble(totalFromBands(counts));
     } finally {
       rubbleBusy.current = false;
     }
@@ -413,6 +423,40 @@ export function useGame(): GameModel {
       return how;
     },
     [commit, rampageDay, refreshRubble],
+  );
+
+  // Owner test mode (hidden in Diagnostics): pretend it is another day, from a throwaway save.
+  const [preview, setPreviewDay] = useState<number | null>(null);
+  const setPreview = useCallback(
+    async (day: number | null) => {
+      epoch.current += 1;
+      switching.current = true;
+      setLoading(true);
+      run.setPreview(day);
+      const t = run.now();
+      let loaded: SaveState;
+      if (day === null) {
+        loaded = parseSave(await run.loadSave(), SEASON.id, currentDay(t));
+      } else {
+        // A fresh throwaway save (keeping the music settings), replacing any earlier one.
+        loaded = {
+          ...newSave(SEASON.id, currentDay(t)),
+          musicOn: saveRef.current.musicOn,
+          musicVolume: saveRef.current.musicVolume,
+        };
+        await run.writeSave(serializeSave(loaded));
+      }
+      saveRef.current = loaded;
+      setSave(loaded);
+      setNow(t);
+      setTodayCounts(null);
+      setTodayRubble(null);
+      setPreviewDay(day);
+      switching.current = false;
+      setLoading(false);
+      void resolvePast();
+    },
+    [resolvePast],
   );
 
   const markBrokeOut = useCallback(() => {
@@ -557,6 +601,8 @@ export function useGame(): GameModel {
     finishRun,
     countAsSignedIn,
     markBrokeOut,
+    preview,
+    setPreview,
     select,
     cast,
     watchAdForVote,

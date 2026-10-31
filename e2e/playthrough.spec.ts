@@ -373,6 +373,35 @@ test('hidden diagnostics: tapping the build stamp 5 times shows device info', as
   await expect(diag).not.toContainText('Test Lab');
 });
 
+test('owner test mode: jump to Halloween with a throwaway save, then back to the real day', async ({
+  page,
+}) => {
+  await page.goto('/?day=2');
+  await page.getByTestId('start').click();
+  await expect(page.locator('.dayline')).toHaveText('Night 3 of 19');
+  for (let i = 0; i < 5; i++) await page.getByTestId('build-stamp').click();
+  await expect(page.getByTestId('test-mode')).toBeVisible();
+  await page.getByTestId('preview-20').click();
+  await expect(page.getByTestId('preview-bar')).toContainText('TEST MODE · Halloween');
+  const wake = page.getByTestId('awakening');
+  await expect(wake).toHaveAttribute('data-stage', 'intro');
+  await page.getByTestId('awaken-skip').click();
+  await expect(page.getByTestId('rampage-menu')).toBeVisible();
+  await expect(page.getByTestId('rampage-card')).toContainText('Rampage day 1');
+  await framedButtons(page);
+  // Jump again, to a later day of the rampage.
+  for (let i = 0; i < 5; i++) await page.getByTestId('build-stamp').click();
+  await page.getByTestId('preview-22').click();
+  await expect(page.getByTestId('preview-bar')).toContainText('Rampage day 3');
+  await page.getByTestId('awaken-skip').click();
+  await expect(page.getByTestId('rampage-menu')).toContainText('Loose in The Market Town');
+  // Exit: back to the real day, on its own save.
+  await page.getByTestId('preview-bar').getByRole('button', { name: 'Exit' }).click();
+  await expect(page.getByTestId('preview-bar')).toHaveCount(0);
+  await expect(page.getByTestId('start')).toHaveText('Continue');
+  await expect(page.getByTestId('tonight')).toContainText('Night 3 of 19');
+});
+
 test('Sketchbook: try any parts, keep the design, and rebuild the monster from my votes', async ({
   page,
 }) => {

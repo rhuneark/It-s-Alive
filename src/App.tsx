@@ -52,9 +52,18 @@ export default function App() {
   }, []);
 
   const onEnter = useCallback(() => setInGame(true), []);
+  const onLeave = useCallback(() => setInGame(false), []);
   const onListen = useCallback(() => setListening(true), []);
 
-  return <Game inGame={inGame} onEnter={onEnter} onListen={onListen} onMusic={setMusic} />;
+  return (
+    <Game
+      inGame={inGame}
+      onEnter={onEnter}
+      onLeave={onLeave}
+      onListen={onListen}
+      onMusic={setMusic}
+    />
+  );
 }
 
 interface MusicPrefs {
@@ -66,11 +75,13 @@ interface MusicPrefs {
 function Game({
   inGame,
   onEnter,
+  onLeave,
   onListen,
   onMusic,
 }: {
   inGame: boolean;
   onEnter: () => void;
+  onLeave: () => void;
   onListen: () => void;
   onMusic: (prefs: MusicPrefs) => void;
 }) {
@@ -103,6 +114,17 @@ function Game({
     setCounted(null);
     setRampageRun((r) => ({ key: (r?.key ?? 0) + 1, best: game.save.rampage.best }));
     run.track('rampage_start', { day: game.rampage.day });
+  };
+
+  /** Owner test mode: jump to a day (or back), starting from its title screen. */
+  const preview = async (day: number | null) => {
+    setDiagOpen(false);
+    setReplay(false);
+    setRampageRun(null);
+    setChronicle(false);
+    setSketchOpen(false);
+    onLeave();
+    await game.setPreview(day);
   };
 
   /** Into the laboratory (Continue, or the end of the waking scene). */
@@ -250,7 +272,21 @@ function Game({
           onClose={game.dismissReveal}
         />
       )}
-      {diagOpen && <Diagnostics onClose={() => setDiagOpen(false)} />}
+      {diagOpen && (
+        <Diagnostics
+          preview={game.preview}
+          onPreview={(day) => void preview(day)}
+          onClose={() => setDiagOpen(false)}
+        />
+      )}
+      {game.preview !== null && (
+        <div className="preview-bar" data-testid="preview-bar">
+          <span>TEST MODE · {dayLabel(game.preview)} · nothing counts</span>
+          <button className="btn btn-secondary btn-small" onClick={() => void preview(null)}>
+            Exit
+          </button>
+        </div>
+      )}
       {game.toast && (
         <div key={game.toast.id} className={`toast toast-${game.toast.tone}`} role="status">
           {game.toast.text}
@@ -860,4 +896,12 @@ function SketchButton({ onClick }: { onClick: () => void }) {
       Sketchbook: try any parts
     </button>
   );
+}
+
+/** Test mode's label for a day: the vigil, Halloween, or a day of the rampage. */
+function dayLabel(day: number): string {
+  if (day < 19) return `Night ${day + 1}`;
+  if (day === 19) return 'The vigil';
+  if (day === 20) return 'Halloween';
+  return `Rampage day ${day - 19}`;
 }

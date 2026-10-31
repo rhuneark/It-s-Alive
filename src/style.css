@@ -2349,3 +2349,32 @@ b {
       0 0 26px rgba(214, 64, 58, 0.75);
   }
 }
+
+/* ---------- owner test mode ---------- */
+.diag-test {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 2px solid var(--stone-edge);
+}
+
+.preview-bar {
+  position: fixed;
+  left: 8px;
+  bottom: calc(var(--safe-bottom) + 8px);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 4px 4px 12px;
+  font-family: var(--font-head);
+  font-weight: 700;
+  font-size: 14px;
+  color: #1a1206;
+  background: #f0c24a;
+  border: 2px solid #000;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
