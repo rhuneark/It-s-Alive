@@ -71,3 +71,45 @@ export function makeGround(ctx: CanvasRenderingContext2D, stageId: string): Canv
   pattern?.setTransform(new DOMMatrix().scale(4));
   return pattern;
 }
+
+/** A thrown torch or pitchfork, `t` seconds into its flight: it arcs, spinning, to where it lands. */
+export function drawMissile(
+  ctx: CanvasRenderingContext2D,
+  m: { x: number; y: number; tx: number; ty: number; flight: number; kind: 'torch' | 'pitchfork' },
+  t: number,
+  size: number,
+): void {
+  const k = Math.max(0, Math.min(1, t / Math.max(0.05, m.flight)));
+  const dist = Math.hypot(m.tx - m.x, m.ty - m.y);
+  const x = m.x + (m.tx - m.x) * k;
+  const y = m.y + (m.ty - m.y) * k - Math.sin(Math.PI * k) * dist * 0.25;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(t * 14);
+  weapon(ctx, m.kind, size, t);
+  ctx.restore();
+}
+
+/** A brave villager's weapon, held up: a torch, or a pitchfork (drawn around 0,0, `h` long). */
+export function weapon(
+  ctx: CanvasRenderingContext2D,
+  kind: 'torch' | 'pitchfork',
+  h: number,
+  now: number,
+): void {
+  if (kind === 'torch') {
+    const f = 0.8 + 0.2 * Math.sin(now * 22);
+    ctx.fillStyle = '#5a3a1e';
+    ctx.fillRect(-h * 0.04, -h * 0.1, h * 0.08, h * 0.5);
+    ctx.fillStyle = '#ff7a1a';
+    ctx.fillRect(-h * 0.12, -h * 0.34 * f, h * 0.24, h * 0.26 * f);
+    ctx.fillStyle = '#ffd36a';
+    ctx.fillRect(-h * 0.06, -h * 0.24 * f, h * 0.12, h * 0.16 * f);
+  } else {
+    ctx.fillStyle = '#6a4a2a';
+    ctx.fillRect(-h * 0.03, -h * 0.2, h * 0.06, h * 0.75);
+    ctx.fillStyle = '#b8b8c0';
+    ctx.fillRect(-h * 0.17, -h * 0.24, h * 0.34, h * 0.05);
+    for (const dx of [-0.17, -0.025, 0.12]) ctx.fillRect(h * dx, -h * 0.46, h * 0.05, h * 0.24);
+  }
+}

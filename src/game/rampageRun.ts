@@ -59,6 +59,9 @@ export type RunEvent =
   | { type: 'attack'; prop: LiveProp; side: 1 | -1 }
   /** It took a power-up. */
   | { type: 'pickup'; pickup: Pickup }
+  /** A brave villager threw something at it (it lands where the creature was), and a hit. */
+  | { type: 'throw'; missile: Missile }
+  | { type: 'hit'; missile: Missile; lost: number }
   /** One of the day's bounties is done: its bonus is added to the rubble. */
   | { type: 'bounty'; bounty: Bounty }
   | { type: 'end' };
@@ -132,11 +135,57 @@ export const CHAIN_GAP = 0.8;
 export const CHAIN_STEP = 20;
 const CHAIN_MAX = 2;
 const FLEE_RANGE = 5;
+/**
+ * Villagers who fight back stand their ground against a creature up to BRAVE_RATIO times their
+ * own height: they keep THROW_RANGE reaches away and throw every THROW_EVERY seconds. A missile
+ * flies straight to where the creature was, so one that keeps moving can dodge. A hit knocks off
+ * HIT_SHARE of its mass (at least HIT_MIN) and staggers it for STAGGER seconds.
+ */
+const BRAVE_RATIO = 4.5;
+const THROW_RANGE = 3.8;
+const THROW_EVERY = 1.8;
+const THROW_SPEED = 340;
+export const HIT_SHARE = 0.03;
+const HIT_MIN = 300;
+export const STAGGER = 0.35;
 const FLEE_SPEED = 95;
 const WANDER_SPEED = 22;
 /** A power-up is taken within this much of the creature's reach, and comes back this much later. */
 const PICKUP_REACH = 1.3;
 const PICKUP_AGAIN = 6;
+
+/** Something thrown at a creature by a brave villager. */
+export interface Missile {
+  id: number;
+  kind: 'torch' | 'pitchfork';
+  /** From, and where it lands (where the creature was when it was thrown). */
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  /** Seconds in the air, and left. */
+  flight: number;
+  left: number;
+  /** The creature it was meant for (its index among the field's creatures). */
+  target: number;
+}
+
+/** What the crowd sees of a creature (and how a hit hurts it, where one can). */
+export interface Target {
+  x: number;
+  y: number;
+  reach: number;
+  size: number;
+  alive: boolean;
+  hurt?: () => number;
+}
+
+/** Who fights back: every third villager (they carry torches) and every other farmer (pitchforks). */
+export function braveWith(p: Pick<Prop, 'kind' | 'id'>): Missile['kind'] | null {
+  if (p.kind === 'villager' && p.id % 3 === 0) return 'torch';
+  if (p.kind === 'farmer' && p.id % 2 === 0) return 'pitchfork';
+  return null;
+}
 
 const CELL = 200;
 const cellKey = (gx: number, gy: number) => gx * 4096 + gy;
@@ -156,6 +205,11 @@ export class Field {
   private readonly rubble: Array<{ prop: LiveProp; at: number }> = [];
   /** What the village has rebuilt since someone last looked (they empty it: `splice(0)`). */
   readonly rebuiltSince: LiveProp[] = [];
+  /** Torches and pitchforks in the air. */
+  readonly missiles: Missile[] = [];
+  private readonly fightBack: boolean;
+  private readonly throwIn = new Map<number, number>();
+  private missileId = 0;
   private time = 0;
 
   constructor(
@@ -164,9 +218,11 @@ export class Field {
     pickups = 0,
     kinds: readonly PowerupKind[] = STORY_POWERUPS,
     regrow = 0,
+    fightBack = true,
   ) {
     this.start = world.start;
     this.regrow = regrow;
+    this.fightBack = fightBack;
     this.rng = rngFor('rampage-run', seed);
     this.kinds = kinds;
     this.props = world.props.map((p) => ({
@@ -228,24 +284,64 @@ export class Field {
     }
   }
 
-  /** Time passes: the crowd runs from the nearest creature, and taken power-ups come back. */
-  step(dt: number, beasts: ReadonlyArray<Pick<Beast, 'x' | 'y' | 'reach' | 'alive'>>): void {
+  /**
+   * Time passes: the crowd runs from the nearest creature (the brave stand and throw at one small
+   * enough), missiles land, and taken power-ups come back. Returns what was thrown and what hit,
+   * with the index of the creature it was meant for.
+   */
+  step(dt: number, beasts: readonly Target[]): Array<{ target: number; event: RunEvent }> {
     this.time += dt;
+    const out: Array<{ target: number; event: RunEvent }> = [];
     for (const p of this.movers) {
       if (!p.alive) continue;
-      let from: Pick<Beast, 'x' | 'y' | 'reach' | 'alive'> | null = null;
+      let from: Target | null = null;
+      let fromIndex = -1;
       let best = Infinity;
-      for (const b of beasts) {
-        if (!b.alive) continue;
+      const weapon = this.fightBack ? braveWith(p) : null;
+      beasts.forEach((b, i) => {
+        if (!b.alive) return;
         const d = Math.hypot(p.x - b.x, p.y - b.y);
-        if (d < b.reach * FLEE_RANGE && d < best) {
+        const range = b.reach * FLEE_RANGE * (weapon ? 1.4 : 1);
+        if (d < range && d < best) {
           best = d;
           from = b;
+          fromIndex = i;
         }
-      }
-      if (from) {
-        const dx = p.x - from.x;
-        const dy = p.y - from.y;
+      });
+      const near = from as Target | null;
+      if (near && weapon && near.size <= PROPS[p.kind].h * BRAVE_RATIO) {
+        // Brave: close in to throwing range, keep a little back, and throw.
+        const keep = near.reach * THROW_RANGE;
+        const dx = near.x - p.x;
+        const dy = near.y - p.y;
+        const toward = best > keep ? 0.8 : best < keep * 0.7 ? -0.9 : 0;
+        p.vx = (dx / (best || 1)) * FLEE_SPEED * toward;
+        p.vy = (dy / (best || 1)) * FLEE_SPEED * toward;
+        // (facing it even while standing still)
+        if (toward === 0) p.vx = Math.sign(dx) * 0.01;
+        const left = (this.throwIn.get(p.id) ?? THROW_EVERY * (0.4 + this.rng() * 0.6)) - dt;
+        if (left <= 0 && best <= keep * 1.3) {
+          const fy = p.y - PROPS[p.kind].h * 0.6;
+          const ty = near.y - near.size * 0.4;
+          const flight = Math.hypot(near.x - p.x, ty - fy) / THROW_SPEED;
+          const missile: Missile = {
+            id: this.missileId++,
+            kind: weapon,
+            x: p.x,
+            y: fy,
+            tx: near.x,
+            ty,
+            flight,
+            left: flight,
+            target: fromIndex,
+          };
+          this.missiles.push(missile);
+          out.push({ target: fromIndex, event: { type: 'throw', missile } });
+          this.throwIn.set(p.id, THROW_EVERY * (0.8 + this.rng() * 0.4));
+        } else this.throwIn.set(p.id, left);
+      } else if (near) {
+        const dx = p.x - near.x;
+        const dy = p.y - near.y;
         const s = (PROPS[p.kind].h < 30 ? 1.2 : 1) * FLEE_SPEED;
         p.vx = (dx / (best || 1)) * s;
         p.vy = (dy / (best || 1)) * s;
@@ -256,6 +352,19 @@ export class Field {
       }
       p.x = Math.max(50, Math.min(WORLD_W - 50, p.x + p.vx * dt));
       p.y = Math.max(50, Math.min(WORLD_H - 50, p.y + p.vy * dt));
+    }
+    // Missiles land where the creature was: a hit if it is still there.
+    for (let i = this.missiles.length - 1; i >= 0; i--) {
+      const m = this.missiles[i]!;
+      m.left -= dt;
+      if (m.left > 0) continue;
+      this.missiles.splice(i, 1);
+      const b = beasts[m.target];
+      if (!b?.alive || !b.hurt) continue;
+      const footY = m.ty + b.size * 0.4;
+      if (Math.hypot(b.x - m.tx, b.y - footY) > Math.max(b.reach, b.size * 0.35)) continue;
+      const lost = b.hurt();
+      if (lost > 0) out.push({ target: m.target, event: { type: 'hit', missile: m, lost } });
     }
     // The village rebuilds what was smashed (out of any creature's way); the frightened come back.
     while (this.rubble.length && this.rubble[0]!.at <= this.time) {
@@ -285,6 +394,7 @@ export class Field {
       p.alive = true;
       this.respawns.splice(i, 1);
     }
+    return out;
   }
 
   /** Something was smashed (it comes back later, where the village rebuilds). */
@@ -404,6 +514,19 @@ export class Beast {
     for (const k of Object.keys(this.buffs) as PowerupKind[]) delete this.buffs[k];
   }
 
+  /** Seconds left reeling from a hit (it moves slowly). */
+  stagger = 0;
+
+  /** A torch or pitchfork hit it: it loses some mass and reels (not in Iron Hide). */
+  hurt(): number {
+    if (!this.alive || this.buffed('ironhide')) return 0;
+    const lost = Math.min(this.mass, Math.max(HIT_MIN, this.mass * HIT_SHARE));
+    this.mass -= lost;
+    this.size = sizeAfter(this.start, this.mass);
+    this.stagger = STAGGER;
+    return lost;
+  }
+
   /** Grow by this much mass (from smashing, or from devouring another creature). */
   feed(mass: number): void {
     this.mass += mass;
@@ -436,7 +559,9 @@ export class Beast {
       SPEED *
       this.boost.speed *
       (this.has('stride') ? STRIDE_BOOST : 1) *
-      (this.buffed('surge') ? SURGE_SPEED : 1);
+      (this.buffed('surge') ? SURGE_SPEED : 1) *
+      (this.stagger > 0 ? 0.4 : 1);
+    this.stagger = Math.max(0, this.stagger - dt);
     this.x = Math.max(60, Math.min(WORLD_W - 60, this.x + sx * speed * dt));
     this.y = Math.max(60, Math.min(WORLD_H - 60, this.y + sy * speed * dt));
     if (sx > 0.1) this.facing = 1;
@@ -726,7 +851,7 @@ export class RampageRun {
       return events;
     }
     this.beast.step(dt, steer, this.field, events);
-    this.field.step(dt, [this.beast]);
+    for (const e of this.field.step(dt, [this.beast])) events.push(e.event);
     this.checkBounties(events);
     return events;
   }

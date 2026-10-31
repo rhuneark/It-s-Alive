@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { RigCanvas, type Pose } from '../app/creatureRig';
-import { AURA, lightSprite, makeGround, palette, withAlpha } from '../app/drawing';
+import {
+  AURA,
+  drawMissile,
+  lightSprite,
+  makeGround,
+  palette,
+  weapon,
+  withAlpha,
+} from '../app/drawing';
 import { buildCreatureSprite, loadImage, type CreatureSprite } from '../app/creatureSprite';
 import { chime, distantThunder, heartbeat, roar, swipe, thud, thunderclap } from '../app/sfx';
 import type { Bounty } from '../game/bounty';
@@ -21,8 +29,10 @@ import {
 } from '../game/rampage';
 import {
   RampageRun,
+  braveWith,
   type Boost,
   type LiveProp,
+  type Missile,
   type RunEvent,
   type RunResult,
 } from '../game/rampageRun';
@@ -70,6 +80,8 @@ const WAKES: Record<PowerId, string> = {
 
 const SCREAMS = ['AAAH!', 'RUN!', 'MONSTER!', 'HELP!', "IT'S LOOSE!", 'FLEE!', 'NOOO!'];
 const FLUNG_SCREAMS = ['AAAAAH!', 'WAAAH!', 'EEEK!'];
+/** What the brave shout as they charge with their torches and pitchforks. */
+const BATTLE_CRIES = ['BURN IT!', 'GET IT!', 'CHARGE!', 'DRIVE IT OUT!', 'FOR THE VILLAGE!'];
 /** What is left burning when it is smashed. */
 const BURNS: ReadonlySet<PropKind> = new Set([
   'haystack',
@@ -320,6 +332,11 @@ export function Rampage({
     let flash = 0;
     let reveal = 0;
     let punch = 0;
+    /** A torch or pitchfork just hit it (0..1, red at the edges). */
+    let hurt = 0;
+    let warned = false;
+    const missiles: Array<Missile & { born: number }> = [];
+    const hurtPops: Array<{ text: string; x: number; y: number; born: number }> = [];
     let dark = 0.97;
     let walk = 0;
     let stride = 0;
@@ -496,6 +513,7 @@ export function Rampage({
       flash = Math.max(0, flash - realDt * 3);
       reveal = Math.max(0, reveal - realDt * 1.6);
       punch = Math.max(0, punch - realDt * 0.4);
+      hurt = Math.max(0, hurt - realDt * 2.5);
       const t = now - sceneAt;
 
       // The storm: now and then lightning lights the whole place (two flickers, strikes far apart).
@@ -811,6 +829,24 @@ export function Rampage({
         });
         if (!calm) lightUp(0.4, now);
         thunderclap(volume * 0.5);
+      } else if (e.type === 'throw') {
+        missiles.push({ ...e.missile, born: now });
+        if (!warned) {
+          warned = true;
+          setHint('The villagers fight back! Keep moving to dodge.');
+          setTimeout(() => setHint((h) => (h?.startsWith('The villagers') ? null : h)), 2600);
+        }
+      } else if (e.type === 'hit') {
+        hurt = 1;
+        if (!calm) shake = Math.max(shake, 10);
+        thud(volume * 0.7, 0.6);
+        run.haptic('medium');
+        hurtPops.push({
+          text: `-${big(e.lost)}`,
+          x: sim.x,
+          y: sim.y - sim.size * 1.05,
+          born: now,
+        });
       } else if (e.type === 'pickup') {
         const spec = POWERUPS[e.pickup.kind];
         setReward({ id: ++calloutId, text: spec.name, note: spec.text, tone: 'power' });
@@ -1093,7 +1129,7 @@ export function Rampage({
         } else if (p.kind === 'pumpkin') {
           holes.push([p.x, p.y - p.h * 0.3, p.h * 2.2, 0.55 * flicker]);
           glows.push([p.x, p.y - p.h * 0.35, p.h * 1.1, 0.45 * flicker]);
-        } else if (torch(p)) {
+        } else if (braveWith(p) === 'torch') {
           const hx = p.x + (p.vx < 0 ? -1 : 1) * p.h * 0.22;
           holes.push([hx, p.y - p.h * 0.6, p.h * 2.6, 0.8 * flicker]);
           glows.push([hx, p.y - p.h * 0.85, p.h * 0.8, 0.6 * flicker]);
@@ -1130,6 +1166,18 @@ export function Rampage({
       for (const f of flung) items.push({ y: f.y, draw: () => drawFlung(f) });
       items.sort((a, b) => a.y - b.y);
       for (const it of items) it.draw();
+
+      // Torches and pitchforks in the air (torches light the dark as they fly).
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i]!;
+        const t = now - m.born;
+        if (t > m.flight + 0.1) {
+          missiles.splice(i, 1);
+          continue;
+        }
+        drawMissile(ctx, m, t, m.kind === 'torch' ? 30 : 34);
+        if (m.kind === 'torch') holes.push([m.tx, m.ty, 60, 0.8]);
+      }
 
       for (const q of particles) {
         ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 0.4));
@@ -1195,6 +1243,11 @@ export function Rampage({
         nctx.fillStyle = `rgba(230, 240, 255, ${flash * 0.6})`;
         nctx.fillRect(0, 0, nw, nh);
       }
+      if (hurt > 0 && blood) {
+        nctx.globalAlpha = Math.min(1, hurt * 0.9);
+        nctx.fillStyle = blood;
+        nctx.fillRect(0, 0, nw, nh);
+      }
       nctx.globalAlpha = 1;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = true;
@@ -1246,6 +1299,23 @@ export function Rampage({
         ctx.fillStyle = '#ffe2c4';
         ctx.fillText(s.text, px, py);
       }
+      // What a hit knocked off it, falling away in red.
+      for (let i = hurtPops.length - 1; i >= 0; i--) {
+        const q = hurtPops[i]!;
+        const age = now - q.born;
+        if (age > 1) {
+          hurtPops.splice(i, 1);
+          continue;
+        }
+        ctx.globalAlpha = Math.max(0, Math.min(1, (1 - age) / 0.3));
+        ctx.font = `900 ${Math.round(18 * dpr)}px Rubik, sans-serif`;
+        ctx.lineWidth = 4 * dpr;
+        ctx.strokeStyle = '#1a0204';
+        ctx.strokeText(q.text, q.x * z + ox, q.y * z + oy + age * 40 * dpr);
+        ctx.fillStyle = '#ff4a3a';
+        ctx.fillText(q.text, q.x * z + ox, q.y * z + oy + age * 40 * dpr);
+      }
+      ctx.globalAlpha = 1;
       // The rubble it earns, rising in gold (red-gold once a chain multiplies it).
       const hot = sim.liveChain > 0 && sim.multiplier > 1;
       for (const q of pops) {
@@ -1287,10 +1357,6 @@ export function Rampage({
     const airHeight = () =>
       sim.air > 0 ? Math.sin(Math.PI * (1 - sim.air / 0.55)) * sim.size * 0.55 : 0;
 
-    /** Some villagers carry torches. */
-    const torch = (p: LiveProp) =>
-      p.mover && (p.kind === 'villager' || p.kind === 'farmer') && p.id % 3 === 0;
-
     const drawProp = (p: LiveProp, now: number) => {
       const img = imgs.get(p.kind);
       if (!img) {
@@ -1307,11 +1373,19 @@ export function Rampage({
       // Townsfolk: idle sway, a stroll, or a panicked sprint (leaning in, bouncing, arms flailing).
       const speed = Math.hypot(p.vx, p.vy);
       const fleeing = speed > 40;
+      // The brave charge (toward it) with a battle cry; everyone else screams and runs.
+      const arm = braveWith(p);
+      const charging = arm !== null && p.vx * (sim.x - p.x) + p.vy * (sim.y - p.y) > 0;
       if (fleeing && !scared.has(p.id)) {
         scared.set(p.id, now);
         if (now - lastScream > 0.45 && Math.random() < 0.45) {
           lastScream = now;
-          screams.push({ text: pick(SCREAMS), x: p.x, y: p.y - h * 1.1, born: now });
+          screams.push({
+            text: pick(charging ? BATTLE_CRIES : SCREAMS),
+            x: p.x,
+            y: p.y - h * 1.1,
+            born: now,
+          });
         }
       } else if (!fleeing && speed < 30) scared.delete(p.id);
       const ph = now * (fleeing ? 18 : 8) + p.id;
@@ -1329,19 +1403,16 @@ export function Rampage({
       ctx.scale(dir * (2 - sq), sq);
       ctx.drawImage(img, -w / 2, -h, w, h);
       ctx.restore();
-      if (torch(p)) {
-        const fx = p.x + dir * h * 0.22;
-        const fy = p.y - h * 0.78 - hop;
-        const f = 0.8 + 0.2 * Math.sin(now * 20 + p.id);
-        ctx.fillStyle = '#5a3a1e';
-        ctx.fillRect(fx - h * 0.02, fy, h * 0.04, h * 0.28);
-        ctx.fillStyle = '#ff7a1a';
-        ctx.fillRect(fx - h * 0.06, fy - h * 0.12 * f, h * 0.12, h * 0.14 * f);
-        ctx.fillStyle = '#ffd36a';
-        ctx.fillRect(fx - h * 0.03, fy - h * 0.07 * f, h * 0.06, h * 0.08 * f);
+      if (arm) {
+        // Raised high, shaken when it is close.
+        ctx.save();
+        ctx.translate(p.x + dir * h * 0.24, p.y - h * 0.62 - hop);
+        ctx.rotate(dir * 0.25 + (charging || speed < 2 ? Math.sin(now * 9 + p.id) * 0.35 : 0));
+        weapon(ctx, arm, h * 0.6, now + p.id);
+        ctx.restore();
       }
       const since = scared.get(p.id);
-      if (since !== undefined && now - since < 0.8) {
+      if (since !== undefined && now - since < 0.8 && !charging) {
         const k = Math.min(1, (now - since) / 0.1);
         ctx.font = `800 ${h * 0.55 * k}px Rubik, sans-serif`;
         ctx.textAlign = 'center';

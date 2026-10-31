@@ -201,7 +201,19 @@ export type BattleEvent =
   | { kind: 'sweep'; who: number; radius: number }
   | { kind: 'bolt'; who: number; prop: number }
   | { kind: 'attack'; who: number; prop: number; side: 1 | -1 }
-  | { kind: 'smash'; who: number; prop: number; points: number };
+  | { kind: 'smash'; who: number; prop: number; points: number }
+  /** A brave villager threw at `who` (from x,y; it lands at tx,ty after `flight` s), and a hit. */
+  | {
+      kind: 'throw';
+      who: number;
+      x: number;
+      y: number;
+      tx: number;
+      ty: number;
+      weapon: 'torch' | 'pitchfork';
+      flight: number;
+    }
+  | { kind: 'hit'; who: number; lost: number };
 
 /** Pack an arena event for the wire (null: the phone does not need it). */
 export function packEvent(
@@ -220,6 +232,20 @@ export function packEvent(
   if (r.type === 'bolt') return ['b', who, r.prop.id];
   if (r.type === 'attack') return ['a', who, r.prop.id, r.side];
   if (r.type === 'smash') return ['s', who, r.prop.id, r.points];
+  if (r.type === 'throw') {
+    const m = r.missile;
+    return [
+      't',
+      who,
+      Math.round(m.x),
+      Math.round(m.y),
+      Math.round(m.tx),
+      Math.round(m.ty),
+      m.kind === 'torch' ? 0 : 1,
+      Math.round(m.flight * 1000),
+    ];
+  }
+  if (r.type === 'hit') return ['h', who, Math.round(r.lost)];
   return null;
 }
 
@@ -245,6 +271,19 @@ export function unpackEvent(t: ReadonlyArray<number | string>): BattleEvent | nu
       return { kind: 'attack', who, prop: Number(b), side: Number(c) < 0 ? -1 : 1 };
     case 's':
       return { kind: 'smash', who, prop: Number(b), points: Number(c) };
+    case 't':
+      return {
+        kind: 'throw',
+        who,
+        x: Number(b),
+        y: Number(c),
+        tx: Number(t[4]),
+        ty: Number(t[5]),
+        weapon: t[6] === 0 ? 'torch' : 'pitchfork',
+        flight: Number(t[7]) / 1000,
+      };
+    case 'h':
+      return { kind: 'hit', who, lost: Number(b) };
     default:
       return null;
   }

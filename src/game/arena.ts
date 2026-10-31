@@ -221,10 +221,11 @@ export class Arena {
       }
     }
 
-    this.field.step(
+    for (const e of this.field.step(
       dt,
       all.map((f) => f.beast),
-    );
+    ))
+      out.push({ type: 'run', who: all[e.target]!.seat.id, event: e.event });
     return out;
   }
 

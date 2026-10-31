@@ -20,7 +20,15 @@ import {
   type World,
 } from './rampage';
 import { BOUNTY_BONUS, bountiesFor, type Bounty } from './bounty';
-import { CHAIN_GAP, CHAIN_STEP, RampageRun, chainMultiplier, type Steer } from './rampageRun';
+import {
+  CHAIN_GAP,
+  CHAIN_STEP,
+  HIT_SHARE,
+  RampageRun,
+  braveWith,
+  chainMultiplier,
+  type Steer,
+} from './rampageRun';
 import { rngFor } from './rng';
 import { newSave, parseSave, recordRun } from './state';
 
@@ -358,5 +366,63 @@ describe('chains and bounties', () => {
       25,
     );
     expect(old.rampage.bounties).toEqual([]);
+  });
+});
+
+describe('villagers who fight back', () => {
+  const world = buildWorld('brave');
+
+  /** A run with one brave villager placed near the creature, everyone else far away. */
+  const standoff = (kind: 'villager' | 'farmer', start = BASE_SIZE) => {
+    const run = new RampageRun(world, start, 'brave');
+    const brave = run.props.find((p) => p.kind === kind && braveWith(p))!;
+    for (const p of run.props) if (p.mover && p !== brave) p.alive = false;
+    brave.x = run.x + run.reach * 4;
+    brave.y = run.y;
+    return { run, brave };
+  };
+
+  it('arm every third villager with a torch and every other farmer with a pitchfork', () => {
+    expect(braveWith({ kind: 'villager', id: 9 })).toBe('torch');
+    expect(braveWith({ kind: 'villager', id: 10 })).toBeNull();
+    expect(braveWith({ kind: 'farmer', id: 4 })).toBe('pitchfork');
+    expect(braveWith({ kind: 'chicken', id: 6 })).toBeNull();
+  });
+
+  it('stand their ground against a creature their size and throw: a hit knocks off mass and staggers it', () => {
+    const { run } = standoff('villager');
+    run.beast.feed(20_000);
+    const before = run.beast.mass;
+    const events = [];
+    for (let i = 0; i < 30 * 5; i++) events.push(...run.step(1 / 30, { x: 0, y: 0 }));
+    expect(events.some((e) => e.type === 'throw')).toBe(true);
+    const hit = events.find((e) => e.type === 'hit');
+    expect(hit && hit.type === 'hit' && hit.lost).toBeGreaterThanOrEqual(
+      Math.min(300, before * HIT_SHARE),
+    );
+    expect(run.beast.mass).toBeLessThan(before);
+  });
+
+  it('can be dodged: a creature that keeps moving is not where the torch lands', () => {
+    const { run } = standoff('villager');
+    const events = [];
+    let dir = 1;
+    for (let i = 0; i < 30 * 5; i++) {
+      if (i % 20 === 0) dir = -dir;
+      events.push(...run.step(1 / 30, { x: 0, y: dir }));
+    }
+    const throws = events.filter((e) => e.type === 'throw').length;
+    const hits = events.filter((e) => e.type === 'hit').length;
+    expect(throws).toBeGreaterThan(0);
+    expect(hits).toBeLessThan(throws);
+  });
+
+  it('run like everyone else from a creature far too big for them', () => {
+    const { run, brave } = standoff('farmer', BASE_SIZE * 4);
+    brave.x = run.x + run.reach * 3;
+    const events = [];
+    for (let i = 0; i < 30; i++) events.push(...run.step(1 / 30, { x: 0, y: 0 }));
+    expect(events.some((e) => e.type === 'throw')).toBe(false);
+    expect(brave.x - run.x).toBeGreaterThan(run.reach * 3);
   });
 });

@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { RigCanvas, type Pose } from '../app/creatureRig';
 import { buildCreatureSprite, loadImage } from '../app/creatureSprite';
-import { AURA, lightSprite, makeGround, palette, withAlpha } from '../app/drawing';
+import {
+  AURA,
+  drawMissile,
+  lightSprite,
+  makeGround,
+  palette,
+  weapon,
+  withAlpha,
+} from '../app/drawing';
 import { localBattle } from '../app/localBattle';
 import { chime, distantThunder, heartbeat, roar, swipe, thud } from '../app/sfx';
 import type { Standing } from '../game/arena';
@@ -29,7 +37,7 @@ import {
   type PropKind,
   type World,
 } from '../game/rampage';
-import { Field, type LiveProp } from '../game/rampageRun';
+import { Field, braveWith, type LiveProp } from '../game/rampageRun';
 import type { Parts } from '../game/sketch';
 import * as run from '../sdk/run';
 
@@ -180,7 +188,17 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
       spin: number;
       life: number;
     }> = [];
-    const pops: Array<{ text: string; x: number; y: number; born: number }> = [];
+    const pops: Array<{ text: string; x: number; y: number; born: number; hurt?: boolean }> = [];
+    const missiles: Array<{
+      x: number;
+      y: number;
+      tx: number;
+      ty: number;
+      flight: number;
+      kind: 'torch' | 'pitchfork';
+      born: number;
+    }> = [];
+    let hurt = 0;
     let shake = 0;
     let flash = 0;
     let bannerId = 0;
@@ -222,7 +240,8 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
         me = m.you;
         const stage = STAGES.find((s) => s.id === m.stage) ?? STAGES[0]!;
         world = buildWorld(m.seed, stage);
-        field = new Field(world, m.seed);
+        // (the crowd here is only drawn: the room decides who throws and who gets smashed)
+        field = new Field(world, m.seed, 0, undefined, 0, false);
         const dead = new Set(m.dead);
         for (const p of field.props) if (dead.has(p.id)) p.alive = false;
         ground = makeGround(ctx, stage.id);
@@ -415,6 +434,23 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
           thud(volume, 0.9);
           if (!calm) shake = Math.max(shake, 12);
         }
+      } else if (e.kind === 'throw') {
+        missiles.push({ ...e, kind: e.weapon, born: now });
+        if (missiles.length > 40) missiles.shift();
+      } else if (e.kind === 'hit') {
+        if (isMe && b) {
+          hurt = 1;
+          if (!calm) shake = Math.max(shake, 10);
+          thud(volume * 0.7, 0.6);
+          run.haptic('medium');
+          pops.push({
+            text: `-${big(e.lost)}`,
+            x: b.shown.x,
+            y: b.shown.y - b.shown.size * 1.1,
+            born: now,
+            hurt: true,
+          });
+        }
       } else if (e.kind === 'bolt') {
         const p = field?.props[e.prop];
         if (p && b)
@@ -560,6 +596,7 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
       const now = ms / 1000;
       shake = Math.max(0, shake - dt * 30);
       flash = Math.max(0, flash - dt * 3);
+      hurt = Math.max(0, hurt - dt * 2.5);
       const s = steer();
       // Tell the room where we steer: on a change, and now and then anyway.
       if (
@@ -610,7 +647,13 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
           dt,
           bodies
             .filter((b) => b?.next?.alive)
-            .map((b) => ({ x: b.shown.x, y: b.shown.y, alive: true, reach: b.shown.size * 0.3 })),
+            .map((b) => ({
+              x: b.shown.x,
+              y: b.shown.y,
+              alive: true,
+              reach: b.shown.size * 0.3,
+              size: b.shown.size,
+            })),
         );
       // Camera: on you, zoomed to your size.
       const meBody = bodies.find((b) => b?.seat.id === me);
@@ -844,6 +887,17 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
       items.sort((a, b) => a.y - b.y);
       for (const it of items) it.draw();
 
+      // Torches and pitchforks thrown by the brave.
+      for (let i = missiles.length - 1; i >= 0; i--) {
+        const m = missiles[i]!;
+        const t = now - m.born;
+        if (t > m.flight + 0.1) {
+          missiles.splice(i, 1);
+          continue;
+        }
+        drawMissile(ctx, m, t, m.kind === 'torch' ? 30 : 34);
+      }
+
       for (const q of particles) {
         ctx.globalAlpha = Math.max(0, Math.min(1, q.life / 0.4));
         ctx.fillStyle = q.color;
@@ -889,6 +943,10 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
       }
       if (flash > 0) {
         nctx.fillStyle = `rgba(230, 240, 255, ${flash * 0.6})`;
+        nctx.fillRect(0, 0, nw, nh);
+      }
+      if (hurt > 0) {
+        nctx.fillStyle = `rgba(200, 10, 20, ${hurt * 0.35})`;
         nctx.fillRect(0, 0, nw, nh);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -950,7 +1008,7 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
         ctx.lineWidth = 3 * dpr;
         ctx.strokeStyle = '#1a0d04';
         ctx.strokeText(q.text, px, py);
-        ctx.fillStyle = '#ffe08a';
+        ctx.fillStyle = q.hurt ? '#ff4a3a' : '#ffe08a';
         ctx.fillText(q.text, px, py);
       }
       ctx.globalAlpha = 1;
@@ -1003,6 +1061,14 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
       ctx.scale(dir, 1);
       ctx.drawImage(img, -w / 2, -h, w, h);
       ctx.restore();
+      const arm = braveWith(p);
+      if (arm) {
+        ctx.save();
+        ctx.translate(p.x + dir * h * 0.24, p.y - h * 0.62 - hop);
+        ctx.rotate(dir * 0.25 + Math.sin(now * 9 + p.id) * 0.3);
+        weapon(ctx, arm, h * 0.6, now + p.id);
+        ctx.restore();
+      }
     };
 
     const drawBody = (b: Body, now: number) => {

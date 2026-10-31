@@ -9,6 +9,7 @@ import { Diagnostics } from './components/Diagnostics';
 import { MusicBar, SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
 import { Reveal } from './components/Reveal';
+import { AwakenButton } from './components/AwakenButton';
 import { LooseScene } from './components/LooseScene';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption, questionForSlot } from './game/catalog';
@@ -849,18 +850,17 @@ function RampageMenu({
         </div>
       )}
       <div className="home-foot">
-        <button
-          className="btn btn-awaken"
+        <AwakenButton
+          spark={game.parts.spark}
+          ready={game.stitched && !!r}
+          still={covered || sheet}
+          label={game.stitched ? 'Awaken' : 'Gathering the parts…'}
           onClick={() => {
             onListen();
             setPanel('main');
             setSheet(true);
           }}
-          disabled={!game.stitched || !r}
-          data-testid="awaken-open"
-        >
-          {game.stitched ? 'Awaken' : 'Gathering the parts…'}
-        </button>
+        />
       </div>
       {sheet && r && (
         <div className="sheet-backdrop" onClick={() => setSheet(false)}>
@@ -1054,19 +1054,83 @@ function RampageMenu({
 /** Three claw marks: the battle. */
 function ClawIcon() {
   return (
-    <svg className="mode-icon" viewBox="0 0 48 48" aria-hidden="true">
-      <path d="M10 8 C 18 18, 22 28, 20 42" />
-      <path d="M22 6 C 30 16, 33 28, 30 42" />
-      <path d="M34 8 C 41 18, 43 28, 39 40" />
-    </svg>
+    <PixelArt
+      className="mode-icon"
+      palette={{ a: '#ffffff', b: '#ffd2bd', c: '#7a1018' }}
+      rows={[
+        '................',
+        '.......a...a...a',
+        '......ac..ac..ac',
+        '......ac..ac..ac',
+        '......ac..ac..ac',
+        '......ac..ac..ac',
+        '.....ac..ac..ac.',
+        '.....ac..ac..ac.',
+        '....abc.abc.abc.',
+        '....ac..ac..ac..',
+        '...abc.abc.abc..',
+        '..abc.abc.abc...',
+        '..ac..ac..ac....',
+        '.ac..ac..ac.....',
+        '.a...a...a......',
+        '................',
+      ]}
+    />
   );
 }
 
 /** The moon over the village: the story. */
 function MoonIcon() {
   return (
-    <svg className="mode-icon" viewBox="0 0 48 48" aria-hidden="true">
-      <path d="M30 6 A 18 18 0 1 0 42 32 A 14 14 0 1 1 30 6 Z" />
+    <PixelArt
+      className="mode-icon"
+      palette={{ a: '#ffc2b0', b: '#ff4a4a', c: '#8a1420' }}
+      rows={[
+        '................',
+        '.....aaa........',
+        '...aaaa.........',
+        '..aaabb.........',
+        '..aabbb.........',
+        '.aabbbb.........',
+        '.aabbbb.........',
+        '.aabbbb.........',
+        '.aabbbbb........',
+        '.abbbbbbb.......',
+        '.bbbbbbbbbbbbbc.',
+        '..bbbbbbbbbbbc..',
+        '..bbbbbbbbbbcc..',
+        '...ccbbbbbbcc...',
+        '.....cccccc.....',
+        '................',
+      ]}
+    />
+  );
+}
+
+/** A little pixel picture: one character per pixel, coloured by `palette` ('.' is clear). */
+function PixelArt({
+  rows,
+  palette,
+  className,
+}: {
+  rows: string[];
+  palette: Record<string, string>;
+  className?: string;
+}) {
+  return (
+    <svg
+      className={className}
+      viewBox={`0 0 ${rows[0]!.length} ${rows.length}`}
+      shapeRendering="crispEdges"
+      aria-hidden="true"
+    >
+      {rows.flatMap((row, y) =>
+        [...row].map((c, x) =>
+          palette[c] ? (
+            <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} fill={palette[c]} />
+          ) : null,
+        ),
+      )}
     </svg>
   );
 }

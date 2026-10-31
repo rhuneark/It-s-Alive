@@ -30,7 +30,16 @@ player brings the village's creature or their own Sketchbook build; biggest mass
 or the STORY run (the village's creature alone in the day's place, with upgrades). Big numbers
 (`numbers.ts`, K/M/B/T… like RUN's Big Numbers API) everywhere; power-ups on the map in both modes;
 upgrades in the story only ("multiplayer runs differently so only powerups on the map matter").
-Fonts: Rubik everywhere (the owner found the gothic fonts unreadable); titles at weight 900.
+Fonts: Rubik for reading (the owner found the gothic fonts unreadable), and since the PIXEL SKIN
+(below) Pixelify Sans for titles, buttons, labels and numbers.
+PIXEL UI (owner's request, Oct 31: "make the UI pixel graphics"): every frame is a tiny 9-slice PNG
+of pixel art (`src/assets/ui`, made by `tools/art/ui_frames.py`, inlined by Vite) scaled 3x with
+`border-image` and `image-rendering: pixelated`, so one art pixel is 3 CSS px everywhere: buttons
+and tiles 9px (`btn-dark`, `btn-red`, `btn-gold`, `tile-red`, `tile-violet`, `pick-on` for a chosen
+option), panels 12px (`panel`: sheet, modals, toast, end card), wells and rows 6px (`well`,
+`well-gold` for your own row / a lit part). Stepped corners, no rounded ones, hard 2-3px text
+shadows. It all lives in the PIXEL SKIN section at the end of style.css (it overrides the older
+rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx).
 
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
@@ -74,7 +83,13 @@ Fonts: Rubik everywhere (the owner found the gothic fonts unreadable); titles at
   page (`.storm-rain`; `.app` sits above it). Two flickers per strike, strikes ≥ 1.2 s apart: under
   3 flashes a second. Nothing strikes for reduced-motion players.
 - From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx): ONLY the
-  creature and one heartbeat button, AWAKEN (`awaken-open`). The picture (`LooseScene`) is a PixelLab
+  creature and one button, AWAKEN (`awaken-open`, `components/AwakenButton.tsx`; owner: "make it
+  oozing with power"): drawn as pixel art on a canvas (3 CSS px per art pixel, 15 fps): a slab of
+  dark stitched hide with a neck bolt at each end, glowing ooze in the creature's spark colour
+  (`AURA`) capping its top, hanging in fat drips and dripping off its bottom (drops fall and
+  splash), cracks and letters lighting up on a heartbeat, lightning arcing off the bolts and now
+  and then surging from bolt to bolt over the top. Still for reduced-motion players and while the
+  sheet or a run covers it. The picture (`LooseScene`) is a PixelLab
   painting (`public/art/home.png`, 240x400, pixflux seed 37, candidates in art/raw/bg, original in
   art/picked/home.png; the owner called the old code-drawn sky and rows "crappy"): a gothic street
   at night, lit windows, a tower under a huge blood moon, covering the screen. The community's
@@ -183,6 +198,15 @@ Fonts: Rubik everywhere (the owner found the gothic fonts unreadable); titles at
   - Townsfolk: idle sway, a stroll, or a panicked sprint (leaning in, bouncing, squashing); a red "!"
     when one starts to flee, screams over their heads ("AAAH!", "RUN!", "MONSTER!", "HELP!"…), and the
     flung ones shriek.
+  - THEY FIGHT BACK (owner's request, Oct 31; `braveWith`, `Field.step` in rampageRun.ts, tests in
+    rampage.test.ts): every third villager carries a torch and every other farmer a pitchfork. Against
+    a creature up to `BRAVE_RATIO` 4.5x their height they stand their ground instead of fleeing,
+    keep `THROW_RANGE` 3.8 reaches away and throw every `THROW_EVERY` 1.8 s. A missile flies to where
+    the creature WAS (so moving dodges it); a hit knocks off `HIT_SHARE` 3% of its mass (at least
+    300) and staggers it (`STAGGER` 0.35 s at 0.4 speed); Iron Hide shrugs it off. Events `throw`
+    and `hit`; the story shows a red flash, a red "-N", battle cries over the braves and, the first
+    time, "The villagers fight back! Keep moving to dodge."; battles get them on the wire (`t`, `h`).
+    Once the creature outgrows them, they flee like everyone else.
   - Powers (`POWERS`, woken at a multiple of the start size, named after the community's parts via
     `powerParts`): legs 1.12× faster; arms 1.3× reach; maw/head/second head 1.5× swallow small things
     nearby; tail/spine 1.75× sweep; wings 2.05× leap and crush on landing; spark/heart/brain 2.4×
@@ -286,7 +310,8 @@ src/components Monster (the husk in the lab with its painted layers), Voting (op
                Sketchbook (players design their own monster), Reveal (last night's stitching),
                Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),
                Battle (the multiplayer battle; Rampage and Battle are lazy-loaded chunks),
-               LooseScene (the rampage menu's picture and the breakout),
+               LooseScene (the rampage menu's picture and the breakout), AwakenButton (the home's
+               pixel-art button),
                SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, vigil, and from Halloween the rampage menu
@@ -297,7 +322,8 @@ public/cdn-assets/  uploaded to RUN's CDN on deploy (large files, >100 KB): audi
 art/           NOT shipped: picks.json, picked/ (chosen scene-sized paintings, husk.png, bg_lab.png),
                raw/ (git-ignored candidates)
 tools/art/     husk.py (inpaint/edit parts into the husk), process.py (layers), pixellab.py, prompts.py,
-               props.py (rampage props)
+               props.py (rampage props), ui_frames.py (the pixel UI's 9-slice frames)
+src/assets/ui/ the pixel UI's frames (tiny PNGs, inlined into the CSS)
 scripts/       simulate.ts (Monte-Carlo checks), shot.mjs (dev screenshots)
 e2e/           Playwright full-season playthrough at 375x667 and 390x844
 ```
@@ -317,7 +343,7 @@ e2e/           Playwright full-season playthrough at 375x667 and 390x844
 - Past days are tallied once (5 count calls per day), resolved with `resolveDay` (seeded tie-break; empty
   days are picked at random) and cached in the save's `history`.
 - Portrait, phone-first: check 375x667 and 390x844, no sideways scrolling, buttons framed (>=2px border),
-  >=44px tall, text >=14px. Font: Rubik (Google Fonts) for everything, titles at 900.
+  >=44px tall, text >=14px. Fonts (Google Fonts): Pixelify Sans for titles, buttons, labels, numbers; Rubik for longer text.
 - Pixel art: `image-rendering: pixelated`, palette-quantized (all monster layers share one 256-colour palette;
   96 was too few for 300+ layers and turned the croc grey).
   Everything in `public/` ships — keep unreleased art in `art/`.
@@ -436,7 +462,8 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   Rubik, the creature + Awaken home, on top of 1.24.0's vigil storm, awakening and rampage) was
   submitted with the publish workflow on Oct 31, 04:28 UTC, half an hour before Halloween began in
   Central (1.24.0 on Oct 30, 1.20.0 on Oct 23, 1.16.0 on Oct 13, 1.14.0 on Oct 11); RUN reviews it
-  and makes it public on approval. Pushes after that deploy NEW private versions only: a fix
+  and makes it public on approval. The next version (commit ba1c7ff: the painted home street and the
+  cleaner Awaken sheet) was submitted the same way at 05:07 UTC. Pushes after that deploy NEW private versions only: a fix
   reaches public players only when the owner asks to publish again (each submission must be a higher
   version and goes through review). Name, tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`

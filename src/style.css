@@ -16,8 +16,8 @@
   --spark: #c6f2ff;
   --safe-top: 0px;
   --safe-bottom: 0px;
-  --font-title: 'Rubik', 'Segoe UI', system-ui, sans-serif;
-  --font-head: 'Rubik', 'Segoe UI', system-ui, sans-serif;
+  --font-title: 'Pixelify Sans', 'Rubik', 'Segoe UI', system-ui, sans-serif;
+  --font-head: 'Pixelify Sans', 'Rubik', 'Segoe UI', system-ui, sans-serif;
   --font-body: 'Rubik', 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -2822,52 +2822,48 @@ b {
   padding: 0 24px;
 }
 
-/* One button, and it beats like a heart. */
-.btn-awaken {
-  width: min(100%, 320px);
-  min-height: 64px;
-  font-family: var(--font-title);
-  font-weight: 900;
-  font-size: 30px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #fff4ea;
-  background: linear-gradient(180deg, #d02a2a, #7a0f14);
-  border: 3px solid #ffb38a;
-  border-radius: 14px;
-  box-shadow:
-    0 4px 0 #2a0507,
-    0 0 30px rgba(220, 40, 40, 0.55);
-  text-shadow: 0 2px 0 #3a0508;
+/* One button, drawn as pixel art and oozing with power (AwakenButton.tsx draws it all). */
+.awaken {
+  position: relative;
+  width: min(100%, 312px);
+  height: 78px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.btn-awaken:not(:disabled) {
-  animation: rampage-beat 1.4s ease-in-out infinite;
+.awaken-art {
+  filter: drop-shadow(0 0 6px var(--ooze, rgba(230, 60, 60, 0.6)));
+  position: absolute;
+  pointer-events: none;
+  image-rendering: pixelated;
 }
 
-.btn-awaken:disabled {
-  font-size: 18px;
-  opacity: 0.7;
+.awaken:active:not(:disabled) .awaken-art {
+  transform: translateY(3px);
 }
 
-@keyframes rampage-beat {
-  0%,
-  40%,
-  100% {
-    transform: none;
-  }
-  10% {
-    transform: scale(1.04);
-    box-shadow:
-      0 4px 0 #2a0507,
-      0 0 40px rgba(240, 60, 50, 0.85);
-  }
-  20% {
-    transform: none;
-  }
-  28% {
-    transform: scale(1.02);
-  }
+.awaken:focus-visible {
+  outline: 3px dashed #fff4ea;
+  outline-offset: 10px;
+}
+
+.awaken-label {
+  position: relative;
+  font-family: var(--font-head);
+  font-size: 16px;
+  color: #d9c6b8;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 /* Awaken's choice: a dark glass sheet rising from below. */
@@ -3559,4 +3555,345 @@ b {
   border: 2px solid #000;
   border-radius: 8px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- PIXEL SKIN (owner's request, Oct 31: "make the UI pixel graphics") ----------
+   Every frame is a tiny 9-slice PNG drawn as pixel art (src/assets/ui, made by
+   tools/art/ui_frames.py) scaled up 3x with crisp pixels, so one art pixel is 3 CSS pixels
+   everywhere: buttons and tiles (slice 3: 9px), panels (slice 4: 12px), wells and rows (slice
+   2: 6px). Stepped corners, no rounded ones; hard drop shadows, no soft ones. Titles, buttons
+   and numbers in Pixelify Sans; longer text stays in Rubik. */
+.btn,
+.pick button,
+.sheet-icon,
+.mode,
+.sheet,
+.modal,
+.toast,
+.block,
+.rampage-over,
+.rampage-reward,
+.rampage-clock,
+.rampage-next,
+.rampage-bounties li,
+.rampage-best,
+.rampage-bounty-list li,
+.power-icon,
+.battle-board li,
+.battle-buffs li,
+.battle-feed li,
+.battle-table li,
+.upgrades li {
+  border-style: solid;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  image-rendering: pixelated;
+}
+
+/* Buttons and tiles: 9px frames with a bevel and a lip. */
+.btn,
+.pick button,
+.sheet-icon,
+.mode {
+  border-width: 9px;
+  border-image: url('./assets/ui/btn-dark.png') 3 fill / 9px stretch;
+  text-shadow: 3px 3px 0 #000;
+}
+
+.btn {
+  min-height: 52px;
+  padding: 0 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.btn-small {
+  min-height: 46px;
+  padding: 0 6px;
+}
+
+.btn:active:not(:disabled),
+.pick button:active,
+.sheet-icon:active {
+  transform: translateY(3px);
+}
+
+.btn-primary {
+  border-image-source: url('./assets/ui/btn-red.png');
+}
+
+.btn-ad {
+  color: #2a1800;
+  text-shadow: none;
+  border-image-source: url('./assets/ui/btn-gold.png');
+}
+
+.btn-jam {
+  border-image-source: url('./assets/ui/tile-violet.png');
+}
+
+.mode {
+  padding: 6px 4px 4px;
+}
+
+.mode:active {
+  transform: translateY(3px);
+}
+
+.mode-battle {
+  border-image-source: url('./assets/ui/tile-red.png');
+}
+
+.mode-story {
+  border-image-source: url('./assets/ui/tile-violet.png');
+}
+
+.mode-icon {
+  width: 48px;
+  height: 48px;
+  stroke: none;
+  opacity: 1;
+  filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, 0.7));
+}
+
+.pick button {
+  padding: 0 4px;
+  font-family: var(--font-head);
+}
+
+.pick button.on {
+  color: #ffe9a8;
+  background: none;
+  border-image-source: url('./assets/ui/pick-on.png');
+}
+
+.sheet-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
+}
+
+/* Panels: a 12px double frame. */
+.sheet,
+.modal,
+.toast,
+.rampage-over {
+  border-width: 12px;
+  border-image: url('./assets/ui/panel.png') 4 fill / 12px stretch;
+}
+
+.sheet {
+  padding: 2px 6px calc(var(--safe-bottom) + 8px);
+}
+
+.modal {
+  padding: 4px 6px calc(var(--safe-bottom) + 6px);
+}
+
+.toast {
+  padding: 2px 6px;
+}
+
+.rampage-over {
+  padding: 4px 6px 8px;
+}
+
+.rampage-reward {
+  border-width: 9px;
+  border-image: url('./assets/ui/btn-gold.png') 3 fill / 9px stretch;
+  color: #2a1800;
+}
+
+/* Wells and rows: a 6px inset frame. */
+.block,
+.rampage-clock,
+.rampage-next,
+.rampage-bounties li,
+.rampage-best,
+.rampage-bounty-list li,
+.power-icon,
+.battle-board li,
+.battle-buffs li,
+.battle-feed li,
+.battle-table li,
+.upgrades li {
+  border-width: 6px;
+  border-image: url('./assets/ui/well.png') 2 fill / 6px stretch;
+}
+
+.block {
+  padding: 6px;
+}
+
+.upgrades li {
+  padding: 0 0 0 4px;
+}
+
+.rampage-clock {
+  padding: 0 8px;
+}
+
+.rampage-clock.hurry {
+  border-image-source: url('./assets/ui/btn-red.png');
+  border-image-slice: 3 fill;
+  border-width: 6px;
+}
+
+.power-icon.lit {
+  border-image-source: url('./assets/ui/well-gold.png');
+}
+
+.rampage-bounties li,
+.battle-board li,
+.battle-feed li {
+  padding: 0 4px;
+}
+
+.battle-buffs li {
+  padding: 0 6px;
+}
+
+.battle-table li {
+  padding: 2px 4px;
+}
+
+/* Progress bars and check boxes: square, in steps. */
+.rampage-next-bar,
+.bar {
+  border-radius: 0;
+  box-shadow: 0 0 0 3px #050206;
+}
+
+.rampage-next-bar i {
+  background: repeating-linear-gradient(90deg, #ff6a3a 0 6px, #c42a20 6px 9px);
+  box-shadow: none;
+}
+
+.checklist i,
+.rampage-bounties i {
+  border-radius: 0;
+  box-shadow: 2px 2px 0 #000;
+}
+
+span.sheet-icon {
+  border: 0;
+  border-image: none;
+}
+
+/* Pixel type: titles, buttons, labels and numbers, with hard shadows. */
+h1,
+h2,
+h3,
+h4,
+button,
+.btn,
+.mode b,
+.mode-tag,
+.story-day,
+.story-facts b,
+.story-best b,
+.rampage-label,
+.rampage-stat b,
+.rampage-clock,
+.loose-title {
+  font-family: var(--font-title);
+  font-weight: 700;
+  text-shadow: 3px 3px 0 #000;
+}
+
+.btn,
+button,
+.mode-tag,
+.story-day,
+.rampage-label,
+.story-facts b,
+.story-best b {
+  text-shadow: 2px 2px 0 #000;
+}
+
+.btn {
+  font-size: 19px;
+}
+
+.btn-small,
+.sheet-row .btn,
+.pick button {
+  font-size: 17px;
+}
+
+.slider::-webkit-slider-thumb,
+.slider::-webkit-slider-runnable-track {
+  border-radius: 0;
+}
+
+.slider::-moz-range-thumb,
+.slider::-moz-range-track {
+  border-radius: 0;
+}
+
+.mode-text {
+  font-family: var(--font-body);
+  font-weight: 500;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.battle-board li.me,
+.battle-table li.me {
+  background: none;
+  border-image-source: url('./assets/ui/well-gold.png');
+}
+
+.rampage-best {
+  padding: 0 6px;
+  color: #2a1800;
+  text-shadow: none;
+  border-image-source: url('./assets/ui/well-gold.png');
+}
+
+/* The Sketchbook's tabs and options, and the Chronicle's nights. */
+.sketch-part,
+.sketch-option,
+.chron {
+  border-style: solid;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  image-rendering: pixelated;
+}
+
+.sketch-part,
+.sketch-option {
+  border-width: 9px;
+  border-image: url('./assets/ui/btn-dark.png') 3 fill / 9px stretch;
+  padding: 0 4px;
+  font-size: 15px;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.sketch-part.filled,
+.sketch-part.active,
+.sketch-option.selected {
+  background: none;
+  box-shadow: none;
+}
+
+.sketch-part.active,
+.sketch-option.selected {
+  color: #ffe9a8;
+  border-image-source: url('./assets/ui/pick-on.png');
+}
+
+.chron {
+  border-width: 6px;
+  border-image: url('./assets/ui/well.png') 2 fill / 6px stretch;
+  padding: 0 4px;
+}
+
+.chron-now {
+  border-image-source: url('./assets/ui/well-gold.png');
 }
