@@ -314,11 +314,13 @@ describe('daily reminders', () => {
       'Rampage day 4: Graveyard Hill',
     ]);
     expect(end[3]!.atMs).toBe(LIVE_SEASON.awakenMs + 10 * 3_600_000);
-    // the rampage goes on: a reminder every evening, a week ahead, wherever it is loose
+    // the rampage goes on: a reminder every evening, a week ahead, wherever it is loose (the places
+    // come round again: day 16 is Graveyard Hill once more)
     const later = reminderPlan(LIVE_SEASON.awakenMs + 9 * DAY_MS, LIVE_SEASON, schedule, false);
     expect(later).toHaveLength(7);
     expect(later.every((r) => r.title.startsWith('Rampage day'))).toBe(true);
-    expect(later.at(-1)!.title).toContain('The City');
+    expect(later.at(-1)!.title).toBe('Rampage day 16: Graveyard Hill');
+    expect(later.at(-1)!.body).toContain('daily reward');
   });
 
   it('mentions the streak vote only on nights it is certain', () => {

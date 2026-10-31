@@ -18,14 +18,14 @@ import {
   PROPS,
   WORLD_H,
   WORLD_W,
-  buildWorld,
   feet,
   powerParts,
   rankFor,
   type Power,
   type PowerId,
   type PropKind,
-  type Stage,
+  venueWorld,
+  type Venue,
 } from '../game/rampage';
 import {
   RampageRun,
@@ -39,7 +39,9 @@ import {
 import { big } from '../game/numbers';
 import { POWERUPS } from '../game/powerup';
 import * as run from '../sdk/run';
+import type { DayBoard } from '../sdk/run';
 import { PowerIcon } from './PartIcon';
+import { DayBoard as DayBoardView } from './DayBoard';
 
 /**
  * The rampage: the creature everyone built, loose in the day's place at night. Drag anywhere (or
@@ -231,8 +233,8 @@ interface Drop {
 
 interface Props {
   parts: Partial<Record<SlotId, string>>;
-  stage: Stage;
-  /** The day's place is the same for everyone (same seed). */
+  /** The day's venue: its place, which way round it lies (the same for everyone, same seed). */
+  venue: Venue;
   seed: string;
   /** The creature's real height is its run size times this (it grew with the community). */
   scale: number;
@@ -242,9 +244,11 @@ interface Props {
   upgrades: { start: number; seconds: number; boost: Boost };
   volume: number;
   best: number;
+  /** The day's board (it updates once this run's score is on it). */
+  board: DayBoard | null;
   /** Whether the finished run reached the community's tally ('pending' while it is sent). */
   contribution: 'pending' | 'counted' | 'guest' | 'failed' | null;
-  onSignIn: (rubble: number) => void;
+  onSignIn: (result: RunResult) => void;
   onEnd: (result: RunResult) => void;
   onAgain: () => void;
   onQuit: () => void;
@@ -252,19 +256,21 @@ interface Props {
 
 export function Rampage({
   parts,
-  stage,
+  venue,
   seed,
   scale,
   bounties,
   upgrades,
   volume,
   best,
+  board,
   contribution,
   onSignIn,
   onEnd,
   onAgain,
   onQuit,
 }: Props) {
+  const { stage } = venue;
   const host = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -296,7 +302,7 @@ export function Rampage({
     const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
     const sparkKind = parts.spark?.replace('spark_', '') ?? 'lightning';
     const aura = AURA[sparkKind] ?? AURA['lightning']!;
-    const world = buildWorld(seed, stage);
+    const world = venueWorld(seed, venue);
     const seconds = testSeconds(upgrades.seconds);
     const sim = new RampageRun(
       world,
@@ -1728,6 +1734,7 @@ export function Rampage({
               })}
             </ul>
           )}
+          <DayBoardView board={contribution === 'pending' ? null : board} compact />
           <p className="muted center-text rampage-count" data-testid="rampage-count">
             {contribution === 'counted'
               ? 'Added to the creature! At midnight it grows by everything the village smashed.'
@@ -1740,7 +1747,7 @@ export function Rampage({
           {contribution === 'guest' && (
             <button
               className="btn btn-secondary btn-small"
-              onClick={() => onSignIn(result.baseRubble)}
+              onClick={() => onSignIn(result)}
               data-testid="rampage-signin"
             >
               Sign in to count it

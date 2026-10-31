@@ -41,11 +41,16 @@ export interface SteerMsg {
   y: number;
 }
 
-/** The match: the same place for everyone (seed and stage), who sits where, what is already smashed. */
+/**
+ * The match: the same place for everyone (seed and stage, turned `turn` quarters after mirroring if
+ * `mirror`), who sits where, what is already smashed.
+ */
 export interface MatchMsg {
   type: 'match';
   seed: string;
   stage: string;
+  turn: number;
+  mirror: boolean;
   seconds: number;
   phase: Phase;
   /** Seconds until the battle starts (lobby) or ends (battle). */

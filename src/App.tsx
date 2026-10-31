@@ -10,6 +10,8 @@ import { MusicBar, SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
 import { Reveal } from './components/Reveal';
 import { AwakenButton } from './components/AwakenButton';
+import { DayBoard } from './components/DayBoard';
+import { DailyReward } from './components/DailyReward';
 import { LooseScene } from './components/LooseScene';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption, questionForSlot } from './game/catalog';
@@ -262,21 +264,22 @@ function Game({
           <Rampage
             key={rampageRun.key}
             parts={game.parts}
-            stage={game.rampage.stage}
+            venue={game.rampage.venue}
             seed={game.rampage.seed}
             scale={game.rampage.size / BASE_SIZE}
             bounties={game.rampage.bounties}
             upgrades={storyRun(game.save.rampage.levels)}
             volume={game.save.musicOn ? game.save.musicVolume : 0}
             best={rampageRun.best}
+            board={game.board}
             contribution={counted}
             onEnd={(result) => {
               setCounted('pending');
               void game.finishRun(result).then(setCounted);
             }}
-            onSignIn={(rubble) => {
+            onSignIn={(result) => {
               setCounted('pending');
-              void game.countAsSignedIn(rubble).then(setCounted);
+              void game.countAsSignedIn(result).then(setCounted);
             }}
             onAgain={startRampage}
             onQuit={() => setRampageRun(null)}
@@ -832,6 +835,15 @@ function RampageMenu({
   const [pick, setPick] = useState<'village' | 'mine'>('village');
   const [panel, setPanel] = useState<'main' | 'story'>('main');
   const today = r && save.rampage.day === r.day ? save.rampage.today : 0;
+  // The daily reward waits until the creature has broken out (and IT'S LOOSE! has faded) and the
+  // home has settled a moment.
+  const [settled, setSettled] = useState(false);
+  const brokeOutAtStart = useRef(save.rampage.brokeOut);
+  useEffect(() => {
+    if (!save.rampage.brokeOut) return;
+    const t = setTimeout(() => setSettled(true), brokeOutAtStart.current ? 1200 : 4600);
+    return () => clearTimeout(t);
+  }, [save.rampage.brokeOut]);
   return (
     <div className="home" data-testid="rampage-menu">
       {r && game.stitched && !covered ? (
@@ -848,6 +860,16 @@ function RampageMenu({
         <div className="loose-scene loose-wait">
           <p className="muted">{game.stitched ? '' : 'Gathering the parts…'}</p>
         </div>
+      )}
+      {game.rewardWaiting && settled && !covered && !sheet && (
+        <DailyReward
+          streak={game.rewardStreak}
+          best={save.rampage.best}
+          onClaim={() => {
+            onListen();
+            game.claimReward();
+          }}
+        />
       )}
       <div className="home-foot">
         <AwakenButton
@@ -900,7 +922,10 @@ function RampageMenu({
                   </button>
                   <button
                     className="mode mode-story"
-                    onClick={() => setPanel('story')}
+                    onClick={() => {
+                      setPanel('story');
+                      void game.refreshBoard();
+                    }}
                     data-testid="mode-story"
                   >
                     <MoonIcon />
@@ -969,7 +994,9 @@ function RampageMenu({
                 <div className="story-head">
                   <p className="story-day">Rampage · day {r.day + 1}</p>
                   <h3>Loose in {r.stage.name}</h3>
-                  <p className="story-blurb">{r.stage.blurb}</p>
+                  <p className="story-blurb">
+                    {r.stage.blurb} It breaks in from the {r.venue.gate}.
+                  </p>
                   <div className="story-facts" data-testid="rampage-card">
                     <span>
                       <b data-testid="creature-height">{feet(r.size)} ft</b> tall
@@ -980,7 +1007,8 @@ function RampageMenu({
                       </span>
                     )}
                     <span>
-                      grows in <b>{formatCountdown(r.growsInMs)}</b>
+                      grows in <b>{formatCountdown(r.growsInMs)}</b> · then{' '}
+                      <b>{r.next.stage.name}</b>
                     </span>
                   </div>
                 </div>
@@ -991,6 +1019,7 @@ function RampageMenu({
                 >
                   Start the rampage
                 </button>
+                <DayBoard board={game.board} yesterday={game.yesterday} />
                 {save.rampage.runs > 0 && (
                   <p className="story-best" data-testid="rampage-best">
                     Your best <b>{big(save.rampage.best)}</b> · today <b>{big(today)}</b> rubble

@@ -21,7 +21,7 @@ import {
   type SeatInfo,
   type SnapMsg,
 } from './battleWire';
-import { STAGES, buildWorld, type Stage } from './rampage';
+import { STAGES, buildWorld, orient, type Stage } from './rampage';
 import { rngFor } from './rng';
 import { cleanSketch } from './sketch';
 
@@ -30,6 +30,9 @@ export type HostMsg = RosterMsg | PhaseMsg | SnapMsg | OverMsg;
 export class BattleHost {
   readonly seed: string;
   readonly stage: Stage;
+  /** The place turned and mirrored its own way for this match (`orient`). */
+  readonly turn: number;
+  readonly mirror: boolean;
   readonly arena: Arena;
   phase: Phase = 'lobby';
   private lobbyLeft: number;
@@ -40,8 +43,15 @@ export class BattleHost {
 
   constructor(seed: string, seconds?: number, lobby = LOBBY_SECONDS) {
     this.seed = seed;
-    this.stage = STAGES[Math.floor(rngFor(seed)() * STAGES.length)]!;
-    this.arena = new Arena(buildWorld(seed, this.stage), seed, seconds);
+    const rng = rngFor(seed);
+    this.stage = STAGES[Math.floor(rng() * STAGES.length)]!;
+    this.turn = Math.floor(rng() * 4);
+    this.mirror = rng() < 0.5;
+    this.arena = new Arena(
+      orient(buildWorld(seed, this.stage), this.turn, this.mirror),
+      seed,
+      seconds,
+    );
     this.lobbyLeft = lobby;
   }
 
@@ -84,6 +94,8 @@ export class BattleHost {
         type: 'match',
         seed: this.seed,
         stage: this.stage.id,
+        turn: this.turn,
+        mirror: this.mirror,
         seconds: this.arena.seconds,
         phase: this.phase,
         left: this.phase === 'lobby' ? this.lobbyLeft : this.arena.timeLeft,

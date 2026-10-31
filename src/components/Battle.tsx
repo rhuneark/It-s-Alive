@@ -34,6 +34,7 @@ import {
   WORLD_H,
   WORLD_W,
   buildWorld,
+  orient,
   type PropKind,
   type World,
 } from '../game/rampage';
@@ -239,9 +240,9 @@ export function Battle({ parts, name, volume, onQuit, onAgain }: Props) {
       if (m.type === 'match') {
         me = m.you;
         const stage = STAGES.find((s) => s.id === m.stage) ?? STAGES[0]!;
-        world = buildWorld(m.seed, stage);
+        world = orient(buildWorld(m.seed, stage), m.turn ?? 0, m.mirror ?? false);
         // (the crowd here is only drawn: the room decides who throws and who gets smashed)
-        field = new Field(world, m.seed, 0, undefined, 0, false);
+        field = new Field(world, m.seed, 0, undefined, 0, null);
         const dead = new Set(m.dead);
         for (const p of field.props) if (dead.has(p.id)) p.alive = false;
         ground = makeGround(ctx, stage.id);

@@ -12,11 +12,14 @@ import {
   buildWorld,
   canSmash,
   communitySize,
+  orient,
   powerParts,
   rankFor,
   rubbleBand,
   sizeAfter,
   totalFromBands,
+  venueFor,
+  venueWorld,
   type World,
 } from './rampage';
 import { BOUNTY_BONUS, bountiesFor, type Bounty } from './bounty';
@@ -134,6 +137,50 @@ describe('the village', () => {
     expect(Math.hypot(lab.x - world.start.x, lab.y - world.start.y)).toBeLessThan(40);
     const run = new RampageRun(world, BASE_SIZE);
     expect(run.props.find((p) => p.kind === 'lab')!.alive).toBe(false);
+  });
+});
+
+describe('a new venue every midnight', () => {
+  it('starts with the village as it woke, then a new place lying another way round each day', () => {
+    expect(venueFor(0)).toMatchObject({ turn: 0, mirror: false, gate: 'south' });
+    expect(venueFor(0).stage.id).toBe('village');
+    for (let d = 1; d < 60; d++) {
+      const a = venueFor(d);
+      const b = venueFor(d - 1);
+      expect(a.stage.id === b.stage.id && a.turn === b.turn && a.mirror === b.mirror).toBe(false);
+    }
+    // every place comes round again (the city does not go on for ever), each a different way round
+    const seen = new Set<string>();
+    for (let d = 0; d < 24; d++)
+      seen.add(`${venueFor(d).stage.id}:${venueFor(d).turn}:${venueFor(d).mirror}`);
+    expect(seen.size).toBe(24);
+    expect(new Set(Array.from({ length: 12 }, (_, d) => venueFor(d).stage.id)).size).toBe(
+      STAGES.length,
+    );
+  });
+
+  it('turns and mirrors a place without losing or moving anything out of it', () => {
+    const world = buildWorld('turn');
+    const gap = (w: World, i: number, j: number) =>
+      Math.hypot(w.props[i]!.x - w.props[j]!.x, w.props[i]!.y - w.props[j]!.y);
+    for (let d = 1; d < 8; d++) {
+      const v = venueFor(d);
+      const t = orient(world, v.turn, v.mirror);
+      expect(t.props).toHaveLength(world.props.length);
+      for (const p of t.props) {
+        expect(p.x).toBeGreaterThanOrEqual(0);
+        expect(p.y).toBeGreaterThanOrEqual(0);
+        expect(p.x).toBeLessThanOrEqual(WORLD_W);
+        expect(p.y).toBeLessThanOrEqual(WORLD_H);
+      }
+      expect(gap(t, 3, 40)).toBeCloseTo(gap(world, 3, 40), 6);
+    }
+    const back = orient(orient(world, 1, false), 3, false);
+    expect(back.props.map((p) => [p.x, p.y])).toEqual(world.props.map((p) => [p.x, p.y]));
+    expect(orient(orient(world, 0, true), 0, true).start).toEqual(world.start);
+    // the laboratory lies on the venue's gate side
+    const west = venueWorld('gate', { stage: STAGES[0]!, turn: 1, mirror: false });
+    expect(west.start.x).toBeLessThan(WORLD_W / 4);
   });
 });
 

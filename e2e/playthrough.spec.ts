@@ -46,6 +46,14 @@ async function framedButtons(page: Page) {
   expect(issues).toEqual([]);
 }
 
+/** A new day: the reward for coming back pops up on the home (once IT'S LOOSE! has faded); take it. */
+async function claimReward(page: Page) {
+  await expect(page.getByTestId('daily-reward')).toBeVisible({ timeout: 10_000 });
+  await framedButtons(page);
+  await page.getByTestId('daily-claim').click();
+  await expect(page.getByTestId('daily-reward')).toHaveCount(0);
+}
+
 async function percentagesSumTo100(page: Page) {
   await expect(page.locator('.result')).toHaveCount(5);
   const pcts = await page.locator('.result-pct').allTextContents();
@@ -283,6 +291,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('loose-title')).toHaveText("IT'S LOOSE!", { timeout: 5000 });
   await expect(page.getByTestId('loose-scene')).toHaveAttribute('data-loose', 'true');
   await expect(page.getByTestId('reveal')).toHaveCount(0); // the scene showed the last stitching
+  // The first day's reward for coming back: rubble for the upgrades.
+  await shot('daily-reward');
+  await claimReward(page);
   // Home is only the creature and one button. Awaken offers a battle or the story run.
   await expect(menu.getByRole('button')).toHaveCount(1);
   await noSidewaysScroll(page);
@@ -295,9 +306,13 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(sheet).toContainText('Loose in The Village');
   await expect(sheet).toContainText('Rampage · day 1');
   await expect(page.getByTestId('creature-height')).toHaveText(/\d+ ft/);
-  // The day's three bounties, and the story upgrades (nothing to spend yet).
+  // The day's most monstrous (its top three), the day's three bounties, and the story upgrades
+  // (the daily reward's 500 rubble buys the first one).
+  await expect(page.getByTestId('day-board').locator('.podium li')).toHaveCount(3);
+  await expect(page.getByTestId('day-board-mine')).toContainText('Rampage to get on the board');
   await expect(page.getByTestId('bounty-board').locator('li')).toHaveCount(3);
-  await expect(page.getByTestId('buy-value')).toBeDisabled();
+  await expect(page.getByTestId('upgrades')).toContainText('500 rubble to spend');
+  await expect(page.getByTestId('buy-value')).toBeEnabled();
   await framedButtons(page);
   await shot('rampage-menu');
   // A run: it grows as it smashes (steered here like a player), then the end panel.
@@ -315,6 +330,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.getByTestId('rampage-rank')).not.toBeEmpty();
   await expect(page.getByTestId('rampage-bounty-list').locator('li')).toHaveCount(3);
   await expect(page.getByTestId('rampage-count')).toContainText('Added to the creature');
+  await expect(
+    page.getByTestId('rampage-over').getByTestId('day-board').locator('.podium li'),
+  ).toHaveCount(3);
   await framedButtons(page);
   await shot('rampage-over');
   // Again starts a fresh run; back to the lab returns to the menu, with the player's best.
@@ -346,13 +364,19 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await expect(page.locator('.chron-done')).toHaveCount(19);
   await page.getByRole('button', { name: 'Close chronicle' }).click();
 
-  // The next day it is loose somewhere new, and taller for what everyone smashed.
+  // The next day it is loose somewhere new, and taller for what everyone smashed; a new reward
+  // waits (day 2 of the streak), and yesterday's most monstrous is on the board.
   await page.goto('/?day=21&runSeconds=4');
+  await expect(page.getByTestId('daily-reward')).toContainText('2 days in a row', {
+    timeout: 10_000,
+  });
+  await claimReward(page);
   await page.getByTestId('awaken-open').click();
   await page.getByTestId('mode-story').click();
   await expect(sheet).toContainText('Loose in The Farmlands');
   await expect(page.getByTestId('rampage-card')).toContainText(/\+\d+ ft/);
   await expect(page.getByTestId('rampage-card')).toContainText('grew last night');
+  await expect(page.getByTestId('day-board-champ')).toContainText("Yesterday's most monstrous");
 
   // A battle, offline against bots here (live rooms need RUN's servers): grow, then the standings.
   await page.goto('/?day=21&offline=1&battleSeconds=8');
@@ -431,6 +455,7 @@ test('owner test mode: jump to Halloween with a throwaway save, then back to the
   await expect(wake).toHaveAttribute('data-stage', 'intro');
   await page.getByTestId('awaken-skip').click();
   await expect(page.getByTestId('rampage-menu')).toBeVisible();
+  await claimReward(page);
   await page.getByTestId('awaken-open').click();
   await page.getByTestId('mode-story').click();
   await expect(page.getByTestId('mode-sheet')).toContainText('Rampage · day 1');
@@ -441,6 +466,7 @@ test('owner test mode: jump to Halloween with a throwaway save, then back to the
   await page.getByTestId('preview-22').click();
   await expect(page.getByTestId('preview-bar')).toContainText('Rampage day 3');
   await page.getByTestId('awaken-skip').click();
+  await claimReward(page);
   await page.getByTestId('awaken-open').click();
   await page.getByTestId('mode-story').click();
   await expect(page.getByTestId('mode-sheet')).toContainText('Loose in The Market Town');

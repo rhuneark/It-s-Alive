@@ -78,7 +78,7 @@ export function reminderPlan(
         id,
         atMs,
         title: `Rampage day ${day - halloween + 1}: ${stage.name}`,
-        body: `${stage.blurb} Everything smashed before midnight makes it grow.`,
+        body: `${stage.blurb} A new venue, a new top 3, and your daily reward are waiting.`,
       });
     }
   }

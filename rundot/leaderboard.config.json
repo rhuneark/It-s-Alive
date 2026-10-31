@@ -1,0 +1,210 @@
+{
+  "requiresToken": false,
+  "scoreOrder": "highest",
+  "minScore": 0,
+  "maxScore": 9007199254740991,
+  "minDurationSec": 10,
+  "maxDurationSec": 900,
+  "modes": {
+    "m1a": {
+      "displayName": "Day 1 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m2a": {
+      "displayName": "Day 2 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m3a": {
+      "displayName": "Day 3 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m4a": {
+      "displayName": "Day 4 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m5a": {
+      "displayName": "Day 5 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m6a": {
+      "displayName": "Day 6 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m7a": {
+      "displayName": "Day 7 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m8a": {
+      "displayName": "Day 8 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m9a": {
+      "displayName": "Day 9 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m10a": {
+      "displayName": "Day 10 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m11a": {
+      "displayName": "Day 11 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m12a": {
+      "displayName": "Day 12 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m13a": {
+      "displayName": "Day 13 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m14a": {
+      "displayName": "Day 14 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m15a": {
+      "displayName": "Day 15 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m16a": {
+      "displayName": "Day 16 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m17a": {
+      "displayName": "Day 17 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m18a": {
+      "displayName": "Day 18 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m19a": {
+      "displayName": "Day 19 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m20a": {
+      "displayName": "Day 20 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m21a": {
+      "displayName": "Day 21 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m22a": {
+      "displayName": "Day 22 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m23a": {
+      "displayName": "Day 23 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m24a": {
+      "displayName": "Day 24 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m25a": {
+      "displayName": "Day 25 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m26a": {
+      "displayName": "Day 26 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m27a": {
+      "displayName": "Day 27 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m28a": {
+      "displayName": "Day 28 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m29a": {
+      "displayName": "Day 29 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m30a": {
+      "displayName": "Day 30 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m31a": {
+      "displayName": "Day 31 (Jan/Mar/May/Jul/Sep/Nov)"
+    },
+    "m1b": {
+      "displayName": "Day 1 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m2b": {
+      "displayName": "Day 2 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m3b": {
+      "displayName": "Day 3 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m4b": {
+      "displayName": "Day 4 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m5b": {
+      "displayName": "Day 5 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m6b": {
+      "displayName": "Day 6 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m7b": {
+      "displayName": "Day 7 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m8b": {
+      "displayName": "Day 8 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m9b": {
+      "displayName": "Day 9 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m10b": {
+      "displayName": "Day 10 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m11b": {
+      "displayName": "Day 11 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m12b": {
+      "displayName": "Day 12 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m13b": {
+      "displayName": "Day 13 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m14b": {
+      "displayName": "Day 14 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m15b": {
+      "displayName": "Day 15 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m16b": {
+      "displayName": "Day 16 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m17b": {
+      "displayName": "Day 17 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m18b": {
+      "displayName": "Day 18 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m19b": {
+      "displayName": "Day 19 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m20b": {
+      "displayName": "Day 20 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m21b": {
+      "displayName": "Day 21 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m22b": {
+      "displayName": "Day 22 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m23b": {
+      "displayName": "Day 23 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m24b": {
+      "displayName": "Day 24 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m25b": {
+      "displayName": "Day 25 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m26b": {
+      "displayName": "Day 26 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m27b": {
+      "displayName": "Day 27 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m28b": {
+      "displayName": "Day 28 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m29b": {
+      "displayName": "Day 29 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m30b": {
+      "displayName": "Day 30 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    },
+    "m31b": {
+      "displayName": "Day 31 (Feb/Apr/Jun/Aug/Oct/Dec)"
+    }
+  },
+  "periods": {
+    "monthly": {
+      "displayName": "The day's board",
+      "type": "monthly"
+    }
+  },
+  "antiCheat": {
+    "enableRateLimit": true,
+    "minTimeBetweenSubmissionsSec": 30,
+    "enableZScoreDetection": false
+  },
+  "displaySettings": {
+    "maxEntriesPerPage": 50
+  }
+}

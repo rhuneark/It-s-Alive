@@ -24,6 +24,7 @@ import {
   markStarted,
   markBrokeOut as saveBrokeOut,
   buyUpgrade as saveBuyUpgrade,
+  claimDaily,
   recordRun,
   rememberRubble,
   newSave,
@@ -48,10 +49,13 @@ import {
   rubbleBand,
   stageFor,
   totalFromBands,
+  venueFor,
   type Stage,
+  type Venue,
 } from '../game/rampage';
 import type { RunResult } from '../game/rampageRun';
-import type { UpgradeId } from '../game/upgrades';
+import { storyRun, type UpgradeId } from '../game/upgrades';
+import { rewardWaiting, streakToday } from '../game/daily';
 import type { Parts } from '../game/sketch';
 import { resolveDay } from '../game/tally';
 import * as run from '../sdk/run';
@@ -62,6 +66,8 @@ export const JAM_VOTE_URL = 'https://run.world/jams/octoberjam?game=GORVjkIRThUz
 export interface RampageInfo {
   /** 0 = Halloween. */
   day: number;
+  /** Today's venue (a new one every midnight Central) and its place. */
+  venue: Venue;
   stage: Stage;
   /** Same place for everyone on a day. */
   seed: string;
@@ -77,7 +83,7 @@ export interface RampageInfo {
   bounties: Bounty[];
   done: string[];
   /** Where it goes tomorrow. */
-  next: Stage;
+  next: Venue;
 }
 
 export interface Toast {
@@ -116,10 +122,19 @@ export interface GameModel {
   markAwake: () => void;
   /** The rampage (from Halloween on): today's place and how big the community has made it. */
   rampage: RampageInfo | null;
-  /** A run ended: keep the player's stats and add its rubble to the community's tally. */
+  /** A run ended: keep the player's stats, add its rubble to the community's tally, its score to the day's board. */
   finishRun: (result: RunResult) => Promise<run.RubbleResult>;
   /** A guest chose to sign in so a run counts. */
-  countAsSignedIn: (rubble: number) => Promise<run.RubbleResult>;
+  countAsSignedIn: (result: RunResult) => Promise<run.RubbleResult>;
+  /** The day's board (top three, and the player's place), and yesterday's (null until read). */
+  board: run.DayBoard | null;
+  yesterday: run.DayBoard | null;
+  refreshBoard: () => Promise<void>;
+  /** Today's reward for coming back is waiting (from Halloween on), and claiming it. */
+  rewardWaiting: boolean;
+  /** The streak claiming today's reward makes (1 = a fresh start). */
+  rewardStreak: number;
+  claimReward: () => void;
   /** The player has seen it break out of the laboratory. */
   markBrokeOut: () => void;
   /** Buy the next level of a story upgrade with rubble from the purse. */
@@ -373,6 +388,39 @@ export function useGame(): GameModel {
   // ------------------------------------------------------------- the rampage
   const rampageDay = phase.kind === 'awakened' ? phase.daysSinceAwakening : -1;
   const [todayRubble, setTodayRubble] = useState<number | null>(null);
+  /** When a rampage day starts (game days run 05:00 to 05:00 UTC). */
+  const dayStart = (d: number) => SEASON.awakenMs + d * DAY_MS;
+  const [board, setBoard] = useState<run.DayBoard | null>(null);
+  const [yesterday, setYesterday] = useState<run.DayBoard | null>(null);
+  const refreshBoard = useCallback(async () => {
+    const d = phaseAt(run.now(), SEASON);
+    if (d.kind !== 'awakened') return;
+    const mine = epoch.current;
+    const day = d.daysSinceAwakening;
+    const [today, before] = await Promise.all([
+      run.fetchBoard(day, SEASON.awakenMs + day * DAY_MS),
+      day > 0 ? run.fetchBoard(day - 1, SEASON.awakenMs + (day - 1) * DAY_MS) : null,
+    ]);
+    if (epoch.current !== mine) return;
+    if (today) setBoard(today);
+    if (before) setYesterday(before);
+  }, []);
+  useEffect(() => {
+    setBoard(null);
+    setYesterday(null);
+    if (!loading && rampageDay >= 0) void refreshBoard();
+  }, [loading, rampageDay, refreshBoard]);
+  const seasonDay = dayIndexAt(now, SEASON);
+  const rewardIsWaiting = rampageDay >= 0 && rewardWaiting(save.daily, seasonDay);
+  const claimReward = useCallback(() => {
+    const today = dayIndexAt(run.now(), SEASON);
+    const before = saveRef.current;
+    const after = claimDaily(before, today);
+    if (after === before) return;
+    void commit(after);
+    run.haptic('success');
+    run.track('daily_reward', { streak: after.daily.streak });
+  }, [commit]);
   const rubbleBusy = useRef(false);
 
   /** Count closed rampage days once (they are final), then today's so far. */
@@ -417,6 +465,7 @@ export function useGame(): GameModel {
     const nextMidnight = SEASON.startMs + (dayIndexAt(now, SEASON) + 1) * DAY_MS;
     return {
       day: rampageDay,
+      venue: venueFor(rampageDay),
       stage: stageFor(rampageDay),
       seed: `${SEASON.id}:r${rampageDay}`,
       size,
@@ -425,7 +474,7 @@ export function useGame(): GameModel {
       growsInMs: Math.max(0, nextMidnight - now),
       bounties,
       done: save.rampage.day === rampageDay ? save.rampage.bounties : [],
-      next: stageFor(rampageDay + 1),
+      next: venueFor(rampageDay + 1),
     };
   }, [
     rampageDay,
@@ -447,12 +496,22 @@ export function useGame(): GameModel {
         peak: result.peak,
         powers: result.powers.length,
       });
-      // The village's tally counts the rubble before the player's own upgrades multiplied it.
-      const how = await run.recordRubble(SEASON.id, d, rubbleBand(result.baseRubble));
+      // The village's tally counts the rubble before the player's own upgrades multiplied it; the
+      // day's board, the run's own score.
+      const [how] = await Promise.all([
+        run.recordRubble(SEASON.id, d, rubbleBand(result.baseRubble)),
+        run.submitScore(
+          d,
+          dayStart(d),
+          result.rubble,
+          storyRun(saveRef.current.rampage.levels).seconds,
+        ),
+      ]);
       void refreshRubble();
+      void refreshBoard();
       return how;
     },
-    [commit, rampageDay, refreshRubble],
+    [commit, rampageDay, refreshRubble, refreshBoard],
   );
 
   // Owner test mode (hidden in Diagnostics): pretend it is another day, from a throwaway save.
@@ -505,13 +564,21 @@ export function useGame(): GameModel {
   );
 
   const countAsSignedIn = useCallback(
-    async (rubble: number) => {
+    async (result: RunResult) => {
       if (!(await run.signIn())) return 'guest' as const;
-      const how = await run.recordRubble(SEASON.id, Math.max(0, rampageDay), rubbleBand(rubble));
+      const d = Math.max(0, rampageDay);
+      const how = await run.recordRubble(SEASON.id, d, rubbleBand(result.baseRubble));
+      await run.submitScore(
+        d,
+        dayStart(d),
+        result.rubble,
+        storyRun(saveRef.current.rampage.levels).seconds,
+      );
       void refreshRubble();
+      void refreshBoard();
       return how;
     },
-    [rampageDay, refreshRubble],
+    [rampageDay, refreshRubble, refreshBoard],
   );
 
   const select = useCallback(
@@ -641,6 +708,12 @@ export function useGame(): GameModel {
     rampage,
     finishRun,
     countAsSignedIn,
+    board,
+    yesterday,
+    refreshBoard,
+    rewardWaiting: rewardIsWaiting,
+    rewardStreak: streakToday(save.daily, seasonDay),
+    claimReward,
     markBrokeOut,
     buyUpgrade,
     preview,

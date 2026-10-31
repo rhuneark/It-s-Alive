@@ -3897,3 +3897,146 @@ button,
 .chron-now {
   border-image-source: url('./assets/ui/well-gold.png');
 }
+
+/* ---------- the daily round: the day's podium and the reward for coming back ---------- */
+.podium {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+}
+
+.podium li {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 6px;
+  font-size: 15px;
+  border: 6px solid transparent;
+  border-image: url('./assets/ui/well.png') 2 fill / 6px stretch;
+  image-rendering: pixelated;
+}
+
+.podium li i {
+  font-family: var(--font-title);
+  font-style: normal;
+  font-size: 15px;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.podium .place-1 i {
+  color: #ffd24a;
+}
+
+.podium .place-2 i {
+  color: #d6dbe6;
+}
+
+.podium .place-3 i {
+  color: #e0915a;
+}
+
+.podium li span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.podium li b {
+  font-family: var(--font-title);
+  font-size: 17px;
+  color: #fff4ea;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.podium li.me {
+  border-image-source: url('./assets/ui/well-gold.png');
+  color: #2a1800;
+}
+
+.podium li.me i,
+.podium li.me b {
+  color: #2a1800;
+  text-shadow: none;
+}
+
+.day-board-wait,
+.day-board-mine,
+.day-board-champ {
+  font-size: 14px;
+  color: var(--parchment-dim);
+}
+
+.day-board-champ b {
+  color: #ffd24a;
+}
+
+.day-board.compact {
+  width: 100%;
+  text-align: left;
+}
+
+.daily-backdrop {
+  z-index: 90;
+}
+
+.daily {
+  align-items: center;
+  text-align: center;
+}
+
+.daily h3 {
+  font-size: 28px;
+  color: #fff4ea;
+}
+
+.daily-track {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  width: 100%;
+  list-style: none;
+}
+
+.daily-track li {
+  display: grid;
+  place-items: center;
+  min-height: 44px;
+  font-family: var(--font-title);
+  font-size: 18px;
+  color: var(--parchment-dim);
+  border: 6px solid transparent;
+  border-image: url('./assets/ui/well.png') 2 fill / 6px stretch;
+  image-rendering: pixelated;
+}
+
+.daily-track li.got {
+  color: var(--bile);
+}
+
+.daily-track li.today {
+  color: #2a1800;
+  border-image-source: url('./assets/ui/well-gold.png');
+  animation: chain-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.daily-line {
+  font-size: 15px;
+  color: var(--parchment);
+}
+
+.daily-line b {
+  font-family: var(--font-title);
+  color: #ffd24a;
+}
+
+.daily-note {
+  font-size: 14px;
+  color: var(--parchment-dim);
+}
+
+.daily-note b {
+  color: #ffd24a;
+}

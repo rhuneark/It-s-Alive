@@ -180,10 +180,24 @@ export interface Target {
   hurt?: () => number;
 }
 
-/** Who fights back: every third villager (they carry torches) and every other farmer (pitchforks). */
-export function braveWith(p: Pick<Prop, 'kind' | 'id'>): Missile['kind'] | null {
-  if (p.kind === 'villager' && p.id % 3 === 0) return 'torch';
-  if (p.kind === 'farmer' && p.id % 2 === 0) return 'pitchfork';
+/** How many fight back: one villager in `villager` (torches), one farmer in `farmer` (pitchforks); 0 = none. */
+export interface Bravery {
+  villager: number;
+  farmer: number;
+}
+
+/** Every third villager and every other farmer (battles, and a story run unless its level says). */
+export const BRAVERY: Bravery = { villager: 3, farmer: 2 };
+
+/** What this one fights back with, if it does. */
+export function braveWith(
+  p: Pick<Prop, 'kind' | 'id'>,
+  bravery: Bravery | null = BRAVERY,
+): Missile['kind'] | null {
+  if (!bravery) return null;
+  if (p.kind === 'villager' && bravery.villager > 0 && p.id % bravery.villager === 0)
+    return 'torch';
+  if (p.kind === 'farmer' && bravery.farmer > 0 && p.id % bravery.farmer === 0) return 'pitchfork';
   return null;
 }
 
@@ -207,7 +221,8 @@ export class Field {
   readonly rebuiltSince: LiveProp[] = [];
   /** Torches and pitchforks in the air. */
   readonly missiles: Missile[] = [];
-  private readonly fightBack: boolean;
+  /** Who fights back (null: nobody). */
+  readonly bravery: Bravery | null;
   private readonly throwIn = new Map<number, number>();
   private missileId = 0;
   private time = 0;
@@ -218,11 +233,11 @@ export class Field {
     pickups = 0,
     kinds: readonly PowerupKind[] = STORY_POWERUPS,
     regrow = 0,
-    fightBack = true,
+    bravery: Bravery | null = BRAVERY,
   ) {
     this.start = world.start;
     this.regrow = regrow;
-    this.fightBack = fightBack;
+    this.bravery = bravery;
     this.rng = rngFor('rampage-run', seed);
     this.kinds = kinds;
     this.props = world.props.map((p) => ({
@@ -297,7 +312,7 @@ export class Field {
       let from: Target | null = null;
       let fromIndex = -1;
       let best = Infinity;
-      const weapon = this.fightBack ? braveWith(p) : null;
+      const weapon = braveWith(p, this.bravery);
       beasts.forEach((b, i) => {
         if (!b.alive) return;
         const d = Math.hypot(p.x - b.x, p.y - b.y);
@@ -730,11 +745,11 @@ export class RampageRun {
     seed = 'run',
     seconds = RUN_SECONDS,
     bounties: readonly Bounty[] = [],
-    options: { pickups?: number; boost?: Boost } = {},
+    options: { pickups?: number; boost?: Boost; bravery?: Bravery | null } = {},
   ) {
     this.bounties = bounties;
     this.seconds = seconds;
-    this.field = new Field(world, seed, options.pickups ?? 0);
+    this.field = new Field(world, seed, options.pickups ?? 0, undefined, 0, options.bravery);
     this.beast = new Beast(start, world.start.x, world.start.y + 40, options.boost);
   }
 

@@ -308,9 +308,45 @@ export const STAGES: readonly Stage[] = [
   },
 ];
 
-/** The place for a day of the rampage (0 = Halloween); the city goes on after the last. */
+/** The place for a day of the rampage (0 = Halloween): each in turn, then round again for ever. */
 export function stageFor(rampageDay: number): Stage {
-  return STAGES[Math.max(0, Math.min(rampageDay, STAGES.length - 1))]!;
+  return STAGES[Math.max(0, Math.floor(rampageDay)) % STAGES.length]!;
+}
+
+/** The day's venue: its place, and which way round it lies (`orient`), so no two days look alike. */
+export interface Venue {
+  day: number;
+  stage: Stage;
+  /** Quarter turns clockwise, after mirroring if `mirror`. */
+  turn: number;
+  mirror: boolean;
+  /** Where the creature breaks in (the laboratory's side of the place). */
+  gate: 'south' | 'west' | 'north' | 'east';
+}
+
+/** The eight ways round, in an order where neighbours differ; Halloween's village is the first. */
+const WAYS: ReadonlyArray<[turn: number, mirror: boolean]> = [
+  [0, false],
+  [2, true],
+  [1, false],
+  [3, true],
+  [2, false],
+  [0, true],
+  [3, false],
+  [1, true],
+];
+const GATES = ['south', 'west', 'north', 'east'] as const;
+
+/** A new venue every midnight: the six places in turn, each lying another way round. */
+export function venueFor(rampageDay: number): Venue {
+  const day = Math.max(0, Math.floor(rampageDay));
+  const [turn, mirror] = WAYS[day % WAYS.length]!;
+  return { day, stage: stageFor(day), turn, mirror, gate: GATES[turn]! };
+}
+
+/** The venue laid out (the same for everyone that day). */
+export function venueWorld(seed: string, venue: Pick<Venue, 'stage' | 'turn' | 'mirror'>): World {
+  return orient(buildWorld(seed, venue.stage), venue.turn, venue.mirror);
 }
 
 // ---------------------------------------------------------------- the village
@@ -537,4 +573,29 @@ export function buildWorld(seed: string, stage: Stage = STAGES[0]!): World {
   scatter(['villager', 'pumpkin', 'crate', 'fence'], start.x, start.y - 260, 260, 18);
 
   return { props, roads, start };
+}
+
+/**
+ * The same place seen another way: mirrored left to right first, then turned a quarter at a time
+ * clockwise about its middle. Every position moves (things, roads, the laboratory); nothing else
+ * changes. The place is square, so it still fits exactly.
+ */
+export function orient(world: World, turn: number, mirror: boolean): World {
+  const quarters = ((turn % 4) + 4) % 4;
+  if (!quarters && !mirror) return world;
+  const at = (x: number, y: number): [number, number] => {
+    let px = mirror ? WORLD_W - x : x;
+    let py = y;
+    for (let i = 0; i < quarters; i++) [px, py] = [WORLD_H - py, px];
+    return [px, py];
+  };
+  const [sx, sy] = at(world.start.x, world.start.y);
+  return {
+    props: world.props.map((p) => {
+      const [x, y] = at(p.x, p.y);
+      return { ...p, x, y };
+    }),
+    roads: world.roads.map((r) => ({ ...r, points: r.points.map(([x, y]) => at(x, y)) })),
+    start: { x: sx, y: sy },
+  };
 }

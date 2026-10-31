@@ -37,3 +37,24 @@ export function simulatedRubble(seed: string, bands: number): number[] {
   }
   return counts;
 }
+
+const RIVALS = [
+  'Gravedigger Gus',
+  'Mad Marta',
+  'IgorTheGreat',
+  'Stitchface',
+  'BoltNeck',
+  'The Night Doctor',
+  'Lady Lightning',
+  'Hunchback Hal',
+];
+
+/** Stand-in top scores for a day in local dev and owner test mode (never on the live build). */
+export function simulatedBoard(seed: string): Array<{ id: string; name: string; score: number }> {
+  const rng = rngFor('board', seed);
+  return RIVALS.map((name, i) => ({
+    id: `rival:${i}`,
+    name,
+    score: Math.round(1500 + rng() * rng() * 60_000),
+  }));
+}

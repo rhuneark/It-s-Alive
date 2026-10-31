@@ -102,9 +102,10 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
   tiles, Battle (`mode-battle`, starts at once) and Story (`mode-story`, opens the story panel), "Battle
   as" the village's creature or the player's own (`pick-village` / `pick-mine`; "Build my own" opens
   the Sketchbook), then Sketchbook, Chronicle and Replay (`awaken-replay`), the jam button and the
-  music row. The story panel (‹ back): "Rampage · day N", "Loose in <place>", its blurb and stats
-  (`rampage-card`), Start the rampage (`rampage-start`), your best (`rampage-best`), today's
-  bounties (`bounty-board`) and the upgrades (`upgrades`, `buy-<id>`). The scene is not mounted
+  music row. The story panel (‹ back): "Rampage · day N", "Loose in <place>", its blurb, the gate
+  it breaks in from and stats with tomorrow's venue (`rampage-card`), Start the rampage
+  (`rampage-start`), TODAY'S MOST MONSTROUS (`day-board`, below), your best (`rampage-best`),
+  today's bounties (`bounty-board`) and the upgrades (`upgrades`, `buy-<id>`). The scene is not mounted
   while the waking scene, a run or a battle covers the home (`covered`), so the breakout is never
   played unseen.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
@@ -121,8 +122,8 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
   useGame): `reminderPlan()` (`src/game/reminders.ts`) gives one local notification a day at 6 pm Central
   naming that night's part ("Night 5: the third eye" and the question; "Your streak bonus vote is waiting too"
   only on a night the bonus is certain: tonight if it is waiting, tomorrow once voted today), then the
-  vigil and Halloween morning, then every rampage day at 6 pm ("Rampage day 3: The Market Town" and the
-  place's blurb), for the next 7 days (the platform's limit), skipping tonight once voted.
+  vigil and Halloween morning, then every rampage day at 6 pm ("Rampage day 3: The Market Town", the
+  place's blurb, and that a new top 3 and the daily reward wait), for the next 7 days (the platform's limit), skipping tonight once voted.
   `run.setReminders` cancels our earlier ones (payload tag `itsAliveReminder`) and schedules the plan with
   a stable id per night, so re-arming never stacks duplicates. On run.world they land in the bell inbox.
   Skipped in local dev (mock).
@@ -215,9 +216,34 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
     gives a full minute, wakes ≥4 parts and never flattens ≥60% of it. Re-run the tests after any
     tuning; the powers and claws compound, so small changes snowball.
   - Places (`STAGES`, `stageFor(day)`): the Village, the Farmlands, the Market Town, Graveyard Hill,
-    the Baron's Estate, then the City for ever. `buildWorld(seed, stage)` (seed `<season>:r<day>`, the
-    same for everyone that day) lays out roads, houses with clutter, landmarks on 7 plots, farms,
-    graveyards, pumpkin patches, woods and crowds; the laboratory sits at the start, already rubble.
+    the Baron's Estate, the City, then round again for ever. `buildWorld(seed, stage)` (seed
+    `<season>:r<day>`, the same for everyone that day) lays out roads, houses with clutter, landmarks
+    on 7 plots, farms, graveyards, pumpkin patches, woods and crowds; the laboratory sits at the
+    start, already rubble.
+  - THE DAILY ROUND (owner's request, Oct 31: "I do like the daily challenges of being the most
+    monstrous that day … a daily venue change at midnight with each day showcasing the top 3 scores
+    of the day. Daily rewards for return"; a level ladder was built and dropped for this).
+    VENUES: `venueFor(day)` (rampage.ts) is the day's place lying one of eight ways round (`WAYS`:
+    `orient` mirrors then turns it by quarter turns; the laboratory's side is its `gate`, "it breaks
+    in from the north"); day 0 is Halloween's village as it was, and the six places × eight ways do
+    not repeat for 24 days. `venueWorld(seed, venue)` builds it; battles also turn each match's map
+    (`BattleHost.turn/mirror`, sent in `match`). THE DAY'S BOARD (`daily.ts`, `run.submitScore` /
+    `run.fetchBoard`, `components/DayBoard.tsx`): every story run's score (its rubble, upgrades
+    and all) goes on RUN's leaderboard (`rundot/leaderboard.config.json`; simple mode, keep-best,
+    maxScore = MAX_SAFE_INTEGER for big numbers). RUN's periods are UTC calendar ones but a game
+    day runs 05:00-05:00 UTC, so each game day has its own MODE `m<day of month><a|b>` (62 modes,
+    the letter by the month's parity) on a MONTHLY period: a mode's monthly instance only ever
+    holds one game day (the last day of a month spills into next month's instance, which the
+    parity keeps unused; daily.test.ts checks 800 days). The panel and the end card show the top 3
+    (`podium`, your row in gold) and your place; the panel also shows yesterday's winner
+    (`day-board-champ`). Guests are not put on the board until they sign in (with their rubble,
+    `countAsSignedIn`). Local dev and owner test mode use a stand-in podium (`simulatedBoard`) plus
+    your own best (`devScores`). DAILY REWARDS (`daily.ts`, `claimDaily` in state.ts,
+    `components/DailyReward.tsx`): once a game day, from Halloween, a popup on the home (after the
+    breakout, 1.2 s after the home settles) pays rubble into the purse: a 7-day streak track
+    (`REWARD_BASE` 500 … 15K, or `REWARD_SHARE` 20% … 150% of the player's best run if more), round
+    again after day 7, back to day 1 after a missed day (`save.daily` {day, streak}, carried over
+    a season change).
   - Community: one shared-tally entry per run, filed under its rubble band (`r_<season>_d<day>_b<band>`,
     `rubbleBand`, 12 bands, `bandValue`) because counts are all the tally does; a day's total is
     `totalFromBands` of 12 counts. Closed days are cached in `save.rampage.totals`; the creature's height
@@ -296,10 +322,11 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
                sketch (Sketchbook designs), reveal (last night's stitching), awakening (Halloween scene),
                rampage + rampageRun (the rampage: places, powers, growth, one run; rampage.test.ts),
                bounty (the day's three bounties), powerup, upgrades (story), numbers (big numbers),
+               daily (the day's board modes, daily rewards),
                arena + battleHost + battleWire (the multiplayer battle: rules, host, wire format),
                reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
 src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock,
-               live battle rooms)
+               live battle rooms, the day's board)
 src/rooms/     BattleRoom: the live battle's GameRoom on RUN's server (a thin shell over BattleHost)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
                useStorm: the vigil's lightning; sfx: synthesized storm and rampage sounds;
@@ -313,7 +340,7 @@ src/components Monster (the husk in the lab with its painted layers), Voting (op
                Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),
                Battle (the multiplayer battle; Rampage and Battle are lazy-loaded chunks),
                LooseScene (the rampage menu's picture and the breakout), AwakenButton (the home's
-               pixel-art button),
+               pixel-art button), DayBoard (the day's top 3), DailyReward (the reward popup),
                SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
 src/App.tsx    screens: title/continue, vote, preseason, vigil, and from Halloween the rampage menu
@@ -482,7 +509,8 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   deploy.yml, applied game-wide on every deploy.
 - `.github/workflows/jam-promo.yml`: hand-run, read-only. `rundot jam promo` prints the game's jam entries
   (October Jam) with their vote/play links, caption and social share URLs; read them in the run's log.
-- No leaderboard in this game.
+- The only leaderboard is the day's board (THE DAILY ROUND): `rundot/leaderboard.config.json`, 62
+  modes on one monthly period. Moderate it with `rundot leaderboard …` (owner, from a local clone).
 - `rundot/textGen.config.json` is `{"disabled": true}`: the game uses no AI, and `rundot deploy` otherwise
   auto-creates an uncapped config. Keep it disabled unless a feature needs it (then set caps).
 - The cloud sandbox cannot reach w.run (network policy), so live checks on the deployed build are done by the owner.

@@ -13,7 +13,8 @@
  */
 import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { HapticFeedbackStyle } from '@series-inc/rundot-game-sdk';
-import { simulatedCrowd, simulatedRubble } from '../game/crowd';
+import { simulatedBoard, simulatedCrowd, simulatedRubble } from '../game/crowd';
+import { boardInstances, boardMode, topOf, type BoardEntry } from '../game/daily';
 import { ROOM_TYPE, type BattleProtocol } from '../game/battleWire';
 import type { Reminder } from '../game/reminders';
 import { DAY_MS, SEASON } from '../game/schedule';
@@ -24,6 +25,7 @@ const SAVE_KEY = 'save';
 const PREVIEW_SAVE_KEY = 'save_preview';
 const DEV_VOTES_KEY = 'devVotes';
 const DEV_RUBBLE_KEY = 'devRubble';
+const DEV_SCORES_KEY = 'devScores';
 /** Left behind by the retired Test Lab; removed once on boot. */
 const RETIRED_KEYS = ['testLab', 'save_test', 'testVotes'];
 
@@ -409,6 +411,115 @@ export async function fetchRubble(
     return results.map((r) => (r && Number.isFinite(r.count) ? r.count : 0));
   } catch (err) {
     warn('fetchRubble', err);
+    return null;
+  }
+}
+
+/** A day's board as the screens show it: the top three, and the player's own place. */
+export interface DayBoard {
+  top: Array<BoardEntry & { me: boolean }>;
+  /** The player's rank and best score that day (null: no run on the board yet). */
+  mine: { rank: number; score: number } | null;
+}
+
+/**
+ * Put a story run's score on its game day's board (daily.ts: one board per game day). Guests are
+ * left off, like their rubble, until they sign in. Returns the rank, or null if it did not count.
+ */
+export async function submitScore(
+  day: number,
+  dayStartMs: number,
+  score: number,
+  seconds: number,
+): Promise<number | null> {
+  await ready();
+  if (fakeWrites()) {
+    try {
+      const raw = await RundotGameAPI.appStorage.getItem(DEV_SCORES_KEY);
+      const all = raw ? (JSON.parse(raw) as Record<string, number>) : {};
+      all[String(day)] = Math.max(all[String(day)] ?? 0, Math.round(score));
+      await RundotGameAPI.appStorage.setItem(DEV_SCORES_KEY, JSON.stringify(all));
+      return (await fetchBoard(day, dayStartMs))?.mine?.rank ?? null;
+    } catch (err) {
+      warn('dev score', err);
+      return null;
+    }
+  }
+  if (isGuest()) return null;
+  try {
+    const res = await RundotGameAPI.leaderboard.submitScore({
+      score: Math.round(score),
+      duration: Math.max(10, Math.round(seconds)),
+      mode: boardMode(dayStartMs),
+      metadata: { day },
+    });
+    return res.accepted ? (res.rank ?? null) : null;
+  } catch (err) {
+    warn('submitScore', err);
+    return null;
+  }
+}
+
+/** A game day's top three and the player's place on it. Null if the board could not be read. */
+export async function fetchBoard(day: number, dayStartMs: number): Promise<DayBoard | null> {
+  await ready();
+  if (fakeWrites()) {
+    let mine = 0;
+    try {
+      const raw = await RundotGameAPI.appStorage.getItem(DEV_SCORES_KEY);
+      mine = (raw ? (JSON.parse(raw) as Record<string, number>) : {})[String(day)] ?? 0;
+    } catch {
+      // no scores yet
+    }
+    const crowd = simulatedBoard(`${SEASON.id}:${day}`);
+    const all = mine ? [...crowd, { id: 'me', name: playerName(), score: mine }] : crowd;
+    const ranked = topOf([all], all.length);
+    const rank = ranked.findIndex((e) => e.id === 'me') + 1;
+    return {
+      top: ranked.slice(0, 3).map((e) => ({ ...e, me: e.id === 'me' })),
+      mine: rank > 0 ? { rank, score: mine } : null,
+    };
+  }
+  try {
+    const mode = boardMode(dayStartMs);
+    const me = RundotGameAPI.getProfile()?.id ?? '';
+    const pages = await Promise.all(
+      boardInstances(dayStartMs).map((periodDate) =>
+        withRetry(() =>
+          RundotGameAPI.leaderboard.getPodiumScores({
+            mode,
+            periodDate,
+            topCount: 3,
+            contextAhead: 0,
+            contextBehind: 0,
+          }),
+        ),
+      ),
+    );
+    const entries = pages.map((p) =>
+      (p.context?.topEntries ?? p.entries ?? []).map((e) => ({
+        id: e.profileId,
+        name: e.username || 'A monster',
+        score: e.score,
+      })),
+    );
+    const own = pages
+      .map((p) => p.context?.playerEntry)
+      .filter((e): e is NonNullable<typeof e> => !!e)
+      .sort((a, b) => b.score - a.score)[0];
+    const top = topOf(entries);
+    const inTop = top.findIndex((e) => e.id === me);
+    return {
+      top: top.map((e) => ({ ...e, me: e.id === me })),
+      mine: own
+        ? {
+            rank: inTop >= 0 ? inTop + 1 : (own.rank ?? pages[0]?.playerRank ?? 0),
+            score: own.score,
+          }
+        : null,
+    };
+  } catch (err) {
+    warn('fetchBoard', err);
     return null;
   }
 }

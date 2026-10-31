@@ -3,6 +3,7 @@
  * looking at, and a cache of already-resolved days. Pure reducers only; the
  * caller persists the result to appStorage after every step.
  */
+import { NO_DAILY, rewardFor, rewardWaiting, streakToday, type DailySave } from './daily';
 import { UPGRADES, cost, type Levels, type UpgradeId } from './upgrades';
 import { cleanSketch, type Parts } from './sketch';
 import type { WinReason } from './tally';
@@ -62,6 +63,8 @@ export interface SaveState {
   sawAwakening: boolean;
   /** The rampage (from Halloween on). */
   rampage: RampageSave;
+  /** The daily reward: the game day it was last claimed, and the streak (daily.ts). */
+  daily: DailySave;
 }
 
 export interface RampageSave {
@@ -206,6 +209,7 @@ export function newSave(season: string, day: number): SaveState {
     seenNight: -1,
     sawAwakening: false,
     rampage: newRampage(),
+    daily: NO_DAILY,
   };
 }
 
@@ -258,6 +262,7 @@ export function parseSave(raw: string | null, season: string, day: number): Save
       seenNight: typeof data.seenNight === 'number' ? Math.min(data.seenNight, day - 1) : -1,
       sawAwakening: data.sawAwakening === true,
       rampage: parseRampage(data.rampage),
+      daily: parseDaily(data.daily),
     };
     return rollToDay(save, day);
   } catch {
@@ -266,6 +271,25 @@ export function parseSave(raw: string | null, season: string, day: number): Save
 }
 
 /** A new season starts the votes afresh but keeps the player's own settings and Sketchbook. */
+function parseDaily(raw: unknown): DailySave {
+  const d = (isRecord(raw) ? raw : {}) as Partial<DailySave>;
+  return { day: clampInt(d.day, -1, 100_000), streak: clampInt(d.streak, 0, 100_000) };
+}
+
+/**
+ * Claim today's reward (game day `today`): the streak grows if yesterday's was claimed, and its
+ * rubble goes into the purse. Unchanged if today's was already claimed.
+ */
+export function claimDaily(save: SaveState, today: number): SaveState {
+  if (!rewardWaiting(save.daily, today)) return save;
+  const streak = streakToday(save.daily, today);
+  return {
+    ...save,
+    daily: { day: today, streak },
+    rampage: { ...save.rampage, purse: save.rampage.purse + rewardFor(streak, save.rampage.best) },
+  };
+}
+
 function carryOver(old: Partial<SaveState>, fresh: SaveState): SaveState {
   return {
     ...fresh,
@@ -276,6 +300,7 @@ function carryOver(old: Partial<SaveState>, fresh: SaveState): SaveState {
         ? Math.max(0, Math.min(1, old.musicVolume))
         : DEFAULT_MUSIC_VOLUME,
     sketch: old.sketch == null ? null : cleanSketch(old.sketch),
+    daily: parseDaily(old.daily),
   };
 }
 
