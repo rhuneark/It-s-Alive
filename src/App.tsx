@@ -829,6 +829,7 @@ function RampageMenu({
   const [sheet, setSheet] = useState(false);
   const own = save.sketch !== null && Object.keys(save.sketch).length > 0;
   const [pick, setPick] = useState<'village' | 'mine'>('village');
+  const [panel, setPanel] = useState<'main' | 'story'>('main');
   const today = r && save.rampage.day === r.day ? save.rampage.today : 0;
   return (
     <div className="home" data-testid="rampage-menu">
@@ -852,6 +853,7 @@ function RampageMenu({
           className="btn btn-awaken"
           onClick={() => {
             onListen();
+            setPanel('main');
             setSheet(true);
           }}
           disabled={!game.stitched || !r}
@@ -870,141 +872,202 @@ function RampageMenu({
             data-testid="mode-sheet"
             onClick={(e) => e.stopPropagation()}
           >
-            <button className="sheet-close" aria-label="Close" onClick={() => setSheet(false)}>
-              ×
-            </button>
-            <button
-              className="mode-card mode-battle"
-              onClick={() => onBattle(pick === 'mine' && own ? 'mine' : 'village')}
-              data-testid="mode-battle"
-            >
-              <span className="mode-tag">Live · 3 minutes · up to 8 creatures</span>
-              <b>Battle</b>
-              <span>Smash the town, devour smaller creatures. Biggest at the bell wins.</span>
-            </button>
-            <div className="mode-pick" role="radiogroup" aria-label="Your creature in battle">
-              <button
-                role="radio"
-                aria-checked={pick === 'village'}
-                className={pick === 'village' ? 'on' : ''}
-                onClick={() => setPick('village')}
-                data-testid="pick-village"
-              >
-                The village's creature
-              </button>
-              <button
-                role="radio"
-                aria-checked={pick === 'mine'}
-                className={pick === 'mine' ? 'on' : ''}
-                onClick={() => (own ? setPick('mine') : onSketch())}
-                data-testid="pick-mine"
-              >
-                {own ? 'My own build' : 'Build my own'}
-              </button>
-            </div>
-            <button
-              className="mode-card mode-story"
-              onClick={onRampage}
-              data-testid="rampage-start"
-            >
-              <span className="mode-tag">Story · rampage day {r.day + 1} · 1 minute</span>
-              <b>Loose in {r.stage.name}</b>
-              <span>{r.stage.blurb}</span>
-            </button>
-            <div className="story-facts" data-testid="rampage-card">
-              <span>
-                <b data-testid="creature-height">{feet(r.size)} ft</b> tall
-              </span>
-              {r.grewBy > 0 && (
-                <span>
-                  <b className="grew">+{feet(r.grewBy)} ft</b> grew last night
-                </span>
+            <header className="sheet-head">
+              {panel === 'story' ? (
+                <button className="sheet-icon" aria-label="Back" onClick={() => setPanel('main')}>
+                  ‹
+                </button>
+              ) : (
+                <span className="sheet-icon" aria-hidden="true" />
               )}
-              <span>
-                grows in <b>{formatCountdown(r.growsInMs)}</b>
-              </span>
-            </div>
-            {save.rampage.runs > 0 && (
-              <p className="story-best" data-testid="rampage-best">
-                Your best <b>{big(save.rampage.best)}</b> · today <b>{big(today)}</b> rubble
-              </p>
+              <h2>{panel === 'story' ? 'Story' : 'Choose your hunt'}</h2>
+              <button className="sheet-icon" aria-label="Close" onClick={() => setSheet(false)}>
+                ×
+              </button>
+            </header>
+            {panel === 'main' ? (
+              <>
+                <div className="modes">
+                  <button
+                    className="mode mode-battle"
+                    onClick={() => onBattle(pick === 'mine' && own ? 'mine' : 'village')}
+                    data-testid="mode-battle"
+                  >
+                    <ClawIcon />
+                    <b>Battle</b>
+                    <span className="mode-tag">Live · 3 min</span>
+                    <span className="mode-text">Up to 8 creatures. Biggest at the bell wins.</span>
+                  </button>
+                  <button
+                    className="mode mode-story"
+                    onClick={() => setPanel('story')}
+                    data-testid="mode-story"
+                  >
+                    <MoonIcon />
+                    <b>Story</b>
+                    <span className="mode-tag">Day {r.day + 1} · 1 min</span>
+                    <span className="mode-text">Loose in {r.stage.name}</span>
+                  </button>
+                </div>
+                <div className="pick" role="radiogroup" aria-label="Your creature in battle">
+                  <span>Battle as</span>
+                  <button
+                    role="radio"
+                    aria-checked={pick === 'village'}
+                    className={pick === 'village' ? 'on' : ''}
+                    onClick={() => setPick('village')}
+                    data-testid="pick-village"
+                  >
+                    The village's
+                  </button>
+                  <button
+                    role="radio"
+                    aria-checked={pick === 'mine'}
+                    className={pick === 'mine' ? 'on' : ''}
+                    onClick={() => (own ? setPick('mine') : onSketch())}
+                    data-testid="pick-mine"
+                  >
+                    {own ? 'My own' : 'Build my own'}
+                  </button>
+                </div>
+                <div className="sheet-row">
+                  <button
+                    className="btn btn-secondary"
+                    onClick={onSketch}
+                    data-testid="sketch-open"
+                  >
+                    Sketchbook
+                  </button>
+                  <button className="btn btn-secondary" onClick={onChronicle}>
+                    Chronicle
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={onReplay}
+                    data-testid="awaken-replay"
+                  >
+                    Replay
+                  </button>
+                </div>
+                <JamButton onVote={game.voteInJam} />
+                <MusicBar
+                  on={save.musicOn}
+                  volume={save.musicVolume}
+                  onToggle={() => {
+                    if (!save.musicOn) theme.setWanted(true);
+                    onListen();
+                    game.toggleMusic();
+                  }}
+                  onVolume={(v) => {
+                    onListen();
+                    game.setVolume(v);
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <div className="story-head">
+                  <p className="story-day">Rampage · day {r.day + 1}</p>
+                  <h3>Loose in {r.stage.name}</h3>
+                  <p className="story-blurb">{r.stage.blurb}</p>
+                  <div className="story-facts" data-testid="rampage-card">
+                    <span>
+                      <b data-testid="creature-height">{feet(r.size)} ft</b> tall
+                    </span>
+                    {r.grewBy > 0 && (
+                      <span>
+                        <b className="grew">+{feet(r.grewBy)} ft</b> grew last night
+                      </span>
+                    )}
+                    <span>
+                      grows in <b>{formatCountdown(r.growsInMs)}</b>
+                    </span>
+                  </div>
+                </div>
+                <button
+                  className="btn btn-primary btn-wide"
+                  onClick={onRampage}
+                  data-testid="rampage-start"
+                >
+                  Start the rampage
+                </button>
+                {save.rampage.runs > 0 && (
+                  <p className="story-best" data-testid="rampage-best">
+                    Your best <b>{big(save.rampage.best)}</b> · today <b>{big(today)}</b> rubble
+                  </p>
+                )}
+                {r.bounties.length > 0 && (
+                  <section className="block" data-testid="bounty-board">
+                    <h4>Today's bounties</h4>
+                    <ul className="checklist">
+                      {r.bounties.map((b) => {
+                        const done = r.done.includes(b.id);
+                        return (
+                          <li key={b.id} className={done ? 'done' : ''}>
+                            <i aria-hidden="true">{done ? '✓' : ''}</i>
+                            <span>{b.text}</span>
+                            <em>+{b.bonus}</em>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </section>
+                )}
+                <section className="block upgrades" data-testid="upgrades">
+                  <h4>
+                    Upgrades <span>{big(save.rampage.purse)} rubble to spend</span>
+                  </h4>
+                  <ul>
+                    {UPGRADES.map((u) => {
+                      const at = level(save.rampage.levels, u.id);
+                      const price = cost(u, at);
+                      return (
+                        <li key={u.id}>
+                          <div>
+                            <b>{u.name}</b>
+                            <i>{at >= u.max ? 'max' : `level ${at}`}</i>
+                            <span>{u.text}</span>
+                          </div>
+                          <button
+                            className="btn btn-secondary btn-small"
+                            disabled={price > save.rampage.purse}
+                            onClick={() => game.buyUpgrade(u.id)}
+                            data-testid={`buy-${u.id}`}
+                          >
+                            {at >= u.max ? 'Max' : big(price)}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <p>Story only: in battle, only the power-ups on the map count.</p>
+                </section>
+              </>
             )}
-            {r.bounties.length > 0 && (
-              <ul
-                className="story-bounties"
-                data-testid="bounty-board"
-                aria-label="Today's bounties"
-              >
-                {r.bounties.map((b) => {
-                  const done = r.done.includes(b.id);
-                  return (
-                    <li key={b.id} className={done ? 'done' : ''}>
-                      <i aria-hidden="true">{done ? '✓' : ''}</i>
-                      <span>{b.text}</span>
-                      <em>+{b.bonus}</em>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <section className="upgrades" data-testid="upgrades">
-              <h3>
-                Story upgrades <span>{big(save.rampage.purse)} rubble to spend</span>
-              </h3>
-              <ul>
-                {UPGRADES.map((u) => {
-                  const at = level(save.rampage.levels, u.id);
-                  const price = cost(u, at);
-                  return (
-                    <li key={u.id}>
-                      <div>
-                        <b>{u.name}</b>
-                        <i>{at >= u.max ? 'max' : `level ${at}`}</i>
-                        <span>{u.text}</span>
-                      </div>
-                      <button
-                        className="btn btn-secondary btn-small"
-                        disabled={price > save.rampage.purse}
-                        onClick={() => game.buyUpgrade(u.id)}
-                        data-testid={`buy-${u.id}`}
-                      >
-                        {at >= u.max ? 'Max' : big(price)}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              <p>Story only. Battles are fair: there, only the power-ups on the map count.</p>
-            </section>
-            <div className="sheet-row">
-              <button className="btn btn-secondary" onClick={onSketch} data-testid="sketch-open">
-                Sketchbook
-              </button>
-              <button className="btn btn-secondary" onClick={onChronicle}>
-                Chronicle
-              </button>
-              <button className="btn btn-secondary" onClick={onReplay} data-testid="awaken-replay">
-                Watch it wake
-              </button>
-            </div>
-            <JamButton onVote={game.voteInJam} />
-            <MusicBar
-              on={save.musicOn}
-              volume={save.musicVolume}
-              onToggle={() => {
-                if (!save.musicOn) theme.setWanted(true);
-                onListen();
-                game.toggleMusic();
-              }}
-              onVolume={(v) => {
-                onListen();
-                game.setVolume(v);
-              }}
-            />
           </section>
         </div>
       )}
     </div>
+  );
+}
+
+/** Three claw marks: the battle. */
+function ClawIcon() {
+  return (
+    <svg className="mode-icon" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M10 8 C 18 18, 22 28, 20 42" />
+      <path d="M22 6 C 30 16, 33 28, 30 42" />
+      <path d="M34 8 C 41 18, 43 28, 39 40" />
+    </svg>
+  );
+}
+
+/** The moon over the village: the story. */
+function MoonIcon() {
+  return (
+    <svg className="mode-icon" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M30 6 A 18 18 0 1 0 42 32 A 14 14 0 1 1 30 6 Z" />
+    </svg>
   );
 }
 

@@ -74,18 +74,24 @@ Fonts: Rubik everywhere (the owner found the gothic fonts unreadable); titles at
   page (`.storm-rain`; `.app` sits above it). Two flickers per strike, strikes ≥ 1.2 s apart: under
   3 flashes a second. Nothing strikes for reduced-motion players.
 - From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx): ONLY the
-  creature, edge to edge (`LooseScene`: the community's creature ALIVE through `RigCanvas`,
-  breathing, tail lashing, rearing up with lightning in its spark colour, over the burning night
-  village of the day's place, bigger the taller the community made it; smoke, rain, fires and
-  villagers with torches fleeing across the near row; the first time a player sees it, the BREAKOUT
-  plays there: the laboratory tower shakes, bursts, the creature rises, IT'S LOOSE!, then
-  `markBrokeOut`), and one heartbeat button, AWAKEN (`awaken-open`). It opens a sheet
-  (`mode-sheet`): Battle (`mode-battle`) with the creature to bring (`pick-village` / `pick-mine`:
-  the Sketchbook build, or "Build my own" opens the Sketchbook), the Story run (`rampage-start`:
-  "Loose in <place>", its stats `rampage-card`, your best `rampage-best`, the day's bounties
-  `bounty-board`), the story upgrades (`upgrades`, `buy-<id>`), then Sketchbook, Chronicle and
-  "Watch it wake", the jam button and the music row. The scene is not mounted while the waking scene,
-  a run or a battle covers the home (`covered`), so the breakout is never played unseen.
+  creature and one heartbeat button, AWAKEN (`awaken-open`). The picture (`LooseScene`) is a PixelLab
+  painting (`public/art/home.png`, 240x400, pixflux seed 37, candidates in art/raw/bg, original in
+  art/picked/home.png; the owner called the old code-drawn sky and rows "crappy"): a gothic street
+  at night, lit windows, a tower under a huge blood moon, covering the screen. The community's
+  creature stands in the street (feet at `FEET_Y` 0.8 of the painting), ALIVE through `RigCanvas`
+  (breathing, tail lashing, rearing up when lightning in its spark colour splits the sky), bigger
+  the taller the community made it, its head against the moon; rain, embers and villagers with
+  torches fleeing along the road. The first time a player sees it, the BREAKOUT plays: the ground
+  shakes, the night flashes, rubble flies, it rises, IT'S LOOSE! (white, red glow, above the moon),
+  then `markBrokeOut`. Awaken opens a dark glass sheet (`mode-sheet`, "Choose your hunt"): two big
+  tiles, Battle (`mode-battle`, starts at once) and Story (`mode-story`, opens the story panel), "Battle
+  as" the village's creature or the player's own (`pick-village` / `pick-mine`; "Build my own" opens
+  the Sketchbook), then Sketchbook, Chronicle and Replay (`awaken-replay`), the jam button and the
+  music row. The story panel (‹ back): "Rampage · day N", "Loose in <place>", its blurb and stats
+  (`rampage-card`), Start the rampage (`rampage-start`), your best (`rampage-best`), today's
+  bounties (`bounty-board`) and the upgrades (`upgrades`, `buy-<id>`). The scene is not mounted
+  while the waking scene, a run or a battle covers the home (`covered`), so the breakout is never
+  played unseen.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
   `JAM_VOTE_URL` (useGame.ts, from `rundot jam promo`). Games cannot open outside pages: RUN's frame is
   sandboxed `allow-scripts allow-downloads` (no popups, no top navigation), so `window.open` fails preflight
@@ -426,10 +432,11 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
 
 - `.github/workflows/deploy.yml`: every push to `claude/blissful-keller-ybbygh` (except docs-only) runs tests,
   builds and `rundot deploy --orientation Portrait`, then sets keywords/description from the env lines at the top.
-- Public: version 1.24.0 (commit b4bc1d2: the vigil storm, the awakening at midnight Central Oct 31, the
-  rampage menu and the rampage, on top of 1.20.0's jam button, 1.16.0's reminders and streak vote and
-  1.14.0's season, thumbnail and name) was submitted with the publish workflow on Oct 30, 20:41 UTC
-  (1.20.0 on Oct 23, 1.16.0 on Oct 13, 1.14.0 on Oct 11); RUN reviews it and makes it public on approval. Pushes after that deploy NEW private versions only: a fix
+- Public: version 1.29.0 (commit a37a0c7: multiplayer battles, power-ups, story upgrades, big numbers,
+  Rubik, the creature + Awaken home, on top of 1.24.0's vigil storm, awakening and rampage) was
+  submitted with the publish workflow on Oct 31, 04:28 UTC, half an hour before Halloween began in
+  Central (1.24.0 on Oct 30, 1.20.0 on Oct 23, 1.16.0 on Oct 13, 1.14.0 on Oct 11); RUN reviews it
+  and makes it public on approval. Pushes after that deploy NEW private versions only: a fix
   reaches public players only when the owner asks to publish again (each submission must be a higher
   version and goes through review). Name, tags and description are set game-wide on each deploy.
 - `.github/workflows/publish.yml`: hand-run only. `publish` runs `rundot game set-public --version X.Y.Z`

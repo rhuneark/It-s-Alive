@@ -291,8 +291,9 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   await page.getByTestId('awaken-open').click();
   const sheet = page.getByTestId('mode-sheet');
   await expect(sheet).toContainText('Battle');
+  await page.getByTestId('mode-story').click();
   await expect(sheet).toContainText('Loose in The Village');
-  await expect(sheet).toContainText('rampage day 1');
+  await expect(sheet).toContainText('Rampage · day 1');
   await expect(page.getByTestId('creature-height')).toHaveText(/\d+ ft/);
   // The day's three bounties, and the story upgrades (nothing to spend yet).
   await expect(page.getByTestId('bounty-board').locator('li')).toHaveCount(3);
@@ -326,6 +327,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   // The runs' rubble is in the purse, for upgrades (two short runs can't afford one yet).
   await expect(page.getByTestId('upgrades')).toContainText(/[1-9][\d.,KMB]* rubble to spend/);
   // The waking can be watched again, and skipped.
+  await page.getByRole('button', { name: 'Back' }).click();
   await page.getByTestId('awaken-replay').click();
   await expect(wake).toHaveAttribute('data-stage', 'dark');
   await page.getByTestId('awaken-skip').click();
@@ -347,6 +349,7 @@ test('a whole season: vote every night, extra vote via ad, continue, awaken on H
   // The next day it is loose somewhere new, and taller for what everyone smashed.
   await page.goto('/?day=21&runSeconds=4');
   await page.getByTestId('awaken-open').click();
+  await page.getByTestId('mode-story').click();
   await expect(sheet).toContainText('Loose in The Farmlands');
   await expect(page.getByTestId('rampage-card')).toContainText(/\+\d+ ft/);
   await expect(page.getByTestId('rampage-card')).toContainText('grew last night');
@@ -429,7 +432,8 @@ test('owner test mode: jump to Halloween with a throwaway save, then back to the
   await page.getByTestId('awaken-skip').click();
   await expect(page.getByTestId('rampage-menu')).toBeVisible();
   await page.getByTestId('awaken-open').click();
-  await expect(page.getByTestId('mode-sheet')).toContainText('rampage day 1');
+  await page.getByTestId('mode-story').click();
+  await expect(page.getByTestId('mode-sheet')).toContainText('Rampage · day 1');
   await framedButtons(page);
   await page.getByRole('button', { name: 'Close' }).click();
   // Jump again, to a later day of the rampage.
@@ -438,6 +442,7 @@ test('owner test mode: jump to Halloween with a throwaway save, then back to the
   await expect(page.getByTestId('preview-bar')).toContainText('Rampage day 3');
   await page.getByTestId('awaken-skip').click();
   await page.getByTestId('awaken-open').click();
+  await page.getByTestId('mode-story').click();
   await expect(page.getByTestId('mode-sheet')).toContainText('Loose in The Market Town');
   // Exit: back to the real day, on its own save.
   await page.getByTestId('preview-bar').getByRole('button', { name: 'Exit' }).click();
