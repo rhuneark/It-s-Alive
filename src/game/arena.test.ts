@@ -27,7 +27,7 @@ describe('a battle', () => {
     expect(Object.keys(botSeat('m1', 3).parts).length).toBeGreaterThan(10);
   });
 
-  it('lasts three minutes; creatures grow, devour each other, come back, and are ranked by mass', () => {
+  it('lasts a minute; creatures grow, devour each other, come back, and are ranked by mass', () => {
     const { arena, events } = battle('full');
     expect(arena.time).toBeGreaterThanOrEqual(BATTLE_SECONDS);
     expect(events.at(-1)).toEqual({ type: 'end' });
@@ -38,7 +38,7 @@ describe('a battle', () => {
     expect(table.map((s) => s.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     for (let i = 1; i < table.length; i++)
       expect(table[i - 1]!.mass).toBeGreaterThanOrEqual(table[i]!.mass);
-    // Big numbers: the winner's mass runs into the hundreds of thousands.
+    // Big numbers: the winner's mass runs into the hundreds of thousands in a minute.
     expect(table[0]!.mass).toBeGreaterThan(100_000);
     // ...but the place is never flattened: the village rebuilds behind them.
     const standing = arena.field.props.filter((p) => p.alive).length;

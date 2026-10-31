@@ -16,7 +16,7 @@ export const SNAP_EVERY = 2;
 /** Seconds of lobby after the first creature arrives, for others to join. */
 export const LOBBY_SECONDS = 5;
 /** Late joiners take a bot's seat until this many seconds are left. */
-export const JOIN_UNTIL = 60;
+export const JOIN_UNTIL = 20;
 
 export interface SeatInfo {
   id: string;

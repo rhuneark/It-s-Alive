@@ -42,7 +42,7 @@ import type { Parts } from '../game/sketch';
 import * as run from '../sdk/run';
 
 /**
- * A battle: up to eight creatures loose in one place for three minutes, live with other players
+ * A battle: up to eight creatures loose in one place for one minute, live with other players
  * (RUN's realtime rooms) or offline against bots. Grow by smashing the village and devouring
  * smaller creatures; the most mass when the clock runs out wins. Everything shown comes from the
  * room's snapshots (battleWire.ts): other creatures are drawn a tenth of a second in the past,

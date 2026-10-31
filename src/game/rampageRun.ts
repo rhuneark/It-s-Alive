@@ -98,7 +98,7 @@ export const NO_BOOST: Boost = { speed: 1, claw: 1, value: 1 };
 /**
  * How a creature carries its size. In a story run it gets faster as it grows (√size) and grows by
  * all it smashes; in a battle a giant is barely faster than a newborn and grows more slowly, so the
- * small can run and the place lasts three minutes.
+ * small can run and the place lasts the minute.
  */
 export interface Tune {
   /** Speed grows with size to this power (times the start size to the rest). */

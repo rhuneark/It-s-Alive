@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { SEATS } from './arena';
 import { BattleHost, type HostMsg } from './battleHost';
-import { LOBBY_SECONDS, TICK_MS, unpackEvent, unpackFighters, unpackPickups } from './battleWire';
+import {
+  JOIN_UNTIL,
+  LOBBY_SECONDS,
+  TICK_MS,
+  unpackEvent,
+  unpackFighters,
+  unpackPickups,
+} from './battleWire';
 
 const run = (host: BattleHost, seconds: number) => {
   const out: HostMsg[] = [];
@@ -41,7 +48,7 @@ describe('a hosted battle', () => {
   });
 
   it("lets a late player take a bot's seat, and plays on for a player who leaves", () => {
-    const host = new BattleHost('host-2', 120);
+    const host = new BattleHost('host-2', 60);
     host.join('alice', 'Alice', {});
     run(host, LOBBY_SECONDS + 0.1);
     expect(host.open).toBe(true);
@@ -58,8 +65,8 @@ describe('a hosted battle', () => {
     const left = host.leave('alice');
     const after = left[0]!;
     expect(after.type === 'roster' && after.seats.find((s) => s.id === 'alice')!.bot).toBe(true);
-    // Nobody joins in the last minute.
-    run(host, 61);
+    // Nobody joins in the last JOIN_UNTIL seconds.
+    run(host, 60 - JOIN_UNTIL + 1);
     expect(host.open).toBe(false);
   });
 });

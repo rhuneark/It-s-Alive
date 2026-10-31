@@ -25,7 +25,7 @@ smashes, its parts wake one by one with powers during a run, and every midnight 
 everything the whole community smashed that day. It runs on with no end date (the city goes on).
 
 From Oct 31 (owner's request) it is MULTIPLAYER FIRST. Home is only the creature and one button,
-Awaken, which offers a live BATTLE (3 minutes, up to 8 creatures, bots in the empty seats; the
+Awaken, which offers a live BATTLE (60 seconds since Oct 31 evening, first 3 minutes; up to 8 creatures, bots in the empty seats; the
 player brings the village's creature or their own Sketchbook build; biggest mass at the bell wins)
 or the STORY run (the village's creature alone in the day's place, with upgrades). Big numbers
 (`numbers.ts`, K/M/B/T… like RUN's Big Numbers API) everywhere; power-ups on the map in both modes;
@@ -250,20 +250,22 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
   - `BattleHost` (pure, used by the server room AND `app/localBattle.ts`): players `hello` with
     name and parts (`cleanSketch`ed) and `steer`; a `LOBBY_SECONDS` 5 lobby after the first
     arrives, then bots (`botSeat`: random parts, a monster name) fill the 8 seats; a late player
-    takes a bot's seat until `JOIN_UNTIL` 60 s are left (then the room locks); a player who leaves
+    takes a bot's seat until `JOIN_UNTIL` 20 s are left (then the room locks); a player who leaves
     is played by a bot. Ticks every `TICK_MS` 50; a snapshot every 2nd tick (fighters packed 6
     numbers each, power-ups, packed events incl. every smash, what was rebuilt); `over` with the
     standings. If the live join fails (guest, offline, service down) the battle is OFFLINE vs bots
     on the phone with the same host (`localBattle`), and says so.
-  - `Arena` (`BATTLE_SECONDS` 180): each creature is a `Beast` on one shared `Field` (rampageRun.ts:
+  - `Arena` (`BATTLE_SECONDS` 60; owner: "back to 60 seconds"): each creature is a `Beast` on one shared `Field` (rampageRun.ts:
     the story's own creature code, so claws, powers and growth match). A creature devours another up
     to `EAT_RATIO` 0.8 of its might when it reaches it (gains 60% of its mass); the devoured comes
     back small after 3 s at the `safeSpot` farthest from anything that could eat it, shielded
     (`SPAWN_SHIELD` 3 s of Iron Hide). Battle tuning (`BATTLE_TUNE`): speed grows only as
-    size^0.12 (a giant is barely faster than a newborn), growth 0.45 of a smash's mass; past 3× its
-    start a creature sheds 0.6%/s of its mass; smashed things are rebuilt after 30 s (`regrow`, not
-    under a creature), so the place lasts the 3 minutes (arena.test.ts: 25-40% stands at the end,
-    the winner reaches hundreds of thousands of mass). Ranked by mass. Bots (`think`, 4×/s): flee
+    size^0.12 (a giant is barely faster than a newborn), growth 0.9 of a smash's mass (enough in a
+    minute to devour each other often); past 3× its start a creature sheds 1.2%/s of its mass;
+    smashed things are rebuilt after 15 s (`regrow`, not under a creature), so one runaway giant
+    cannot flatten the place (all-bot battles, 24 per place: median 8 devours, half the place still
+    standing at the bell, the winner at 0.2-1M+ mass; arena.test.ts checks a minute: devours,
+    respawns, ranks, >100K for the winner, >15% standing). Ranked by mass. Bots (`think`, 4×/s): flee
     what could devour them, chase what they could devour, grab power-ups, else smash the nearest.
   - The screen: others drawn ~110 ms in the past between snapshots, your own creature extrapolated
     with your steering (it answers at once); camera on you; name tags with mass (big numbers);

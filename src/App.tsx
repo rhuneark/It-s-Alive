@@ -895,7 +895,7 @@ function RampageMenu({
                   >
                     <ClawIcon />
                     <b>Battle</b>
-                    <span className="mode-tag">Live · 3 min</span>
+                    <span className="mode-tag">Live · 1 min</span>
                     <span className="mode-text">Up to 8 creatures. Biggest at the bell wins.</span>
                   </button>
                   <button

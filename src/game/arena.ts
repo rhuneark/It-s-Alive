@@ -13,7 +13,7 @@ import { Beast, Field, type RunEvent, type Steer, type Tune } from './rampageRun
 import { rngFor } from './rng';
 import { randomSketch, type Parts } from './sketch';
 
-export const BATTLE_SECONDS = 180;
+export const BATTLE_SECONDS = 60;
 export const SEATS = 8;
 export const BATTLE_PICKUPS = 18;
 /** A creature can devour another up to this share of its own might. */
@@ -23,13 +23,19 @@ const EAT_KEEP = 0.6;
 const RESPAWN_SECONDS = 3;
 /** Shielded (Iron Hide) this long after coming back. */
 export const SPAWN_SHIELD = 3;
-/** Battle creatures: a giant is barely faster than a newborn, and grows more slowly. */
-export const BATTLE_TUNE: Tune = { speedExp: 0.12, growth: 0.45 };
+/**
+ * Battle creatures: a giant is barely faster than a newborn, and grows by a bit less of what it
+ * smashes than in a story run (0.9: enough in one minute to devour each other often).
+ */
+export const BATTLE_TUNE: Tune = { speedExp: 0.12, growth: 0.9 };
 /** Smashed things are rebuilt this long after (so the place lasts the whole battle). */
-const REGROW_SECONDS = 30;
-/** Past this many times its start size a creature sheds mass, this share of it a second. */
+const REGROW_SECONDS = 15;
+/**
+ * Past this many times its start size a creature sheds mass, this share of it a second (so one
+ * runaway giant cannot flatten the whole place in a minute).
+ */
 const SHED_ABOVE = 3;
-const SHED_RATE = 0.006;
+const SHED_RATE = 0.012;
 
 export interface Seat {
   id: string;
