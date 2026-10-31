@@ -3,6 +3,7 @@
  * looking at, and a cache of already-resolved days. Pure reducers only; the
  * caller persists the result to appStorage after every step.
  */
+import { UPGRADES, cost, type Levels, type UpgradeId } from './upgrades';
 import { cleanSketch, type Parts } from './sketch';
 import type { WinReason } from './tally';
 
@@ -76,10 +77,23 @@ export interface RampageSave {
   totals: Record<string, number>;
   /** The day's bounties the player has completed (ids, for rampage day `day`). */
   bounties: string[];
+  /** Rubble to spend on upgrades, and the upgrades' levels (story only; upgrades.ts). */
+  purse: number;
+  levels: Levels;
 }
 
 function newRampage(): RampageSave {
-  return { best: 0, runs: 0, day: -1, today: 0, brokeOut: false, totals: {}, bounties: [] };
+  return {
+    best: 0,
+    runs: 0,
+    day: -1,
+    today: 0,
+    brokeOut: false,
+    totals: {},
+    bounties: [],
+    purse: 0,
+    levels: {},
+  };
 }
 
 function parseRampage(raw: unknown): RampageSave {
@@ -98,6 +112,36 @@ function parseRampage(raw: unknown): RampageSave {
     bounties: Array.isArray(r.bounties)
       ? r.bounties.filter((b): b is string => typeof b === 'string' && b.length < 40).slice(0, 8)
       : [],
+    purse: typeof r.purse === 'number' && Number.isFinite(r.purse) && r.purse > 0 ? r.purse : 0,
+    levels: parseLevels(r.levels),
+  };
+}
+
+function parseLevels(raw: unknown): Levels {
+  const out: Levels = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const u of UPGRADES) {
+    const v = (raw as Record<string, unknown>)[u.id];
+    if (typeof v === 'number' && Number.isFinite(v) && v > 0)
+      out[u.id] = Math.min(u.max, Math.floor(v));
+  }
+  return out;
+}
+
+/** Buy the next level of an upgrade with rubble from the purse (unchanged if it can't). */
+export function buyUpgrade(save: SaveState, id: UpgradeId): SaveState {
+  const spec = UPGRADES.find((u) => u.id === id);
+  if (!spec) return save;
+  const at = save.rampage.levels[id] ?? 0;
+  const price = cost(spec, at);
+  if (price > save.rampage.purse) return save;
+  return {
+    ...save,
+    rampage: {
+      ...save.rampage,
+      purse: save.rampage.purse - price,
+      levels: { ...save.rampage.levels, [id]: at + 1 },
+    },
   };
 }
 
@@ -125,6 +169,7 @@ export function recordRun(
       today: today + rubble,
       brokeOut: true,
       bounties: [...done, ...bounties.filter((b) => !done.includes(b))],
+      purse: r.purse + rubble,
     },
   };
 }

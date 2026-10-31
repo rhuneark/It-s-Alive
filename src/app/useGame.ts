@@ -23,6 +23,7 @@ import {
   markSeen,
   markStarted,
   markBrokeOut as saveBrokeOut,
+  buyUpgrade as saveBuyUpgrade,
   recordRun,
   rememberRubble,
   newSave,
@@ -50,6 +51,7 @@ import {
   type Stage,
 } from '../game/rampage';
 import type { RunResult } from '../game/rampageRun';
+import type { UpgradeId } from '../game/upgrades';
 import type { Parts } from '../game/sketch';
 import { resolveDay } from '../game/tally';
 import * as run from '../sdk/run';
@@ -120,6 +122,8 @@ export interface GameModel {
   countAsSignedIn: (rubble: number) => Promise<run.RubbleResult>;
   /** The player has seen it break out of the laboratory. */
   markBrokeOut: () => void;
+  /** Buy the next level of a story upgrade with rubble from the purse. */
+  buyUpgrade: (id: UpgradeId) => void;
   /** Owner test mode: the day it pretends to be (null when off). */
   preview: number | null;
   /** Turn test mode on at a day (fresh throwaway save) or off (null), and reload. */
@@ -443,7 +447,8 @@ export function useGame(): GameModel {
         peak: result.peak,
         powers: result.powers.length,
       });
-      const how = await run.recordRubble(SEASON.id, d, rubbleBand(result.rubble));
+      // The village's tally counts the rubble before the player's own upgrades multiplied it.
+      const how = await run.recordRubble(SEASON.id, d, rubbleBand(result.baseRubble));
       void refreshRubble();
       return how;
     },
@@ -487,6 +492,17 @@ export function useGame(): GameModel {
   const markBrokeOut = useCallback(() => {
     void commit(saveBrokeOut(saveRef.current));
   }, [commit]);
+
+  const buyUpgrade = useCallback(
+    (id: UpgradeId) => {
+      const next = saveBuyUpgrade(saveRef.current, id);
+      if (next === saveRef.current) return;
+      void commit(next);
+      run.haptic('success');
+      run.track('upgrade', { id, level: next.rampage.levels[id] ?? 0 });
+    },
+    [commit],
+  );
 
   const countAsSignedIn = useCallback(
     async (rubble: number) => {
@@ -626,6 +642,7 @@ export function useGame(): GameModel {
     finishRun,
     countAsSignedIn,
     markBrokeOut,
+    buyUpgrade,
     preview,
     setPreview,
     select,

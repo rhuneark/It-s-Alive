@@ -24,6 +24,14 @@ laboratory and stomps through a new place every day, hole.io-style, in 60-second
 smashes, its parts wake one by one with powers during a run, and every midnight it grows for good by
 everything the whole community smashed that day. It runs on with no end date (the city goes on).
 
+From Oct 31 (owner's request) it is MULTIPLAYER FIRST. Home is only the creature and one button,
+Awaken, which offers a live BATTLE (3 minutes, up to 8 creatures, bots in the empty seats; the
+player brings the village's creature or their own Sketchbook build; biggest mass at the bell wins)
+or the STORY run (the village's creature alone in the day's place, with upgrades). Big numbers
+(`numbers.ts`, K/M/B/T… like RUN's Big Numbers API) everywhere; power-ups on the map in both modes;
+upgrades in the story only ("multiplayer runs differently so only powerups on the map matter").
+Fonts: Rubik everywhere (the owner found the gothic fonts unreadable); titles at weight 900.
+
 - **Share link (private):** https://w.run/u/GORVjkIRThUz5n2tmAms/private?k=0323a614aedba0310dd367d914d009a5
   (game id `GORVjkIRThUz5n2tmAms`; end every update to the owner with this link)
 - The owner also works from a LOCAL CLONE of this branch (README "Work on it from your computer") and
@@ -65,20 +73,19 @@ everything the whole community smashed that day. It runs on with no end date (th
   creature (Web Animations) and rolls thunder (near strikes sooner and louder). Rain falls behind the
   page (`.storm-rain`; `.app` sits above it). Two flickers per strike, strikes ≥ 1.2 s apart: under
   3 flashes a second. Nothing strikes for reduced-motion players.
-- From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx), styled like the
-  run (owner's request, Oct 31: "base the new UI on the new game"): a full-width hero, `LooseScene`
-  (canvas: the community's creature, ALIVE through `RigCanvas` (breathing, tail lashing, rearing up
-  with lightning in its spark colour), looming over the burning night village of the day's place,
-  bigger the taller the community made it; smoke, rain, fires along the near row and villagers with
-  torches fleeing across it; the first time a player sees it, the BREAKOUT plays there: the
-  laboratory tower shakes, bursts, the creature rises, IT'S LOOSE!, then `markBrokeOut`), the logo and
-  Chronicle over it; under it "Rampage · day N", "Loose in <place>" in blood red and its blurb; three
-  stat tiles (`rampage-card`: height in ft, growth last night, countdown to the next growth); the big
-  heartbeat "Rampage! ⚡" (`.btn-rampage`); your best and today's rubble; the day's BOUNTIES on a
-  parchment notice nailed up in the square (`bounty-board`, ticked off as done); everyone's rubble
-  today and where it marches tomorrow (`next`); the jam button; "Watch it wake" and Sketchbook side by
-  side; the music row. The scene is not mounted while the waking scene or a run covers the menu
-  (`covered`), so the breakout is never played unseen. In game the ♫ button opens the same controls.
+- From Halloween the title AND the in-game hub are one screen, `RampageMenu` (App.tsx): ONLY the
+  creature, edge to edge (`LooseScene`: the community's creature ALIVE through `RigCanvas`,
+  breathing, tail lashing, rearing up with lightning in its spark colour, over the burning night
+  village of the day's place, bigger the taller the community made it; smoke, rain, fires and
+  villagers with torches fleeing across the near row; the first time a player sees it, the BREAKOUT
+  plays there: the laboratory tower shakes, bursts, the creature rises, IT'S LOOSE!, then
+  `markBrokeOut`), and one heartbeat button, AWAKEN (`awaken-open`). It opens a sheet
+  (`mode-sheet`): Battle (`mode-battle`) with the creature to bring (`pick-village` / `pick-mine`:
+  the Sketchbook build, or "Build my own" opens the Sketchbook), the Story run (`rampage-start`:
+  "Loose in <place>", its stats `rampage-card`, your best `rampage-best`, the day's bounties
+  `bounty-board`), the story upgrades (`upgrades`, `buy-<id>`), then Sketchbook, Chronicle and
+  "Watch it wake", the jam button and the music row. The scene is not mounted while the waking scene,
+  a run or a battle covers the home (`covered`), so the breakout is never played unseen.
 - October Jam vote button (`JamButton`, owner's request; glowing pumpkin-to-violet `.btn-jam`): a link to
   `JAM_VOTE_URL` (useGame.ts, from `rundot jam promo`). Games cannot open outside pages: RUN's frame is
   sandboxed `allow-scripts allow-downloads` (no popups, no top navigation), so `window.open` fails preflight
@@ -198,6 +205,54 @@ everything the whole community smashed that day. It runs on with no end date (th
     claw, `roar` (breakout, intro, every waking, the end), `chime` when a part wakes, `heartbeat`.
   - Mock only: `?runSeconds=N` shortens runs; `window.__rampage` is the live run and `window.__steer`
     steers it (tests and screenshot scripts drive a greedy player with these).
+- THE BATTLE (multiplayer; rules `src/game/arena.ts`, host `battleHost.ts`, wire `battleWire.ts`,
+  server `src/rooms/BattleRoom.ts`, screen `components/Battle.tsx`; tests arena.test.ts and
+  battleHost.test.ts).
+  - Live rooms are RUN's realtime multiplayer (beta, server-authoritative `GameRoom`; signed-in
+    players only, RUN prompts a guest). `rundot/realtime.config.json` registers room type `battle`
+    (max 8, reconnect 15 s); `rundotMultiplayerPlugin()` in vite.config.ts bundles `src/rooms` into
+    `dist/server-bundle.js` (+ `dist/rooms.config.json`, uploaded by `rundot deploy`) and, in
+    `npm run dev`, runs a local room server on :9001 where every browser tab is its own fake player
+    (two tabs = a real two-player battle). Server code may only import pure `src/game` modules (no
+    Node built-ins, no DOM). `run.joinBattle()` = `realtime.joinOrCreateRoom('battle')` (12 s
+    timeout); private messages (`sendTo`: the match) arrive through `onPrivateMessage`, which
+    run.ts routes to the same handler.
+  - `BattleHost` (pure, used by the server room AND `app/localBattle.ts`): players `hello` with
+    name and parts (`cleanSketch`ed) and `steer`; a `LOBBY_SECONDS` 5 lobby after the first
+    arrives, then bots (`botSeat`: random parts, a monster name) fill the 8 seats; a late player
+    takes a bot's seat until `JOIN_UNTIL` 60 s are left (then the room locks); a player who leaves
+    is played by a bot. Ticks every `TICK_MS` 50; a snapshot every 2nd tick (fighters packed 6
+    numbers each, power-ups, packed events incl. every smash, what was rebuilt); `over` with the
+    standings. If the live join fails (guest, offline, service down) the battle is OFFLINE vs bots
+    on the phone with the same host (`localBattle`), and says so.
+  - `Arena` (`BATTLE_SECONDS` 180): each creature is a `Beast` on one shared `Field` (rampageRun.ts:
+    the story's own creature code, so claws, powers and growth match). A creature devours another up
+    to `EAT_RATIO` 0.8 of its might when it reaches it (gains 60% of its mass); the devoured comes
+    back small after 3 s at the `safeSpot` farthest from anything that could eat it, shielded
+    (`SPAWN_SHIELD` 3 s of Iron Hide). Battle tuning (`BATTLE_TUNE`): speed grows only as
+    size^0.12 (a giant is barely faster than a newborn), growth 0.45 of a smash's mass; past 3× its
+    start a creature sheds 0.6%/s of its mass; smashed things are rebuilt after 30 s (`regrow`, not
+    under a creature), so the place lasts the 3 minutes (arena.test.ts: 25-40% stands at the end,
+    the winner reaches hundreds of thousands of mass). Ranked by mass. Bots (`think`, 4×/s): flee
+    what could devour them, chase what they could devour, grab power-ups, else smash the nearest.
+  - The screen: others drawn ~110 ms in the past between snapshots, your own creature extrapolated
+    with your steering (it answers at once); camera on you; name tags with mass (big numbers);
+    HUD: your mass and rank, the clock, the top five; power-up chips; a feed of who devoured whom;
+    banners (power woken, power-up taken, "You devoured X!"); "Devoured!" while you wait to come
+    back; the standings at the end ("Battle again" / Home). Mock only: `?offline=1` skips the live
+    room, `?battleSeconds=N` shortens it (offline); `window.__battle` exposes `me`, `pickups`, `props`
+    and `window.__steer` steers (screenshot scripts).
+- POWER-UPS (`src/game/powerup.ts`, both modes; on the map as glowing orbs with a mark, taken by
+  walking over, back 6 s later elsewhere): Surge (much faster, 6 s), Hunger (sucks in small things,
+  7 s), Monster Serum (×1.35 might: smash and devour bigger, 6 s), Blood Moon (double growth and
+  rubble, 8 s), Iron Hide (cannot be devoured, 8 s; battle only), Thunder Stomp (smashes all around,
+  at once). Story runs have 8 (`STORY_PICKUPS`), battles 18.
+- STORY UPGRADES (`src/game/upgrades.ts`, story only): every run's rubble goes into the purse
+  (`save.rampage.purse`); levels (`save.rampage.levels`) cost `base × growth^level`: Rubble Value
+  (×1.5 everything a run earns, 40 levels: the numbers run into the billions), Sharper Claws, Longer
+  Stride, Born Bigger, More Time (+5 s). `storyRun(levels)` gives the run's start size, seconds and
+  `Boost`. The village's tally counts a run's `baseRubble` (before Rubble Value), so upgrades never
+  inflate the community's growth.
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
   opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
   Sign in / Try music again buttons. Use it to debug on a phone.
@@ -208,18 +263,23 @@ src/game/      pure rules, no SDK/DOM: catalog (questions + options), schedule, 
                layout (which husk pieces + painted layers to draw, back to front), crowd (stand-in tallies),
                sketch (Sketchbook designs), reveal (last night's stitching), awakening (Halloween scene),
                rampage + rampageRun (the rampage: places, powers, growth, one run; rampage.test.ts),
-               bounty (the day's three bounties),
+               bounty (the day's three bounties), powerup, upgrades (story), numbers (big numbers),
+               arena + battleHost + battleWire (the multiplayer battle: rules, host, wire format),
                reminders (daily notifications), rng; rules.test.ts, stitch.test.ts (every layer exists, joins its body, shows on a full monster)
-src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock)
+src/sdk/run.ts the ONLY module that imports the RUN SDK (init wait, error catching, saves, votes, ads, clock,
+               live battle rooms)
+src/rooms/     BattleRoom: the live battle's GameRoom on RUN's server (a thin shell over BattleHost)
 src/app/       useGame: controller wiring rules <-> SDK, persists the save after every change; useMusic: theme;
                useStorm: the vigil's lightning; sfx: synthesized storm and rampage sounds;
                creatureSprite: the community's creature as one sprite (plus glow and per-part canvases);
                creatureRig: its parts animated on their joints (`drawRig`, and `RigCanvas` to draw
-               it posed and glowing), for the rampage and its menu
+               it posed and glowing), for the rampage, the battle and the home; drawing: shared glow
+               colours (`AURA`), light sprites, ground tiles; localBattle: an offline battle
 src/components Monster (the husk in the lab with its painted layers), Voting (options + results), Chronicle,
                PartIcon (a part as the village painted it, for the rampage's HUD and end card),
                Sketchbook (players design their own monster), Reveal (last night's stitching),
                Awakening (the Halloween waking scene), Rampage (the canvas run, HUD, end panel),
+               Battle (the multiplayer battle; Rampage and Battle are lazy-loaded chunks),
                LooseScene (the rampage menu's picture and the breakout),
                SoundPanel (in-game music popover and
                the title's MusicBar), Diagnostics
@@ -251,7 +311,7 @@ e2e/           Playwright full-season playthrough at 375x667 and 390x844
 - Past days are tallied once (5 count calls per day), resolved with `resolveDay` (seeded tie-break; empty
   days are picked at random) and cached in the save's `history`.
 - Portrait, phone-first: check 375x667 and 390x844, no sideways scrolling, buttons framed (>=2px border),
-  >=44px tall, text >=14px. Fonts: UnifrakturMaguntia (titles), Cinzel (UI), IM Fell English (body).
+  >=44px tall, text >=14px. Font: Rubik (Google Fonts) for everything, titles at 900.
 - Pixel art: `image-rendering: pixelated`, palette-quantized (all monster layers share one 256-colour palette;
   96 was too few for 300+ layers and turned the croc grey).
   Everything in `public/` ships — keep unreleased art in `art/`.
@@ -343,6 +403,9 @@ the props share its perspective. Never composite props onto the room: they float
   `?day=20` = Halloween = rampage day 0, `?day=21` = rampage day 1, ...); mock only. `&runSeconds=6`
   for short rampage runs.
 - `node scripts/shot.mjs "?day=5" out.png 375 667 start` — screenshot with the dev server on :5173.
+- `npm run dev` also runs the local room server for live battles on :9001 (two browser tabs = two
+  players). The e2e tests start their own on :9199 (`MP_DEV_PORT` in playwright.config.ts), so they
+  can run while `npm run dev` does.
 - Playwright (e2e, shot.mjs) uses the sandbox's `/opt/pw-browsers/chromium` when it exists, else its
   own browser (`npx playwright install chromium` on a local clone). `.gitattributes` keeps LF endings.
 

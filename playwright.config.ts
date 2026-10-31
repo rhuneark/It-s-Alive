@@ -24,7 +24,7 @@ export default defineConfig({
     { name: 'iphone-14-390x844', use: { viewport: { width: 390, height: 844 } } },
   ],
   webServer: {
-    command: 'npx vite --port 5199 --host 127.0.0.1 --strictPort',
+    command: 'MP_DEV_PORT=9199 npx vite --port 5199 --host 127.0.0.1 --strictPort',
     url: 'http://127.0.0.1:5199',
     reuseExistingServer: false,
     timeout: 60_000,

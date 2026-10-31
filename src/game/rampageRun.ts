@@ -1,7 +1,9 @@
 /**
- * One rampage run, simulated: the creature moves where the player steers, smashes what is small
- * enough, is stopped by what is not, grows by what it smashes, and wakes its parts' powers as it
- * grows. Pure and frame-rate independent (step(dt)); the component draws whatever this says.
+ * The rampage, simulated. A `Field` is the place (its props, its fleeing crowd and the power-ups
+ * lying about); a `Beast` is one creature on it: it moves where it is steered, claws and smashes
+ * what is small enough, is stopped by what is not, grows by what it smashes, and wakes its parts'
+ * powers as it grows. A story run (`RampageRun`) is one beast on its own field; a battle (arena.ts)
+ * is many. Pure and frame-rate independent (step(dt)); the components draw whatever this says.
  */
 import {
   POWERS,
@@ -21,6 +23,18 @@ import {
   type World,
 } from './rampage';
 import { bountyProgress, type Bounty } from './bounty';
+import {
+  BLOODMOON_GROWTH,
+  HUNGER_RANGE,
+  HUNGER_SMALL,
+  POWERUPS,
+  SERUM_SIZE,
+  STOMP_RANGE,
+  STORY_POWERUPS,
+  SURGE_SPEED,
+  type Pickup,
+  type PowerupKind,
+} from './powerup';
 import { rngFor } from './rng';
 
 export interface LiveProp extends Prop {
@@ -43,12 +57,16 @@ export type RunEvent =
   | { type: 'bolt'; prop: LiveProp }
   /** It clawed something within reach (1 its right arm, -1 its left). */
   | { type: 'attack'; prop: LiveProp; side: 1 | -1 }
+  /** It took a power-up. */
+  | { type: 'pickup'; pickup: Pickup }
   /** One of the day's bounties is done: its bonus is added to the rubble. */
   | { type: 'bounty'; bounty: Bounty }
   | { type: 'end' };
 
 export interface RunResult {
   rubble: number;
+  /** The rubble before the player's upgrades multiplied it (what the village's tally counts). */
+  baseRubble: number;
   smashed: number;
   frights: number;
   start: number;
@@ -64,6 +82,29 @@ export interface Steer {
   x: number;
   y: number;
 }
+
+/** A story run's upgrades (battles have none: only power-ups). Each is a multiplier, 1 = none. */
+export interface Boost {
+  speed: number;
+  claw: number;
+  value: number;
+}
+
+export const NO_BOOST: Boost = { speed: 1, claw: 1, value: 1 };
+
+/**
+ * How a creature carries its size. In a story run it gets faster as it grows (√size) and grows by
+ * all it smashes; in a battle a giant is barely faster than a newborn and grows more slowly, so the
+ * small can run and the place lasts three minutes.
+ */
+export interface Tune {
+  /** Speed grows with size to this power (times the start size to the rest). */
+  speedExp: number;
+  /** Share of a smash's mass it grows by. */
+  growth: number;
+}
+
+export const STORY_TUNE: Tune = { speedExp: 0.5, growth: 1 };
 
 // Tuning, in multiples of the creature's current size.
 const SPEED = 1.25;
@@ -93,64 +134,41 @@ const CHAIN_MAX = 2;
 const FLEE_RANGE = 5;
 const FLEE_SPEED = 95;
 const WANDER_SPEED = 22;
+/** A power-up is taken within this much of the creature's reach, and comes back this much later. */
+const PICKUP_REACH = 1.3;
+const PICKUP_AGAIN = 6;
 
 const CELL = 200;
 const cellKey = (gx: number, gy: number) => gx * 4096 + gy;
 
-export class RampageRun {
-  readonly start: number;
+/** The place a rampage happens in: what stands in it, who runs about it, what lies around. */
+export class Field {
   readonly props: LiveProp[];
-  x: number;
-  y: number;
-  facing = 1;
-  size: number;
-  peak: number;
-  mass = 0;
-  rubble = 0;
-  smashed = 0;
-  frights = 0;
-  time = 0;
-  moving = false;
-  /** Seconds left in the air (wings). */
-  air = 0;
-  readonly powers: PowerId[] = [];
-  /** The chain of smashes going now, and the longest one. */
-  chain = 0;
-  bestChain = 0;
-  /** The day's bounties, and the ones this run has completed. */
-  readonly bounties: readonly Bounty[];
-  readonly done: string[] = [];
-  private readonly kinds = new Map<PropKind, number>();
-  private lastSmash = -10;
-  private leapIn = LEAP_EVERY;
-  private sweepIn = SWEEP_EVERY;
-  private clawIn = 0.5;
-  private side: 1 | -1 = 1;
-  private boltIn = BOLT_EVERY;
-  private ended = false;
-  private lastBlocked = -1;
+  readonly pickups: Pickup[] = [];
+  readonly start: { x: number; y: number };
   private readonly grid = new Map<number, LiveProp[]>();
   private readonly movers: LiveProp[] = [];
   private readonly rng: () => number;
-
-  /** Seconds in this run (RUN_SECONDS; shorter in tests). */
-  readonly seconds: number;
+  private readonly kinds: readonly PowerupKind[];
+  private readonly respawns: Array<{ id: number; at: number }> = [];
+  /** Smashed things come back after this long (0: never), and when they did (for the screen). */
+  private readonly regrow: number;
+  private readonly rubble: Array<{ prop: LiveProp; at: number }> = [];
+  /** What the village has rebuilt since someone last looked (they empty it: `splice(0)`). */
+  readonly rebuiltSince: LiveProp[] = [];
+  private time = 0;
 
   constructor(
     world: World,
-    start: number,
-    seed = 'run',
-    seconds = RUN_SECONDS,
-    bounties: readonly Bounty[] = [],
+    seed: string,
+    pickups = 0,
+    kinds: readonly PowerupKind[] = STORY_POWERUPS,
+    regrow = 0,
   ) {
-    this.start = start;
-    this.bounties = bounties;
-    this.seconds = seconds;
-    this.size = start;
-    this.peak = start;
-    this.x = world.start.x;
-    this.y = world.start.y + 40;
+    this.start = world.start;
+    this.regrow = regrow;
     this.rng = rngFor('rampage-run', seed);
+    this.kinds = kinds;
     this.props = world.props.map((p) => ({
       ...p,
       // The laboratory is already rubble: the creature has just broken out of it.
@@ -168,46 +186,25 @@ export class RampageRun {
         else this.grid.set(k, [p]);
       }
     }
+    // Power-ups get their own dice, so adding them never changes how the crowd runs.
+    const place = rngFor('pickups', seed);
+    for (let i = 0; i < pickups; i++) {
+      const at = this.openSpot(place);
+      this.pickups.push({ id: i, kind: kinds[i % kinds.length]!, x: at.x, y: at.y, alive: true });
+    }
   }
 
-  get over(): boolean {
-    return this.time >= this.seconds;
-  }
-
-  get timeLeft(): number {
-    return Math.max(0, this.seconds - this.time);
-  }
-
-  has(power: PowerId): boolean {
-    return this.powers.includes(power);
-  }
-
-  /** How far it reaches around its feet right now. */
-  get reach(): number {
-    return this.size * FOOT * (this.has('reach') ? REACH_BOOST : 1);
-  }
-
-  /** The power that wakes next, and how close it is (0..1). */
-  nextPower(): { power: Power; progress: number } | null {
-    const next = POWERS.find((p) => !this.has(p.id));
-    if (!next) return null;
-    const done = POWERS.filter((p) => this.has(p.id)).at(-1);
-    const from = done ? done.at : 1;
-    const ratio = this.size / this.start;
-    return { power: next, progress: Math.max(0, Math.min(1, (ratio - from) / (next.at - from))) };
-  }
-
-  result(): RunResult {
-    return {
-      rubble: this.rubble,
-      smashed: this.smashed,
-      frights: this.frights,
-      start: this.start,
-      peak: Math.round(this.peak),
-      powers: [...this.powers],
-      bestChain: this.bestChain,
-      bounties: [...this.done],
-    };
+  /** Somewhere open (nothing big standing there) for a power-up or a creature. */
+  openSpot(rng: () => number = this.rng): { x: number; y: number } {
+    for (let tries = 0; ; tries++) {
+      const x = 150 + rng() * (WORLD_W - 300);
+      const y = 150 + rng() * (WORLD_H - 300);
+      let clear = true;
+      this.near(x, y, 60, (p) => {
+        if (!p.mover && p.h > 60) clear = false;
+      });
+      if (clear || tries > 20) return { x, y };
+    }
   }
 
   /** Visit every standing thing within `range` of (x, y) (plus its own footprint). */
@@ -231,16 +228,197 @@ export class RampageRun {
     }
   }
 
-  step(dt: number, steer: Steer): RunEvent[] {
-    const events: RunEvent[] = [];
-    if (this.ended) return events;
-    dt = Math.min(dt, 0.05);
+  /** Time passes: the crowd runs from the nearest creature, and taken power-ups come back. */
+  step(dt: number, beasts: ReadonlyArray<Pick<Beast, 'x' | 'y' | 'reach' | 'alive'>>): void {
     this.time += dt;
-    if (this.over) {
-      this.ended = true;
-      events.push({ type: 'end' });
-      return events;
+    for (const p of this.movers) {
+      if (!p.alive) continue;
+      let from: Pick<Beast, 'x' | 'y' | 'reach' | 'alive'> | null = null;
+      let best = Infinity;
+      for (const b of beasts) {
+        if (!b.alive) continue;
+        const d = Math.hypot(p.x - b.x, p.y - b.y);
+        if (d < b.reach * FLEE_RANGE && d < best) {
+          best = d;
+          from = b;
+        }
+      }
+      if (from) {
+        const dx = p.x - from.x;
+        const dy = p.y - from.y;
+        const s = (PROPS[p.kind].h < 30 ? 1.2 : 1) * FLEE_SPEED;
+        p.vx = (dx / (best || 1)) * s;
+        p.vy = (dy / (best || 1)) * s;
+      } else if (this.rng() < dt * 0.6) {
+        const a = this.rng() * Math.PI * 2;
+        p.vx = Math.cos(a) * WANDER_SPEED;
+        p.vy = Math.sin(a) * WANDER_SPEED;
+      }
+      p.x = Math.max(50, Math.min(WORLD_W - 50, p.x + p.vx * dt));
+      p.y = Math.max(50, Math.min(WORLD_H - 50, p.y + p.vy * dt));
     }
+    // The village rebuilds what was smashed (out of any creature's way); the frightened come back.
+    while (this.rubble.length && this.rubble[0]!.at <= this.time) {
+      const { prop: p } = this.rubble.shift()!;
+      if (beasts.some((b) => b.alive && Math.hypot(p.x - b.x, p.y - b.y) < b.reach * 3 + p.r)) {
+        this.rubble.push({ prop: p, at: this.time + 3 });
+        continue;
+      }
+      if (p.mover) {
+        const at = this.openSpot();
+        p.x = at.x;
+        p.y = at.y;
+        p.vx = 0;
+        p.vy = 0;
+      }
+      p.alive = true;
+      this.rebuiltSince.push(p);
+    }
+    for (let i = this.respawns.length - 1; i >= 0; i--) {
+      const r = this.respawns[i]!;
+      if (this.time < r.at) continue;
+      const p = this.pickups[r.id]!;
+      const at = this.openSpot();
+      p.x = at.x;
+      p.y = at.y;
+      p.kind = this.kinds[Math.floor(this.rng() * this.kinds.length)]!;
+      p.alive = true;
+      this.respawns.splice(i, 1);
+    }
+  }
+
+  /** Something was smashed (it comes back later, where the village rebuilds). */
+  smashed(p: LiveProp): void {
+    if (this.regrow > 0 && p.kind !== 'lab')
+      this.rubble.push({ prop: p, at: this.time + this.regrow });
+  }
+
+  /** A power-up was taken: another turns up somewhere else a little later. */
+  take(p: Pickup): void {
+    p.alive = false;
+    this.respawns.push({ id: p.id, at: this.time + PICKUP_AGAIN });
+  }
+}
+
+/** One creature on a field. */
+export class Beast {
+  start: number;
+  x: number;
+  y: number;
+  facing = 1;
+  size: number;
+  peak: number;
+  mass = 0;
+  rubble = 0;
+  baseRubble = 0;
+  smashed = 0;
+  frights = 0;
+  moving = false;
+  alive = true;
+  /** Seconds left in the air (wings). */
+  air = 0;
+  powers: PowerId[] = [];
+  /** The chain of smashes going now, and the longest one. */
+  chain = 0;
+  bestChain = 0;
+  /** Power-ups working now, and for how long yet (s). */
+  readonly buffs: Partial<Record<PowerupKind, number>> = {};
+  readonly kinds = new Map<PropKind, number>();
+  boost: Boost;
+  tune: Tune;
+  /** Told of everything it smashes (the field rebuilds them in a battle). */
+  onSmash: ((p: LiveProp) => void) | null = null;
+  private time = 0;
+  private lastSmash = -10;
+  private leapIn = LEAP_EVERY;
+  private sweepIn = SWEEP_EVERY;
+  private clawIn = 0.5;
+  private side: 1 | -1 = 1;
+  private boltIn = BOLT_EVERY;
+  private lastBlocked = -1;
+
+  constructor(
+    start: number,
+    x: number,
+    y: number,
+    boost: Boost = NO_BOOST,
+    tune: Tune = STORY_TUNE,
+  ) {
+    this.start = start;
+    this.size = start;
+    this.peak = start;
+    this.x = x;
+    this.y = y;
+    this.boost = boost;
+    this.tune = tune;
+  }
+
+  has(power: PowerId): boolean {
+    return this.powers.includes(power);
+  }
+
+  buffed(kind: PowerupKind): boolean {
+    return (this.buffs[kind] ?? 0) > 0;
+  }
+
+  /** How big it counts as for smashing and devouring (the serum makes it bigger for a while). */
+  get might(): number {
+    return this.size * (this.buffed('serum') ? SERUM_SIZE : 1);
+  }
+
+  /** How far it reaches around its feet right now. */
+  get reach(): number {
+    return this.might * FOOT * (this.has('reach') ? REACH_BOOST : 1);
+  }
+
+  /** The chain still going (0 once it has lapsed: nothing smashed for CHAIN_GAP seconds). */
+  get liveChain(): number {
+    return this.time - this.lastSmash <= CHAIN_GAP ? this.chain : 0;
+  }
+
+  /** The rubble multiplier the chain going now earns (×1, ×1.25, … up to ×2). */
+  get multiplier(): number {
+    return chainMultiplier(this.chain);
+  }
+
+  /** The power that wakes next, and how close it is (0..1). */
+  nextPower(): { power: Power; progress: number } | null {
+    const next = POWERS.find((p) => !this.has(p.id));
+    if (!next) return null;
+    const done = POWERS.filter((p) => this.has(p.id)).at(-1);
+    const from = done ? done.at : 1;
+    const ratio = this.size / this.start;
+    return { power: next, progress: Math.max(0, Math.min(1, (ratio - from) / (next.at - from))) };
+  }
+
+  /** Back to the start, small, somewhere else (devoured in a battle). */
+  respawn(x: number, y: number): void {
+    this.x = x;
+    this.y = y;
+    this.size = this.start;
+    this.mass = 0;
+    this.powers = [];
+    this.chain = 0;
+    this.air = 0;
+    this.alive = true;
+    for (const k of Object.keys(this.buffs) as PowerupKind[]) delete this.buffs[k];
+  }
+
+  /** Grow by this much mass (from smashing, or from devouring another creature). */
+  feed(mass: number): void {
+    this.mass += mass;
+    this.size = sizeAfter(this.start, this.mass);
+    this.peak = Math.max(this.peak, this.size);
+  }
+
+  step(dt: number, steer: Steer, field: Field, events: RunEvent[]): void {
+    this.time += dt;
+    for (const k of Object.keys(this.buffs) as PowerupKind[]) {
+      const left = (this.buffs[k] ?? 0) - dt;
+      if (left > 0) this.buffs[k] = left;
+      else delete this.buffs[k];
+    }
+    if (!this.alive) return;
 
     // Move.
     let sx = steer.x;
@@ -253,7 +431,12 @@ export class RampageRun {
     this.moving = len > 0.05;
     // Bigger strides, but not proportionally faster: a huge creature still has to cross the map.
     const speed =
-      Math.sqrt(this.size * this.start) * SPEED * (this.has('stride') ? STRIDE_BOOST : 1);
+      this.start *
+      Math.pow(this.size / this.start, this.tune.speedExp) *
+      SPEED *
+      this.boost.speed *
+      (this.has('stride') ? STRIDE_BOOST : 1) *
+      (this.buffed('surge') ? SURGE_SPEED : 1);
     this.x = Math.max(60, Math.min(WORLD_W - 60, this.x + sx * speed * dt));
     this.y = Math.max(60, Math.min(WORLD_H - 60, this.y + sy * speed * dt));
     if (sx > 0.1) this.facing = 1;
@@ -266,8 +449,8 @@ export class RampageRun {
         this.air = 0;
         const radius = this.reach * LEAP_RANGE;
         events.push({ type: 'land', radius });
-        this.near(this.x, this.y, radius, (p) => {
-          if (canSmash(this.size, p.kind, SMASH_RATIO * LEAP_RATIO)) this.smash(p, 'leap', events);
+        field.near(this.x, this.y, radius, (p) => {
+          if (canSmash(this.might, p.kind, SMASH_RATIO * LEAP_RATIO)) this.smash(p, 'leap', events);
         });
       }
     } else if (this.has('wings') && this.moving && (this.leapIn -= dt) <= 0) {
@@ -280,8 +463,8 @@ export class RampageRun {
     if (this.air <= 0) {
       const r = this.reach;
       let blocked: LiveProp | null = null;
-      this.near(this.x, this.y, r, (p, d) => {
-        if (canSmash(this.size, p.kind)) {
+      field.near(this.x, this.y, r, (p, d) => {
+        if (canSmash(this.might, p.kind)) {
           this.smash(p, 'stomp', events);
           return;
         }
@@ -299,11 +482,31 @@ export class RampageRun {
       if (hit && hit.id !== this.lastBlocked) events.push({ type: 'blocked', prop: hit });
       this.lastBlocked = hit ? hit.id : -1;
 
-      // Maw: small things nearby are swallowed.
-      if (this.has('maw')) {
-        this.near(this.x, this.y, r * MAW_RANGE, (p) => {
-          if (p.h <= this.size * MAW_SMALL) this.smash(p, 'maw', events);
+      // Maw: small things nearby are swallowed (and far more of them in a Hunger).
+      if (this.has('maw') || this.buffed('hunger')) {
+        const hunger = this.buffed('hunger');
+        const range = r * (hunger ? HUNGER_RANGE : MAW_RANGE);
+        const small = this.might * (hunger ? HUNGER_SMALL : MAW_SMALL);
+        field.near(this.x, this.y, range, (p) => {
+          if (p.h <= small) this.smash(p, 'maw', events);
         });
+      }
+
+      // Power-ups underfoot.
+      for (const pu of field.pickups) {
+        if (!pu.alive || Math.hypot(pu.x - this.x, pu.y - this.y) > r * PICKUP_REACH + 30) continue;
+        field.take(pu);
+        events.push({ type: 'pickup', pickup: pu });
+        const spec = POWERUPS[pu.kind];
+        if (spec.seconds > 0) this.buffs[pu.kind] = spec.seconds;
+        else {
+          // The Thunder Stomp: everything it could smash, all around, at once.
+          const radius = r * STOMP_RANGE;
+          events.push({ type: 'land', radius });
+          field.near(this.x, this.y, radius, (p) => {
+            if (canSmash(this.might, p.kind)) this.smash(p, 'leap', events);
+          });
+        }
       }
     }
 
@@ -312,8 +515,8 @@ export class RampageRun {
       this.sweepIn = SWEEP_EVERY;
       const radius = this.reach * SWEEP_RANGE;
       events.push({ type: 'sweep', radius });
-      this.near(this.x, this.y, radius, (p) => {
-        if (canSmash(this.size, p.kind)) this.smash(p, 'tail', events);
+      field.near(this.x, this.y, radius, (p) => {
+        if (canSmash(this.might, p.kind)) this.smash(p, 'tail', events);
       });
     }
 
@@ -321,8 +524,8 @@ export class RampageRun {
     if (this.has('spark') && (this.boltIn -= dt) <= 0) {
       this.boltIn = BOLT_EVERY;
       let target: LiveProp | null = null;
-      this.near(this.x, this.y, this.reach * BOLT_RANGE, (p) => {
-        if (p.mover || p.h > this.size * BOLT_RATIO) return;
+      field.near(this.x, this.y, this.reach * BOLT_RANGE, (p) => {
+        if (p.mover || p.h > this.might * BOLT_RATIO) return;
         if (!target || p.h > target.h) target = p;
       });
       const struck = target as LiveProp | null;
@@ -336,8 +539,8 @@ export class RampageRun {
     if ((this.clawIn -= dt) <= 0) {
       let target: LiveProp | null = null;
       let best = Infinity;
-      this.near(this.x, this.y, this.reach * CLAW_RANGE, (p, d) => {
-        if (d < best && canSmash(this.size, p.kind)) {
+      field.near(this.x, this.y, this.reach * CLAW_RANGE, (p, d) => {
+        if (d < best && canSmash(this.might, p.kind)) {
           best = d;
           target = p;
         }
@@ -347,41 +550,195 @@ export class RampageRun {
         events.push({ type: 'attack', prop: prey, side: this.side });
         this.smash(prey, 'claw', events);
         this.side = this.side === 1 ? -1 : 1;
-        this.clawIn = this.has('reach') ? CLAW_FAST : CLAW_EVERY;
+        this.clawIn = (this.has('reach') ? CLAW_FAST : CLAW_EVERY) / this.boost.claw;
       } else this.clawIn = 0.12;
     }
 
-    this.moveCrowd(dt);
+    this.wake(events);
+  }
 
-    // Its parts wake as it grows.
+  /** Its parts wake as it grows. */
+  wake(events: RunEvent[]): void {
     for (const power of POWERS) {
       if (!this.has(power.id) && this.size >= this.start * power.at) {
         this.powers.push(power.id);
         events.push({ type: 'power', power });
       }
     }
+  }
+
+  private smash(p: LiveProp, by: SmashBy, events: RunEvent[]): void {
+    if (!p.alive) return;
+    p.alive = false;
+    this.onSmash?.(p);
+    const moon = this.buffed('bloodmoon') ? BLOODMOON_GROWTH : 1;
+    this.chain = this.time - this.lastSmash <= CHAIN_GAP ? this.chain + 1 : 1;
+    this.lastSmash = this.time;
+    this.bestChain = Math.max(this.bestChain, this.chain);
+    const base = rubbleOf(p.kind) * this.multiplier * moon;
+    const points = Math.round(base * this.boost.value);
+    this.baseRubble += Math.round(base);
+    this.rubble += points;
+    this.smashed++;
+    this.kinds.set(p.kind, (this.kinds.get(p.kind) ?? 0) + 1);
+    if (p.mover) this.frights++;
+    this.feed(massOf(p.kind) * (this.has('spark') ? FRENZY : 1) * moon * this.tune.growth);
+    events.push({ type: 'smash', prop: p, by, points });
+  }
+}
+
+/** One story run: the creature alone in the day's place, against the clock. */
+export class RampageRun {
+  readonly field: Field;
+  readonly beast: Beast;
+  time = 0;
+  /** The day's bounties, and the ones this run has completed. */
+  readonly bounties: readonly Bounty[];
+  readonly done: string[] = [];
+  /** Seconds in this run (RUN_SECONDS; shorter in tests, longer with upgrades). */
+  readonly seconds: number;
+  private ended = false;
+
+  constructor(
+    world: World,
+    start: number,
+    seed = 'run',
+    seconds = RUN_SECONDS,
+    bounties: readonly Bounty[] = [],
+    options: { pickups?: number; boost?: Boost } = {},
+  ) {
+    this.bounties = bounties;
+    this.seconds = seconds;
+    this.field = new Field(world, seed, options.pickups ?? 0);
+    this.beast = new Beast(start, world.start.x, world.start.y + 40, options.boost);
+  }
+
+  get props(): LiveProp[] {
+    return this.field.props;
+  }
+  get pickups(): Pickup[] {
+    return this.field.pickups;
+  }
+  get start(): number {
+    return this.beast.start;
+  }
+  get x(): number {
+    return this.beast.x;
+  }
+  set x(v: number) {
+    this.beast.x = v;
+  }
+  get y(): number {
+    return this.beast.y;
+  }
+  set y(v: number) {
+    this.beast.y = v;
+  }
+  get facing(): number {
+    return this.beast.facing;
+  }
+  get size(): number {
+    return this.beast.size;
+  }
+  get peak(): number {
+    return this.beast.peak;
+  }
+  get rubble(): number {
+    return this.beast.rubble;
+  }
+  get smashed(): number {
+    return this.beast.smashed;
+  }
+  get frights(): number {
+    return this.beast.frights;
+  }
+  get moving(): boolean {
+    return this.beast.moving;
+  }
+  get air(): number {
+    return this.beast.air;
+  }
+  get powers(): PowerId[] {
+    return this.beast.powers;
+  }
+  get chain(): number {
+    return this.beast.chain;
+  }
+  get bestChain(): number {
+    return this.beast.bestChain;
+  }
+  get liveChain(): number {
+    return this.beast.liveChain;
+  }
+  get multiplier(): number {
+    return this.beast.multiplier;
+  }
+  get reach(): number {
+    return this.beast.reach;
+  }
+  get buffs(): Partial<Record<PowerupKind, number>> {
+    return this.beast.buffs;
+  }
+
+  get over(): boolean {
+    return this.time >= this.seconds;
+  }
+
+  get timeLeft(): number {
+    return Math.max(0, this.seconds - this.time);
+  }
+
+  has(power: PowerId): boolean {
+    return this.beast.has(power);
+  }
+
+  nextPower(): { power: Power; progress: number } | null {
+    return this.beast.nextPower();
+  }
+
+  near(x: number, y: number, range: number, visit: (p: LiveProp, d: number) => void): void {
+    this.field.near(x, y, range, visit);
+  }
+
+  result(): RunResult {
+    const b = this.beast;
+    return {
+      rubble: b.rubble,
+      baseRubble: b.baseRubble,
+      smashed: b.smashed,
+      frights: b.frights,
+      start: b.start,
+      peak: Math.round(b.peak),
+      powers: [...b.powers],
+      bestChain: b.bestChain,
+      bounties: [...this.done],
+    };
+  }
+
+  step(dt: number, steer: Steer): RunEvent[] {
+    const events: RunEvent[] = [];
+    if (this.ended) return events;
+    dt = Math.min(dt, 0.05);
+    this.time += dt;
+    if (this.over) {
+      this.ended = true;
+      events.push({ type: 'end' });
+      return events;
+    }
+    this.beast.step(dt, steer, this.field, events);
+    this.field.step(dt, [this.beast]);
     this.checkBounties(events);
     return events;
-  }
-
-  /** The chain still going (0 once it has lapsed: nothing smashed for CHAIN_GAP seconds). */
-  get liveChain(): number {
-    return this.time - this.lastSmash <= CHAIN_GAP ? this.chain : 0;
-  }
-
-  /** The rubble multiplier the chain going now earns (×1, ×1.25, … up to ×2). */
-  get multiplier(): number {
-    return chainMultiplier(this.chain);
   }
 
   /** How far this run has got with a bounty (0..its target). */
   progress(b: Bounty): number {
     return bountyProgress(b, {
-      kinds: this.kinds,
-      frights: this.frights,
-      bestChain: this.bestChain,
-      powers: this.powers.length,
-      ratio: this.peak / this.start,
+      kinds: this.beast.kinds,
+      frights: this.beast.frights,
+      bestChain: this.beast.bestChain,
+      powers: this.beast.powers.length,
+      ratio: this.beast.peak / this.beast.start,
     });
   }
 
@@ -389,47 +746,9 @@ export class RampageRun {
     for (const b of this.bounties) {
       if (this.done.includes(b.id) || this.progress(b) < b.target) continue;
       this.done.push(b.id);
-      this.rubble += b.bonus;
+      this.beast.rubble += Math.round(b.bonus * this.beast.boost.value);
+      this.beast.baseRubble += b.bonus;
       events.push({ type: 'bounty', bounty: b });
-    }
-  }
-
-  private smash(p: LiveProp, by: SmashBy, events: RunEvent[]): void {
-    if (!p.alive) return;
-    p.alive = false;
-    this.mass += massOf(p.kind) * (this.has('spark') ? FRENZY : 1);
-    this.chain = this.time - this.lastSmash <= CHAIN_GAP ? this.chain + 1 : 1;
-    this.lastSmash = this.time;
-    this.bestChain = Math.max(this.bestChain, this.chain);
-    const points = Math.round(rubbleOf(p.kind) * this.multiplier);
-    this.rubble += points;
-    this.smashed++;
-    this.kinds.set(p.kind, (this.kinds.get(p.kind) ?? 0) + 1);
-    if (p.mover) this.frights++;
-    this.size = sizeAfter(this.start, this.mass);
-    this.peak = Math.max(this.peak, this.size);
-    events.push({ type: 'smash', prop: p, by, points });
-  }
-
-  /** Villagers and chickens run from the creature, and wander when it is far away. */
-  private moveCrowd(dt: number): void {
-    const flee = this.reach * FLEE_RANGE;
-    for (const p of this.movers) {
-      if (!p.alive) continue;
-      const dx = p.x - this.x;
-      const dy = p.y - this.y;
-      const d = Math.hypot(dx, dy);
-      if (d < flee) {
-        const s = (PROPS[p.kind].h < 30 ? 1.2 : 1) * FLEE_SPEED;
-        p.vx = (dx / (d || 1)) * s;
-        p.vy = (dy / (d || 1)) * s;
-      } else if (this.rng() < dt * 0.6) {
-        const a = this.rng() * Math.PI * 2;
-        p.vx = Math.cos(a) * WANDER_SPEED;
-        p.vy = Math.sin(a) * WANDER_SPEED;
-      }
-      p.x = Math.max(50, Math.min(WORLD_W - 50, p.x + p.vx * dt));
-      p.y = Math.max(50, Math.min(WORLD_H - 50, p.y + p.vy * dt));
     }
   }
 }

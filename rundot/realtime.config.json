@@ -1,0 +1,15 @@
+{
+  "rooms": [
+    {
+      "type": "battle",
+      "file": "src/rooms/BattleRoom.ts",
+      "config": {
+        "maxPlayers": 8,
+        "allowReconnect": true,
+        "reconnectTimeout": 15,
+        "idleTimeout": 60,
+        "autoPersist": false
+      }
+    }
+  ]
+}

@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { RigCanvas, type Pose } from '../app/creatureRig';
+import { AURA, lightSprite, makeGround, palette, withAlpha } from '../app/drawing';
 import { buildCreatureSprite, loadImage, type CreatureSprite } from '../app/creatureSprite';
 import { chime, distantThunder, heartbeat, roar, swipe, thud, thunderclap } from '../app/sfx';
 import type { Bounty } from '../game/bounty';
 import type { SlotId } from '../game/catalog';
 import {
-  BASE_SIZE,
   POWERS,
   PROPS,
-  RUN_SECONDS,
   WORLD_H,
   WORLD_W,
   buildWorld,
@@ -20,7 +19,15 @@ import {
   type PropKind,
   type Stage,
 } from '../game/rampage';
-import { RampageRun, type LiveProp, type RunEvent, type RunResult } from '../game/rampageRun';
+import {
+  RampageRun,
+  type Boost,
+  type LiveProp,
+  type RunEvent,
+  type RunResult,
+} from '../game/rampageRun';
+import { big } from '../game/numbers';
+import { POWERUPS } from '../game/powerup';
 import * as run from '../sdk/run';
 import { PowerIcon } from './PartIcon';
 
@@ -34,16 +41,9 @@ import { PowerIcon } from './PartIcon';
  * game/rampageRun.ts; this draws them on a canvas and plays the effects.
  */
 
-/** The spark of life chosen on the last night tints the creature's glow. */
-export const AURA: Record<string, string> = {
-  lightning: 'rgba(198, 242, 255, 0.9)',
-  curse: 'rgba(120, 230, 80, 0.9)',
-  moon: 'rgba(230, 60, 60, 0.9)',
-  ghostfire: 'rgba(90, 160, 255, 0.95)',
-  elixir: 'rgba(190, 90, 255, 0.95)',
-};
-
 const KINDS = Object.keys(PROPS) as PropKind[];
+/** Power-ups lying about a story run. */
+const STORY_PICKUPS = 8;
 /** The creature's share of the screen's height: small at first, looming larger as parts wake. */
 const FILL_START = 0.14;
 const FILL_PER_POWER = 0.028;
@@ -120,6 +120,9 @@ interface Callout {
   id: number;
   text: string;
   bonus?: number;
+  /** A power-up taken (its name and what it does) rather than a bounty done. */
+  note?: string;
+  tone?: 'power';
 }
 
 interface Pop {
@@ -223,6 +226,8 @@ interface Props {
   scale: number;
   /** The day's three bounties (the same for everyone). */
   bounties: readonly Bounty[];
+  /** What the player's upgrades make of the run: its start size, length and boosts. */
+  upgrades: { start: number; seconds: number; boost: Boost };
   volume: number;
   best: number;
   /** Whether the finished run reached the community's tally ('pending' while it is sent). */
@@ -239,6 +244,7 @@ export function Rampage({
   seed,
   scale,
   bounties,
+  upgrades,
   volume,
   best,
   contribution,
@@ -251,9 +257,9 @@ export function Rampage({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [phase, setPhase] = useState<Phase>('loading');
   const [hud, setHud] = useState<Hud>({
-    left: RUN_SECONDS,
+    left: upgrades.seconds,
     rubble: 0,
-    feet: feet(BASE_SIZE * scale),
+    feet: feet(upgrades.start * scale),
     next: null,
     progress: 0,
     chain: 0,
@@ -279,8 +285,18 @@ export function Rampage({
     const sparkKind = parts.spark?.replace('spark_', '') ?? 'lightning';
     const aura = AURA[sparkKind] ?? AURA['lightning']!;
     const world = buildWorld(seed, stage);
-    const seconds = testSeconds();
-    const sim = new RampageRun(world, BASE_SIZE, `${seed}:${Math.random()}`, seconds, bounties);
+    const seconds = testSeconds(upgrades.seconds);
+    const sim = new RampageRun(
+      world,
+      upgrades.start,
+      `${seed}:${Math.random()}`,
+      seconds,
+      bounties,
+      {
+        pickups: STORY_PICKUPS,
+        boost: upgrades.boost,
+      },
+    );
 
     let sprite: CreatureSprite | null = null;
     let rig: RigCanvas | null = null;
@@ -724,7 +740,7 @@ export function Rampage({
         // What it earned, over what it smashed (the small stuff adds up quietly).
         if (e.points >= 20)
           pops.push({
-            text: `+${e.points.toLocaleString('en-US')}`,
+            text: `+${big(e.points)}`,
             x: p.x,
             y: p.y - p.h * 0.6,
             born: now,
@@ -795,6 +811,11 @@ export function Rampage({
         });
         if (!calm) lightUp(0.4, now);
         thunderclap(volume * 0.5);
+      } else if (e.type === 'pickup') {
+        const spec = POWERUPS[e.pickup.kind];
+        setReward({ id: ++calloutId, text: spec.name, note: spec.text, tone: 'power' });
+        chime(volume * 0.8);
+        run.haptic('medium');
       } else if (e.type === 'bounty') {
         setReward({ id: ++calloutId, text: e.bounty.text, bonus: e.bounty.bonus });
         chime(volume);
@@ -1009,6 +1030,36 @@ export function Rampage({
           ctx.stroke();
         }
       }
+      // Power-ups: glowing, bobbing, each with its mark.
+      const unit = Math.max(24, 16 / z);
+      for (const pu of sim.pickups) {
+        if (
+          !pu.alive ||
+          pu.x < vx0 - 100 ||
+          pu.x > vx1 + 100 ||
+          pu.y < vy0 - 100 ||
+          pu.y > vy1 + 100
+        )
+          continue;
+        const spec = POWERUPS[pu.kind];
+        const bob = Math.sin(now * 3 + pu.id) * unit * 0.2;
+        const r = unit * (1 + 0.08 * Math.sin(now * 6 + pu.id));
+        ctx.fillStyle = '#120b16';
+        ctx.strokeStyle = spec.color;
+        ctx.lineWidth = r * 0.18;
+        ctx.shadowColor = spec.color;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(pu.x, pu.y - unit + bob, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = spec.color;
+        ctx.font = `900 ${r * 1.2}px Rubik, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(spec.mark, pu.x, pu.y - unit + bob + r * 0.05);
+      }
       for (const s of scars) {
         if (s.x < vx0 - s.r || s.x > vx1 + s.r || s.y < vy0 - s.r || s.y > vy1 + s.r) continue;
         ctx.fillStyle = 'rgba(14, 11, 9, 0.6)';
@@ -1188,7 +1239,7 @@ export function Rampage({
         if (px < -60 * dpr || px > W + 60 * dpr || py < -20 || py > H + 40 * dpr) continue;
         const pop = age < 0.12 ? 0.6 + (age / 0.12) * 0.5 : 1.1 - Math.min(0.1, age - 0.12);
         ctx.globalAlpha = Math.max(0, Math.min(1, (1.2 - age) / 0.35));
-        ctx.font = `800 ${Math.round(15 * dpr * pop)}px Cinzel, serif`;
+        ctx.font = `800 ${Math.round(15 * dpr * pop)}px Rubik, sans-serif`;
         ctx.lineWidth = 4 * dpr;
         ctx.strokeStyle = '#14080a';
         ctx.strokeText(s.text, px, py);
@@ -1203,7 +1254,7 @@ export function Rampage({
         const py = q.y * z + oy - age * 46 * dpr;
         if (px < -60 * dpr || px > W + 60 * dpr || py < -20 || py > H + 40 * dpr) continue;
         ctx.globalAlpha = Math.max(0, Math.min(1, (1 - age) / 0.3));
-        ctx.font = `800 ${Math.round((q.big ? 20 : 14) * dpr)}px Cinzel, serif`;
+        ctx.font = `800 ${Math.round((q.big ? 20 : 14) * dpr)}px Rubik, sans-serif`;
         ctx.lineWidth = 3 * dpr;
         ctx.strokeStyle = '#1a0d04';
         ctx.strokeText(q.text, px, py);
@@ -1292,7 +1343,7 @@ export function Rampage({
       const since = scared.get(p.id);
       if (since !== undefined && now - since < 0.8) {
         const k = Math.min(1, (now - since) / 0.1);
-        ctx.font = `800 ${h * 0.55 * k}px Cinzel, serif`;
+        ctx.font = `800 ${h * 0.55 * k}px Rubik, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         ctx.lineWidth = h * 0.08;
@@ -1472,7 +1523,7 @@ export function Rampage({
         <div className="rampage-hud">
           <div className="rampage-stat">
             <span className="rampage-label">Rubble</span>
-            <b data-testid="rampage-rubble">{hud.rubble.toLocaleString('en-US')}</b>
+            <b data-testid="rampage-rubble">{big(hud.rubble)}</b>
           </div>
           <div
             className={`rampage-clock ${hud.left < 10 ? 'hurry' : ''}`}
@@ -1545,9 +1596,9 @@ export function Rampage({
           data-testid="rampage-reward"
           onAnimationEnd={() => setReward((r) => (r?.id === reward.id ? null : r))}
         >
-          <span>Bounty!</span>
+          <span>{reward.tone === 'power' ? 'Power-up!' : 'Bounty!'}</span>
           <b>{reward.text}</b>
-          <em>+{reward.bonus} rubble</em>
+          <em>{reward.tone === 'power' ? reward.note : `+${big(reward.bonus ?? 0)} rubble`}</em>
         </div>
       )}
       {title && (
@@ -1571,7 +1622,7 @@ export function Rampage({
             {rankFor(result.start, result.peak)}
           </p>
           <div className="rampage-score">
-            <b data-testid="rampage-score">{result.rubble.toLocaleString('en-US')}</b>
+            <b data-testid="rampage-score">{big(result.rubble)}</b>
             <span>rubble</span>
             {newBest && <em className="rampage-best">New best!</em>}
           </div>
@@ -1618,7 +1669,7 @@ export function Rampage({
           {contribution === 'guest' && (
             <button
               className="btn btn-secondary btn-small"
-              onClick={() => onSignIn(result.rubble)}
+              onClick={() => onSignIn(result.baseRubble)}
               data-testid="rampage-signin"
             >
               Sign in to count it
@@ -1645,73 +1696,12 @@ export function Rampage({
 }
 
 /** Mock only: `?runSeconds=N` shortens runs for tests. */
-function testSeconds(): number {
-  if (!run.isMock()) return RUN_SECONDS;
+function testSeconds(seconds: number): number {
+  if (!run.isMock()) return seconds;
   const n = Number(new URLSearchParams(window.location.search).get('runSeconds'));
-  return Number.isFinite(n) && n > 0 ? n : RUN_SECONDS;
+  return Number.isFinite(n) && n > 0 ? n : seconds;
 }
 
 function pick<T>(list: readonly T[]): T {
   return list[Math.floor(Math.random() * list.length)]!;
-}
-
-/** The same rgba colour with another alpha. */
-function withAlpha(rgba: string, a: number): string {
-  return rgba.replace(/[\d.]+\)\s*$/, `${a})`);
-}
-
-/** A soft round pool of light, to stamp out of the night or add onto it. */
-function lightSprite(inner: string, mid: string): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = 64;
-  c.height = 64;
-  const x = c.getContext('2d')!;
-  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, inner);
-  g.addColorStop(0.45, mid);
-  g.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  x.fillStyle = g;
-  x.fillRect(0, 0, 64, 64);
-  return c;
-}
-
-/** A few colours from a sprite, for its debris. */
-function palette(img: HTMLImageElement): string[] {
-  const c = document.createElement('canvas');
-  c.width = 8;
-  c.height = 8;
-  const x = c.getContext('2d', { willReadFrequently: true })!;
-  x.drawImage(img, 0, 0, 8, 8);
-  const { data } = x.getImageData(0, 0, 8, 8);
-  const out: string[] = [];
-  for (let i = 0; i < data.length; i += 4 * 5) {
-    if (data[i + 3]! > 128) out.push(`rgb(${data[i]}, ${data[i + 1]}, ${data[i + 2]})`);
-  }
-  return out.length ? out : ['#6b5a48'];
-}
-
-/** Night grass (or the stage's ground) as a small repeating pixel tile. */
-function makeGround(ctx: CanvasRenderingContext2D, stageId: string): CanvasPattern | null {
-  const tones: Record<string, string[]> = {
-    village: ['#1c2a1d', '#213222', '#192619', '#253825'],
-    farms: ['#26301b', '#2c381f', '#212a17', '#33401f'],
-    market: ['#262526', '#2c2b2c', '#212021', '#323032'],
-    graveyard: ['#1b2420', '#1f2a25', '#17201c', '#243029'],
-    estate: ['#1a2b22', '#1f3227', '#16251d', '#24392c'],
-    city: ['#272628', '#2d2c2e', '#222123', '#333234'],
-  };
-  const pal = tones[stageId] ?? tones['village']!;
-  const tile = document.createElement('canvas');
-  tile.width = 16;
-  tile.height = 16;
-  const t = tile.getContext('2d')!;
-  for (let y = 0; y < 16; y++)
-    for (let x = 0; x < 16; x++) {
-      const r = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-      t.fillStyle = pal[Math.floor((r - Math.floor(r)) * pal.length)]!;
-      t.fillRect(x, y, 1, 1);
-    }
-  const pattern = ctx.createPattern(tile, 'repeat');
-  pattern?.setTransform(new DOMMatrix().scale(4));
-  return pattern;
 }

@@ -14,6 +14,7 @@
 import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { HapticFeedbackStyle } from '@series-inc/rundot-game-sdk';
 import { simulatedCrowd, simulatedRubble } from '../game/crowd';
+import { ROOM_TYPE, type BattleProtocol } from '../game/battleWire';
 import type { Reminder } from '../game/reminders';
 import { DAY_MS, SEASON } from '../game/schedule';
 
@@ -656,4 +657,77 @@ export function onLifecycle(handlers: {
       }
     }
   };
+}
+
+// ---------------------------------------------------------------- live battles
+
+/** A live battle room, as the game uses it (RUN's realtime room underneath). */
+export interface BattleLink {
+  readonly playerId: string;
+  send(message: BattleProtocol): void;
+  on(handlers: {
+    onMessage?: (message: BattleProtocol) => void;
+    onDisconnect?: () => void;
+    onError?: (error: string) => void;
+  }): void;
+  leave(): void;
+}
+
+export type BattleJoin = { ok: true; link: BattleLink } | { ok: false; reason: string };
+
+const JOIN_TIMEOUT_MS = 12_000;
+
+/**
+ * Join an open battle, or start one (RUN's matchmaking). Live rooms need a signed-in player: RUN
+ * prompts a guest to sign in. Any failure (no sign-in, offline, the service down) comes back as a
+ * reason, and the game offers an offline battle against bots instead.
+ */
+export async function joinBattle(): Promise<BattleJoin> {
+  try {
+    await ready();
+    const room = await Promise.race([
+      RundotGameAPI.realtime.joinOrCreateRoom<BattleProtocol>(ROOM_TYPE),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('timed out')), JOIN_TIMEOUT_MS),
+      ),
+    ]);
+    const link: BattleLink = {
+      playerId: room.playerId,
+      send: (message) => {
+        try {
+          room.send(message);
+        } catch (err) {
+          warn('battle send', err);
+        }
+      },
+      // Messages to everyone and to this player alone (the match details) arrive the same way.
+      on: (handlers) =>
+        room.on({
+          onMessage: handlers.onMessage,
+          onPrivateMessage: handlers.onMessage,
+          onDisconnect: handlers.onDisconnect,
+          onError: handlers.onError,
+        }),
+      leave: () => {
+        try {
+          room.leave();
+        } catch (err) {
+          warn('battle leave', err);
+        }
+      },
+    };
+    return { ok: true, link };
+  } catch (err) {
+    warn('joinBattle', err);
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** The signed-in player's display name (for their name tag in a battle). */
+export function playerName(): string {
+  try {
+    return RundotGameAPI.getProfile()?.username || 'You';
+  } catch {
+    return 'You';
+  }
 }

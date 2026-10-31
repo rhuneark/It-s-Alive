@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { RigCanvas, type Pose } from '../app/creatureRig';
 import { buildCreatureSprite, loadImage } from '../app/creatureSprite';
+import { AURA } from '../app/drawing';
 import { roar, thud } from '../app/sfx';
 import type { SlotId } from '../game/catalog';
 import { BASE_SIZE, type PropKind, type Stage } from '../game/rampage';
 import * as run from '../sdk/run';
-import { AURA } from './Rampage';
 
 /**
  * The rampage menu's picture, edge to edge: the creature everyone built, alive and looming over
@@ -168,8 +168,10 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
       const H = cv.height;
       const t = now - t0;
       // Where its feet stand, and the near row (fires and fleeing villagers) in front of it.
-      const feetY = H * 0.86;
-      const ground = H * 0.93;
+      // Sizes follow the narrower side, so a tall phone shows more sky, not a bigger village.
+      const U = Math.min(H, W * 1.6);
+      const feetY = H * 0.79;
+      const ground = H * 0.855;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.imageSmoothingEnabled = false;
 
@@ -264,9 +266,9 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
 
       ctx.fillStyle = '#120f1d';
       ctx.beginPath();
-      ctx.moveTo(0, H * 0.66);
-      ctx.quadraticCurveTo(W * 0.25, H * 0.56, W * 0.5, H * 0.64);
-      ctx.quadraticCurveTo(W * 0.75, H * 0.57, W, H * 0.64);
+      ctx.moveTo(0, H * 0.62);
+      ctx.quadraticCurveTo(W * 0.25, H * 0.53, W * 0.5, H * 0.6);
+      ctx.quadraticCurveTo(W * 0.75, H * 0.54, W, H * 0.6);
       ctx.lineTo(W, H);
       ctx.lineTo(0, H);
       ctx.fill();
@@ -287,13 +289,13 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
         });
       };
       ctx.fillStyle = '#16141a';
-      ctx.fillRect(0, H * 0.72, W, H * 0.28);
-      row(back, H * 0.74, H * 0.17, 0.25);
+      ctx.fillRect(0, H * 0.66, W, H * 0.34);
+      row(back, H * 0.68, U * 0.15, 0.25);
       for (const fx of SMOKE)
         if (Math.random() < dt * 3)
           motes.push({
             x: fx * W + (Math.random() - 0.5) * W * 0.03,
-            y: H * 0.7,
+            y: H * 0.64,
             vx: W * 0.01,
             vy: -H * (0.05 + Math.random() * 0.04),
             s: H * (0.03 + Math.random() * 0.03),
@@ -307,7 +309,7 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
       if (breakout && !burst) {
         const lab = imgs.get('lab');
         if (lab) {
-          const hh = H * 0.6;
+          const hh = U * 0.5;
           const ww = (hh * lab.width) / lab.height;
           ctx.drawImage(lab, W / 2 - ww / 2 + sx, feetY - hh, ww, hh);
         }
@@ -316,7 +318,7 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
       if (rig && burst) {
         // It looms bigger the taller the community has made it.
         const grow = Math.min(1.25, Math.sqrt(size / BASE_SIZE));
-        const hh = H * 0.55 * grow * (0.55 + 0.45 * easeOutBack(rise));
+        const hh = Math.min(H * 0.55, W * 0.95) * grow * (0.55 + 0.45 * easeOutBack(rise));
         const k = hh / rig.sprite.height;
         const pose: Pose = {
           t: now,
@@ -337,12 +339,12 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
         ctx.drawImage(lit, -rig.footX, -rig.footY);
         ctx.restore();
       }
-      row(front, H * 0.95, H * 0.14, 0);
+      row(front, H * 0.87, U * 0.12, 0);
 
       // fires along the front row, throwing embers
       for (const [i, fx] of FIRES.entries()) {
         const x = fx * W;
-        const fh = H * 0.07;
+        const fh = U * 0.06;
         const glow = ctx.createRadialGradient(x, ground, 0, x, ground, fh * 2.2);
         glow.addColorStop(0, 'rgba(255, 140, 50, 0.35)');
         glow.addColorStop(1, 'rgba(255, 90, 30, 0)');
@@ -408,7 +410,7 @@ export function LooseScene({ parts, stage, size, breakout, volume, onBrokeOut }:
         }
         const img = imgs.get(r.kind);
         if (!img) continue;
-        const hh = H * 0.075;
+        const hh = U * 0.065;
         const ww = (hh * img.width) / img.height;
         const ph = now * 16 + r.phase;
         const hop = Math.abs(Math.sin(ph)) * hh * 0.14;

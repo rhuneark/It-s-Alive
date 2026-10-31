@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { JAM_VOTE_URL, useGame, type GameModel } from './app/useGame';
 import { theme, useMusic } from './app/useMusic';
 import { useStorm, type Strike } from './app/useStorm';
@@ -10,11 +10,13 @@ import { MusicBar, SoundPanel } from './components/SoundPanel';
 import { Monster } from './components/Monster';
 import { Reveal } from './components/Reveal';
 import { LooseScene } from './components/LooseScene';
-import { Rampage } from './components/Rampage';
 import { OptionGrid, Results } from './components/Voting';
 import { findOption, questionForSlot } from './game/catalog';
 import { formatCountdown } from './game/schedule';
 import { BASE_SIZE, feet } from './game/rampage';
+import { big } from './game/numbers';
+import { UPGRADES, cost, level, storyRun } from './game/upgrades';
+import type { Parts } from './game/sketch';
 import {
   DEFAULT_MUSIC_VOLUME,
   MAX_AD_VOTES_PER_DAY,
@@ -24,6 +26,10 @@ import {
   votesRemaining,
 } from './game/state';
 import * as run from './sdk/run';
+
+// The rampage and the battle load when first played (they are most of the code).
+const Rampage = lazy(() => import('./components/Rampage').then((m) => ({ default: m.Rampage })));
+const Battle = lazy(() => import('./components/Battle').then((m) => ({ default: m.Battle })));
 
 export default function App() {
   const [inGame, setInGame] = useState(false);
@@ -107,6 +113,16 @@ function Game({
   // The rampage: one mounted run at a time (a new key starts a fresh run).
   const [rampageRun, setRampageRun] = useState<{ key: number; best: number } | null>(null);
   const [counted, setCounted] = useState<'pending' | run.RubbleResult | null>(null);
+  // A battle: one mounted at a time, with the creature the player chose.
+  const [battle, setBattle] = useState<{ key: number; parts: Parts } | null>(null);
+  const startBattle = (creature: 'village' | 'mine') => {
+    if (!game.rampage || !game.stitched) return;
+    if (!inGame) enter();
+    const parts = creature === 'mine' && game.save.sketch ? game.save.sketch : game.parts;
+    setRampageRun(null);
+    setBattle((b) => ({ key: (b?.key ?? 0) + 1, parts }));
+    run.track('battle_start', { creature });
+  };
   const startRampage = () => {
     // Only ever the creature everyone built: wait until every night is tallied.
     if (!game.rampage || !game.stitched) return;
@@ -121,6 +137,7 @@ function Game({
     setDiagOpen(false);
     setReplay(false);
     setRampageRun(null);
+    setBattle(null);
     setChronicle(false);
     setSketchOpen(false);
     onLeave();
@@ -147,8 +164,9 @@ function Game({
     screen = (
       <RampageMenu
         game={game}
-        covered={showAwakening || rampageRun !== null}
+        covered={showAwakening || rampageRun !== null || battle !== null}
         onRampage={startRampage}
+        onBattle={startBattle}
         onChronicle={() => setChronicle(true)}
         onSketch={openSketch}
         onReplay={() => setReplay(true)}
@@ -239,27 +257,42 @@ function Game({
         />
       )}
       {rampageRun && game.rampage && (
-        <Rampage
-          key={rampageRun.key}
-          parts={game.parts}
-          stage={game.rampage.stage}
-          seed={game.rampage.seed}
-          scale={game.rampage.size / BASE_SIZE}
-          bounties={game.rampage.bounties}
-          volume={game.save.musicOn ? game.save.musicVolume : 0}
-          best={rampageRun.best}
-          contribution={counted}
-          onEnd={(result) => {
-            setCounted('pending');
-            void game.finishRun(result).then(setCounted);
-          }}
-          onSignIn={(rubble) => {
-            setCounted('pending');
-            void game.countAsSignedIn(rubble).then(setCounted);
-          }}
-          onAgain={startRampage}
-          onQuit={() => setRampageRun(null)}
-        />
+        <Suspense fallback={<Stirring />}>
+          <Rampage
+            key={rampageRun.key}
+            parts={game.parts}
+            stage={game.rampage.stage}
+            seed={game.rampage.seed}
+            scale={game.rampage.size / BASE_SIZE}
+            bounties={game.rampage.bounties}
+            upgrades={storyRun(game.save.rampage.levels)}
+            volume={game.save.musicOn ? game.save.musicVolume : 0}
+            best={rampageRun.best}
+            contribution={counted}
+            onEnd={(result) => {
+              setCounted('pending');
+              void game.finishRun(result).then(setCounted);
+            }}
+            onSignIn={(rubble) => {
+              setCounted('pending');
+              void game.countAsSignedIn(rubble).then(setCounted);
+            }}
+            onAgain={startRampage}
+            onQuit={() => setRampageRun(null)}
+          />
+        </Suspense>
+      )}
+      {battle && (
+        <Suspense fallback={<Stirring />}>
+          <Battle
+            key={battle.key}
+            parts={battle.parts}
+            name={run.playerName()}
+            volume={game.save.musicOn ? game.save.musicVolume : 0}
+            onQuit={() => setBattle(null)}
+            onAgain={() => setBattle((b) => (b ? { key: b.key + 1, parts: b.parts } : b))}
+          />
+        </Suspense>
       )}
       {inGame && game.reveal && !game.resolving && !chronicle && !sketchOpen && !showAwakening && (
         <Reveal
@@ -315,6 +348,15 @@ function BuildStamp({ onSecret }: { onSecret: () => void }) {
     >
       build {__BUILD__}
     </p>
+  );
+}
+
+/** While the rampage or the battle loads. */
+function Stirring() {
+  return (
+    <div className="rampage">
+      <p className="rampage-loading">The creature stirs…</p>
+    </div>
   );
 }
 
@@ -757,24 +799,26 @@ function RampageCard({ game }: { game: GameModel }) {
 }
 
 /**
- * From Halloween on: the rampage menu (title and hub in one), in the night it is loose in. The
- * creature, alive over the burning village of the day's place, edge to edge (it breaks out of the
- * laboratory the first time); where it is; how tall the village has made it and when it grows
- * again; the big Rampage button; the day's bounties; and where it goes tomorrow.
+ * From Halloween on, home is only the creature, alive over the burning village (it breaks out of
+ * the laboratory the first time), and one button: Awaken. That opens the choice: a live Battle
+ * (with the village's creature or the player's own build) or the Story run in the day's place,
+ * with the rest tucked underneath.
  */
 function RampageMenu({
   game,
   covered,
   onRampage,
+  onBattle,
   onChronicle,
   onSketch,
   onReplay,
   onListen,
 }: {
   game: GameModel;
-  /** The waking scene or a run is on top: the scene waits (and its breakout is not wasted). */
+  /** The waking scene, a run or a battle is on top: the scene waits (and its breakout is not wasted). */
   covered: boolean;
   onRampage: () => void;
+  onBattle: (creature: 'village' | 'mine') => void;
   onChronicle: () => void;
   onSketch: () => void;
   onReplay: () => void;
@@ -782,143 +826,184 @@ function RampageMenu({
 }) {
   const r = game.rampage;
   const { save } = game;
+  const [sheet, setSheet] = useState(false);
+  const own = save.sketch !== null && Object.keys(save.sketch).length > 0;
+  const [pick, setPick] = useState<'village' | 'mine'>('village');
   const today = r && save.rampage.day === r.day ? save.rampage.today : 0;
   return (
-    <div className="screen rampage-menu" data-testid="rampage-menu">
-      <section className="hunt-hero">
-        {r && game.stitched && !covered ? (
-          <LooseScene
-            key={r.stage.id}
-            parts={game.parts}
-            stage={r.stage}
-            size={r.size}
-            breakout={!save.rampage.brokeOut}
-            volume={save.musicOn ? save.musicVolume : 0}
-            onBrokeOut={game.markBrokeOut}
-          />
-        ) : (
-          <div className="loose-scene loose-wait">
-            <p className="muted">{game.stitched ? '' : 'Gathering the parts…'}</p>
-          </div>
-        )}
-        <header className="hunt-top">
-          <h1 className="logo hunt-logo">It's Alive!</h1>
-          <button className="btn btn-secondary btn-small" onClick={onChronicle}>
-            Chronicle
-          </button>
-        </header>
-      </section>
-      {r && (
-        <div className="hunt-where">
-          <p className="hunt-day">Rampage · day {r.day + 1}</p>
-          <h2 className="hunt-place">Loose in {r.stage.name}</h2>
-          <p className="hunt-blurb">{r.stage.blurb}</p>
+    <div className="home" data-testid="rampage-menu">
+      {r && game.stitched && !covered ? (
+        <LooseScene
+          key={r.stage.id}
+          parts={game.parts}
+          stage={r.stage}
+          size={r.size}
+          breakout={!save.rampage.brokeOut}
+          volume={save.musicOn ? save.musicVolume : 0}
+          onBrokeOut={game.markBrokeOut}
+        />
+      ) : (
+        <div className="loose-scene loose-wait">
+          <p className="muted">{game.stitched ? '' : 'Gathering the parts…'}</p>
         </div>
       )}
-      {r && (
-        <section
-          className="hunt-stats"
-          data-testid="rampage-card"
-          aria-label={`Rampage day ${r.day + 1}`}
+      <div className="home-foot">
+        <button
+          className="btn btn-awaken"
+          onClick={() => {
+            onListen();
+            setSheet(true);
+          }}
+          disabled={!game.stitched || !r}
+          data-testid="awaken-open"
         >
-          <div className="hunt-stat">
-            <b data-testid="creature-height">{feet(r.size)} ft</b>
-            <span>tall</span>
-          </div>
-          <div className="hunt-stat">
-            {r.grewBy > 0 ? (
-              <>
-                <b className="grew">+{feet(r.grewBy)} ft</b>
-                <span>grew last night</span>
-              </>
-            ) : (
-              <>
-                <b>Night 1</b>
-                <span>of the rampage</span>
-              </>
-            )}
-          </div>
-          <div className="hunt-stat">
-            <b>{formatCountdown(r.growsInMs)}</b>
-            <span>till it grows</span>
-          </div>
-        </section>
-      )}
-      <button
-        className="btn btn-primary btn-wide btn-rampage"
-        onClick={onRampage}
-        disabled={!game.stitched || !r}
-        data-testid="rampage-start"
-      >
-        {game.stitched ? 'Rampage! ⚡' : 'Gathering the parts…'}
-      </button>
-      {save.rampage.runs > 0 && (
-        <p className="hunt-best" data-testid="rampage-best">
-          Your best <b>{save.rampage.best.toLocaleString('en-US')}</b> · today{' '}
-          <b>{today.toLocaleString('en-US')}</b> rubble
-        </p>
-      )}
-      {r && r.bounties.length > 0 && (
-        <section className="bounty-board" data-testid="bounty-board">
-          <h3>Today's bounties</h3>
-          <ul>
-            {r.bounties.map((b) => {
-              const done = r.done.includes(b.id);
-              return (
-                <li key={b.id} className={done ? 'done' : ''}>
-                  <i aria-hidden="true">{done ? '✓' : ''}</i>
-                  <span>{b.text}</span>
-                  <em>+{b.bonus}</em>
-                </li>
-              );
-            })}
-          </ul>
-          <p>
-            {r.done.length === r.bounties.length
-              ? 'All done today. New bounties at midnight.'
-              : `${r.done.length} of ${r.bounties.length} done · bonus rubble in any run`}
-          </p>
-        </section>
-      )}
-      {r && (
-        <section className="hunt-village">
-          <p>
-            {r.today === null ? (
-              'Counting the rubble…'
-            ) : (
-              <>
-                <b>{r.today.toLocaleString('en-US')}</b> rubble smashed by everyone today: at
-                midnight it all makes the creature grow
-              </>
-            )}
-          </p>
-          <p className="hunt-next">
-            Tomorrow it marches on <b>{r.next.name}</b>
-          </p>
-        </section>
-      )}
-      <JamButton onVote={game.voteInJam} />
-      <div className="hunt-more">
-        <button className="btn btn-secondary" onClick={onReplay} data-testid="awaken-replay">
-          Watch it wake
-        </button>
-        <button className="btn btn-secondary" onClick={onSketch} data-testid="sketch-open">
-          Sketchbook
+          {game.stitched ? 'Awaken' : 'Gathering the parts…'}
         </button>
       </div>
-      <MusicBar
-        on={save.musicOn}
-        volume={save.musicVolume}
-        onToggle={() => {
-          if (!save.musicOn) theme.setWanted(true);
-          onListen();
-          game.toggleMusic();
-        }}
-        onVolume={(v) => {
-          onListen();
-          game.setVolume(v);
-        }}
-      />
+      {sheet && r && (
+        <div className="sheet-backdrop" onClick={() => setSheet(false)}>
+          <section
+            className="sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="How it wakes"
+            data-testid="mode-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="sheet-close" aria-label="Close" onClick={() => setSheet(false)}>
+              ×
+            </button>
+            <button
+              className="mode-card mode-battle"
+              onClick={() => onBattle(pick === 'mine' && own ? 'mine' : 'village')}
+              data-testid="mode-battle"
+            >
+              <span className="mode-tag">Live · 3 minutes · up to 8 creatures</span>
+              <b>Battle</b>
+              <span>Smash the town, devour smaller creatures. Biggest at the bell wins.</span>
+            </button>
+            <div className="mode-pick" role="radiogroup" aria-label="Your creature in battle">
+              <button
+                role="radio"
+                aria-checked={pick === 'village'}
+                className={pick === 'village' ? 'on' : ''}
+                onClick={() => setPick('village')}
+                data-testid="pick-village"
+              >
+                The village's creature
+              </button>
+              <button
+                role="radio"
+                aria-checked={pick === 'mine'}
+                className={pick === 'mine' ? 'on' : ''}
+                onClick={() => (own ? setPick('mine') : onSketch())}
+                data-testid="pick-mine"
+              >
+                {own ? 'My own build' : 'Build my own'}
+              </button>
+            </div>
+            <button
+              className="mode-card mode-story"
+              onClick={onRampage}
+              data-testid="rampage-start"
+            >
+              <span className="mode-tag">Story · rampage day {r.day + 1} · 1 minute</span>
+              <b>Loose in {r.stage.name}</b>
+              <span>{r.stage.blurb}</span>
+            </button>
+            <div className="story-facts" data-testid="rampage-card">
+              <span>
+                <b data-testid="creature-height">{feet(r.size)} ft</b> tall
+              </span>
+              {r.grewBy > 0 && (
+                <span>
+                  <b className="grew">+{feet(r.grewBy)} ft</b> grew last night
+                </span>
+              )}
+              <span>
+                grows in <b>{formatCountdown(r.growsInMs)}</b>
+              </span>
+            </div>
+            {save.rampage.runs > 0 && (
+              <p className="story-best" data-testid="rampage-best">
+                Your best <b>{big(save.rampage.best)}</b> · today <b>{big(today)}</b> rubble
+              </p>
+            )}
+            {r.bounties.length > 0 && (
+              <ul
+                className="story-bounties"
+                data-testid="bounty-board"
+                aria-label="Today's bounties"
+              >
+                {r.bounties.map((b) => {
+                  const done = r.done.includes(b.id);
+                  return (
+                    <li key={b.id} className={done ? 'done' : ''}>
+                      <i aria-hidden="true">{done ? '✓' : ''}</i>
+                      <span>{b.text}</span>
+                      <em>+{b.bonus}</em>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <section className="upgrades" data-testid="upgrades">
+              <h3>
+                Story upgrades <span>{big(save.rampage.purse)} rubble to spend</span>
+              </h3>
+              <ul>
+                {UPGRADES.map((u) => {
+                  const at = level(save.rampage.levels, u.id);
+                  const price = cost(u, at);
+                  return (
+                    <li key={u.id}>
+                      <div>
+                        <b>{u.name}</b>
+                        <i>{at >= u.max ? 'max' : `level ${at}`}</i>
+                        <span>{u.text}</span>
+                      </div>
+                      <button
+                        className="btn btn-secondary btn-small"
+                        disabled={price > save.rampage.purse}
+                        onClick={() => game.buyUpgrade(u.id)}
+                        data-testid={`buy-${u.id}`}
+                      >
+                        {at >= u.max ? 'Max' : big(price)}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p>Story only. Battles are fair: there, only the power-ups on the map count.</p>
+            </section>
+            <div className="sheet-row">
+              <button className="btn btn-secondary" onClick={onSketch} data-testid="sketch-open">
+                Sketchbook
+              </button>
+              <button className="btn btn-secondary" onClick={onChronicle}>
+                Chronicle
+              </button>
+              <button className="btn btn-secondary" onClick={onReplay} data-testid="awaken-replay">
+                Watch it wake
+              </button>
+            </div>
+            <JamButton onVote={game.voteInJam} />
+            <MusicBar
+              on={save.musicOn}
+              volume={save.musicVolume}
+              onToggle={() => {
+                if (!save.musicOn) theme.setWanted(true);
+                onListen();
+                game.toggleMusic();
+              }}
+              onVolume={(v) => {
+                onListen();
+                game.setVolume(v);
+              }}
+            />
+          </section>
+        </div>
+      )}
     </div>
   );
 }

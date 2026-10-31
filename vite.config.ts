@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { rundotGameLibrariesPlugin } from '@series-inc/rundot-game-sdk/vite';
+import { rundotGameLibrariesPlugin, rundotMultiplayerPlugin } from '@series-inc/rundot-game-sdk/vite';
 
 // CDN assets in cdn/ folder are automatically served in dev mode
 
@@ -22,6 +22,10 @@ export default defineConfig({
   plugins: [
     react(), // Must come first - handles JSX transform
     rundotGameLibrariesPlugin(),
+    // Live battles: builds src/rooms (rundot/realtime.config.json) for RUN's servers, and runs a
+    // local room server for `npm run dev` (each browser tab plays as its own fake player).
+    // (MP_DEV_PORT: the e2e tests' own room server, so they never clash with `npm run dev`.)
+    rundotMultiplayerPlugin({ devPort: Number(process.env['MP_DEV_PORT']) || 9001 }),
   ],
   base: './',
   define: {
