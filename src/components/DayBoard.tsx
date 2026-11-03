@@ -44,6 +44,11 @@ export function DayBoard({
             : 'Rampage to get on the board. It starts fresh at midnight.'}
         </p>
       )}
+      {!compact && (
+        <p className="day-board-rule">
+          Scored before Rubble Value, so the day's best rampage wins, not the biggest upgrades.
+        </p>
+      )}
       {champ && !compact && (
         <p className="day-board-champ" data-testid="day-board-champ">
           Yesterday's most monstrous: <b>{champ.name}</b> with {big(champ.score)}

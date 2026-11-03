@@ -9,7 +9,9 @@ import {
   buildSchedule,
   closedDays,
   dayIndexAt,
+  dayStartMs,
   phaseAt,
+  rampageDayStartMs,
   seasonSchedule,
   votingDays,
   type Season,
@@ -124,6 +126,44 @@ describe('schedule', () => {
     // on the vigil every night is closed, so the spark is resolved and shown
     expect(closedDays(SEASON.awakenMs - 1, SEASON)).toHaveLength(20);
     expect(closedDays(SEASON.awakenMs + 9 * DAY_MS, SEASON)).toHaveLength(20);
+  });
+});
+
+describe('days after the clocks change', () => {
+  const H = 3_600_000;
+  it('turn over at midnight Central all year: 06:00 UTC in standard time, 05:00 in daylight time', () => {
+    // Nov 1 2026 (rampage day 1) is 25 hours long: the clocks go back at 2 am
+    expect(rampageDayStartMs(LIVE_SEASON, 1)).toBe(Date.UTC(2026, 10, 1, 5));
+    expect(rampageDayStartMs(LIVE_SEASON, 2)).toBe(Date.UTC(2026, 10, 2, 6));
+    expect(rampageDayStartMs(LIVE_SEASON, 2) - rampageDayStartMs(LIVE_SEASON, 1)).toBe(25 * H);
+    // 11:30 pm Central on Nov 2 is still rampage day 2; midnight begins day 3
+    const late = Date.UTC(2026, 10, 3, 5, 30);
+    expect(phaseAt(late, LIVE_SEASON)).toEqual({ kind: 'awakened', daysSinceAwakening: 2 });
+    expect(phaseAt(Date.UTC(2026, 10, 3, 6), LIVE_SEASON)).toEqual({
+      kind: 'awakened',
+      daysSinceAwakening: 3,
+    });
+    // Mar 14 2027 is 23 hours long: the clocks go forward
+    const before = Date.UTC(2027, 2, 14, 6);
+    const after = Date.UTC(2027, 2, 15, 5);
+    const d = dayIndexAt(before, LIVE_SEASON);
+    expect(dayStartMs(LIVE_SEASON, d)).toBe(before);
+    expect(dayStartMs(LIVE_SEASON, d + 1)).toBe(after);
+    expect(dayIndexAt(after - 1, LIVE_SEASON)).toBe(d);
+    expect(dayIndexAt(after, LIVE_SEASON)).toBe(d + 1);
+  });
+
+  it('send the evening reminder at 6 pm Central in standard time too', () => {
+    const plan = reminderPlan(
+      Date.UTC(2026, 10, 3, 12),
+      LIVE_SEASON,
+      seasonSchedule(LIVE_SEASON),
+      false,
+    );
+    const local = (ms: number) =>
+      new Date(ms).toLocaleTimeString('en-US', { timeZone: DAY_TIME_ZONE, hour: 'numeric' });
+    expect(plan.length).toBeGreaterThan(0);
+    for (const r of plan) expect(local(r.atMs)).toBe('6 PM');
   });
 });
 

@@ -2,10 +2,11 @@
  * The season calendar: which question is asked on which day, and when the
  * monster wakes. Pure functions of time; the caller supplies a trusted clock.
  *
- * A day runs from midnight to midnight US Central time (DAY_TIME_ZONE). The 2026
- * season lies wholly inside daylight time (CDT, UTC-5, until Nov 1), so every day
- * is exactly 24 hours and Central midnight is 05:00 UTC. A season that crossed a
- * DST change would need uneven days (rules.test.ts checks every boundary).
+ * A day runs from midnight to midnight US Central time (DAY_TIME_ZONE), by the
+ * calendar: midnight is 05:00 UTC in daylight time (CDT) and 06:00 UTC in standard
+ * time (CST, from Nov 1 2026), and the days the clocks change are 25 and 23 hours
+ * long. Every day boundary goes through `centralDay` / `centralAt` (rules.test.ts
+ * checks every boundary of the season and the change on Nov 1).
  */
 import { QUESTIONS, type Question, type SlotId } from './catalog';
 
@@ -22,6 +23,43 @@ export interface Season {
 
 /** Days turn over at midnight in this time zone. */
 export const DAY_TIME_ZONE = 'America/Chicago';
+
+const HOUR_MS = 3_600_000;
+const CENTRAL = new Intl.DateTimeFormat('en-US', {
+  timeZone: DAY_TIME_ZONE,
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: 'numeric',
+  hourCycle: 'h23',
+});
+
+/** The Central calendar date and hour of an instant. */
+function centralParts(ms: number): { day: number; hour: number } {
+  const p: Record<string, number> = {};
+  for (const part of CENTRAL.formatToParts(ms))
+    if (part.type !== 'literal') p[part.type] = Number(part.value);
+  return {
+    day: Math.round(Date.UTC(p['year']!, p['month']! - 1, p['day']!) / DAY_MS),
+    hour: p['hour']!,
+  };
+}
+
+/** The Central calendar day an instant falls on (days since Jan 1 1970). */
+export function centralDay(ms: number): number {
+  return centralParts(ms).day;
+}
+
+/** The instant it is `hour` o'clock Central on calendar day `day` (days since Jan 1 1970). */
+export function centralAt(day: number, hour = 0): number {
+  // Central is UTC-5 or UTC-6: try both (and the hour the clocks skip, at worst, the next one).
+  for (const off of [5, 6, 7]) {
+    const t = day * DAY_MS + (hour + off) * HOUR_MS;
+    const c = centralParts(t);
+    if (c.day === day && c.hour === hour) return t;
+  }
+  return day * DAY_MS + (hour + 6) * HOUR_MS;
+}
 
 export const SEASON: Season = {
   // Restarted on Oct 11 (the Oct 10 trial run used 's2026'): a new id means fresh tallies.
@@ -59,7 +97,17 @@ const DROP_ORDER: readonly SlotId[] = [
 
 /** Number of days in a season, from the first question to Halloween (Central time). */
 export function votingDays(season: Season): number {
-  return Math.max(0, Math.round((season.awakenMs - season.startMs) / DAY_MS));
+  return Math.max(0, centralDay(season.awakenMs) - centralDay(season.startMs));
+}
+
+/** Midnight Central that begins the season's day `index` (0 = the first voting day). */
+export function dayStartMs(season: Season, index: number): number {
+  return centralAt(centralDay(season.startMs) + index);
+}
+
+/** Midnight Central that begins rampage day `day` (0 = Halloween). */
+export function rampageDayStartMs(season: Season, day: number): number {
+  return dayStartMs(season, votingDays(season) + day);
 }
 
 /** The ordered list of questions for a season of `days` voting days. */
@@ -92,7 +140,7 @@ export type Phase =
 
 /** Day index relative to the season start (negative before it starts). */
 export function dayIndexAt(nowMs: number, season: Season): number {
-  return Math.floor((nowMs - season.startMs) / DAY_MS);
+  return centralDay(nowMs) - centralDay(season.startMs);
 }
 
 export function phaseAt(nowMs: number, season: Season): Phase {
@@ -102,13 +150,13 @@ export function phaseAt(nowMs: number, season: Season): Phase {
   if (nowMs >= season.awakenMs) {
     return {
       kind: 'awakened',
-      daysSinceAwakening: Math.max(0, Math.floor((nowMs - season.awakenMs) / DAY_MS)),
+      daysSinceAwakening: Math.max(0, centralDay(nowMs) - centralDay(season.awakenMs)),
     };
   }
   if (day >= schedule.length) {
     return { kind: 'vigil', wakesInMs: season.awakenMs - nowMs, dayCount: schedule.length };
   }
-  const endsAt = season.startMs + (day + 1) * DAY_MS;
+  const endsAt = dayStartMs(season, day + 1);
   return {
     kind: 'voting',
     day,

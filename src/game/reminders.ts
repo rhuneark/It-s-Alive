@@ -6,9 +6,8 @@
  */
 import type { Question } from './catalog';
 import { stageFor } from './rampage';
-import { DAY_MS, dayIndexAt, votingDays, type Season } from './schedule';
+import { DAY_MS, centralAt, centralDay, dayIndexAt, votingDays, type Season } from './schedule';
 
-const HOUR_MS = 3_600_000;
 /** 6 pm Central: six hours before the vote closes. */
 export const REMINDER_HOUR = 18;
 /** Halloween morning, 10 am Central: it woke at midnight. */
@@ -42,7 +41,7 @@ export function reminderPlan(
   // From Halloween on the rampage goes on; the 7-day horizon decides how far ahead.
   for (let day = Math.max(0, today); day <= Math.max(today, halloween) + 7; day++) {
     const hour = day === halloween ? AWAKE_HOUR : REMINDER_HOUR;
-    const atMs = season.startMs + day * DAY_MS + hour * HOUR_MS;
+    const atMs = centralAt(centralDay(season.startMs) + day, hour);
     if (atMs <= nowMs || atMs - nowMs > REMINDER_HORIZON_MS) continue;
     const id = `${season.id}-n${day}`;
     const q = schedule[day];

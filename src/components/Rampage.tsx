@@ -1703,6 +1703,11 @@ export function Rampage({
             <span>rubble</span>
             {newBest && <em className="rampage-best">New best!</em>}
           </div>
+          {result.baseRubble < result.rubble && (
+            <p className="rampage-board-score" data-testid="board-score">
+              Board score <b>{big(result.baseRubble)}</b> (before Rubble Value)
+            </p>
+          )}
           <div
             className="rampage-powers"
             aria-label={`Woke ${result.powers.length} of ${POWERS.length} parts`}

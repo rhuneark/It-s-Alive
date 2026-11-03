@@ -7,8 +7,12 @@ A RUN.world game (React + Vite + TypeScript, from series-ai/run-template-2d-reac
 The monster starts as a whole human husk standing in the lab. Every day all players vote on one
 body part; at midnight US Central time (`DAY_TIME_ZONE`, America/Chicago) the most-voted option is
 painted into the husk. Night 1 is always the HEAD; the season ends with the BRAIN and the SPARK of life,
-and at midnight Central that begins Halloween (Oct 31) it wakes. The whole 2026 season is in CDT
-(UTC-5), so every day is 24 h and starts at 05:00 UTC (rules.test.ts checks every boundary).
+and at midnight Central that begins Halloween (Oct 31) it wakes. Days follow the Central calendar
+(`centralDay` / `centralAt` in schedule.ts, via Intl): midnight is 05:00 UTC in daylight time (the
+whole voting season) and 06:00 UTC in standard time (from Nov 1), and the days the clocks change are
+25 and 23 hours long. Everything goes through `dayIndexAt`, `dayStartMs` and `rampageDayStartMs`
+(the dev/test clock in run.ts too); never add `DAY_MS` to a start time (rules.test.ts checks every
+boundary, Nov 1 and the spring-forward day).
 The 2026 season (id `s2026b`) starts Oct 11: 19 parts voted Oct 11-29, then the VIGIL on Oct 30
 (`VIGIL_DAYS` = 1, always the last day before Halloween: no vote, the finished creature waits with a
 countdown; phase `vigil` in schedule.ts, `Vigil` screen in App.tsx). `seasonSchedule()` builds the nights;
@@ -228,10 +232,12 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
     in from the north"); day 0 is Halloween's village as it was, and the six places × eight ways do
     not repeat for 24 days. `venueWorld(seed, venue)` builds it; battles also turn each match's map
     (`BattleHost.turn/mirror`, sent in `match`). THE DAY'S BOARD (`daily.ts`, `run.submitScore` /
-    `run.fetchBoard`, `components/DayBoard.tsx`): every story run's score (its rubble, upgrades
-    and all) goes on RUN's leaderboard (`rundot/leaderboard.config.json`; simple mode, keep-best,
+    `run.fetchBoard`, `components/DayBoard.tsx`): every story run's score goes on RUN's
+    leaderboard: its rubble BEFORE Rubble Value (`baseRubble`, owner's choice Nov 3: "the day's
+    best rampage wins, not the biggest upgrades"; the panel says so and the end card shows "Board
+    score" when it differs) (`rundot/leaderboard.config.json`; simple mode, keep-best,
     maxScore = MAX_SAFE_INTEGER for big numbers). RUN's periods are UTC calendar ones but a game
-    day runs 05:00-05:00 UTC, so each game day has its own MODE `m<day of month><a|b>` (62 modes,
+    day runs midnight to midnight Central (05:00 or 06:00 UTC), so each game day has its own MODE `m<day of month><a|b>` (62 modes,
     the letter by the month's parity) on a MONTHLY period: a mode's monthly instance only ever
     holds one game day (the last day of a month spills into next month's instance, which the
     parity keeps unused; daily.test.ts checks 800 days). The panel and the end card show the top 3

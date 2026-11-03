@@ -3,7 +3,7 @@
  * showcasing the top 3 scores of the day. Daily rewards for return"). Pure.
  *
  * The day's board. RUN's leaderboards reset by UTC calendar periods, but a game day runs from
- * 05:00 to 05:00 UTC (midnight CDT). So each game day gets its own board MODE on a MONTHLY period
+ * midnight to midnight Central (05:00 or 06:00 UTC). So each game day gets its own board MODE on a MONTHLY period
  * (rundot/leaderboard.config.json): `m<day of month><a|b>`, the letter by the month's parity. A
  * game day's runs all land in its mode's instance for the month the day starts in, except the last
  * day of a month, whose small hours fall in the next month's instance; with the parity letter that
@@ -14,7 +14,6 @@
  * it over. Each reward is at least a set amount, and grows with the player's best run so it stays
  * worth having.
  */
-import { DAY_MS } from './schedule';
 
 /** The board mode for the game day that starts at `dayStartMs`. */
 export function boardMode(dayStartMs: number): string {
@@ -28,15 +27,14 @@ export const BOARD_MODES: readonly string[] = Array.from({ length: 62 }, (_, i) 
 });
 
 /**
- * Moments inside each monthly instance that holds the day's runs (one, or two for the last day of
- * a month): pass each as `periodDate`.
+ * Moments inside each monthly instance that holds the runs of the game day from `dayStartMs` to
+ * `nextStartMs` (one, or two for the last day of a month): pass each as `periodDate`.
  */
-export function boardInstances(dayStartMs: number): number[] {
-  const start = new Date(dayStartMs);
-  const end = new Date(dayStartMs + DAY_MS - 1);
-  return start.getUTCMonth() === end.getUTCMonth()
+export function boardInstances(dayStartMs: number, nextStartMs: number): number[] {
+  const last = nextStartMs - 1;
+  return new Date(dayStartMs).getUTCMonth() === new Date(last).getUTCMonth()
     ? [dayStartMs]
-    : [dayStartMs, dayStartMs + DAY_MS - 1];
+    : [dayStartMs, last];
 }
 
 /** One entry on a day's board. */

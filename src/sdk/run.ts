@@ -17,7 +17,7 @@ import { simulatedBoard, simulatedCrowd, simulatedRubble } from '../game/crowd';
 import { boardInstances, boardMode, topOf, type BoardEntry } from '../game/daily';
 import { ROOM_TYPE, type BattleProtocol } from '../game/battleWire';
 import type { Reminder } from '../game/reminders';
-import { DAY_MS, SEASON } from '../game/schedule';
+import { SEASON, dayIndexAt, dayStartMs, rampageDayStartMs } from '../game/schedule';
 
 const INIT_TIMEOUT_MS = 8000;
 const SAVE_KEY = 'save';
@@ -219,8 +219,9 @@ export async function syncClock(): Promise<void> {
 export function now(): number {
   const real = Date.now() + clockOffsetMs;
   if (devDayOverride === null) return real;
-  const intoDay = (((real - SEASON.startMs) % DAY_MS) + DAY_MS) % DAY_MS;
-  return SEASON.startMs + devDayOverride * DAY_MS + intoDay;
+  // The same time of day, on the day it pretends to be (days start at midnight Central).
+  const intoDay = real - dayStartMs(SEASON, dayIndexAt(real, SEASON));
+  return dayStartMs(SEASON, devDayOverride) + intoDay;
 }
 
 // ---------------------------------------------------------------- saves
@@ -423,12 +424,11 @@ export interface DayBoard {
 }
 
 /**
- * Put a story run's score on its game day's board (daily.ts: one board per game day). Guests are
- * left off, like their rubble, until they sign in. Returns the rank, or null if it did not count.
+ * Put a story run's score on rampage day `day`'s board (daily.ts: one board per game day). Guests
+ * are left off, like their rubble, until they sign in. Returns the rank, or null if it did not count.
  */
 export async function submitScore(
   day: number,
-  dayStartMs: number,
   score: number,
   seconds: number,
 ): Promise<number | null> {
@@ -439,7 +439,7 @@ export async function submitScore(
       const all = raw ? (JSON.parse(raw) as Record<string, number>) : {};
       all[String(day)] = Math.max(all[String(day)] ?? 0, Math.round(score));
       await RundotGameAPI.appStorage.setItem(DEV_SCORES_KEY, JSON.stringify(all));
-      return (await fetchBoard(day, dayStartMs))?.mine?.rank ?? null;
+      return (await fetchBoard(day))?.mine?.rank ?? null;
     } catch (err) {
       warn('dev score', err);
       return null;
@@ -450,7 +450,7 @@ export async function submitScore(
     const res = await RundotGameAPI.leaderboard.submitScore({
       score: Math.round(score),
       duration: Math.max(10, Math.round(seconds)),
-      mode: boardMode(dayStartMs),
+      mode: boardMode(rampageDayStartMs(SEASON, day)),
       metadata: { day },
     });
     return res.accepted ? (res.rank ?? null) : null;
@@ -460,8 +460,8 @@ export async function submitScore(
   }
 }
 
-/** A game day's top three and the player's place on it. Null if the board could not be read. */
-export async function fetchBoard(day: number, dayStartMs: number): Promise<DayBoard | null> {
+/** Rampage day `day`'s top three and the player's place on it. Null if the board could not be read. */
+export async function fetchBoard(day: number): Promise<DayBoard | null> {
   await ready();
   if (fakeWrites()) {
     let mine = 0;
@@ -481,10 +481,11 @@ export async function fetchBoard(day: number, dayStartMs: number): Promise<DayBo
     };
   }
   try {
-    const mode = boardMode(dayStartMs);
+    const start = rampageDayStartMs(SEASON, day);
+    const mode = boardMode(start);
     const me = RundotGameAPI.getProfile()?.id ?? '';
     const pages = await Promise.all(
-      boardInstances(dayStartMs).map((periodDate) =>
+      boardInstances(start, rampageDayStartMs(SEASON, day + 1)).map((periodDate) =>
         withRetry(() =>
           RundotGameAPI.leaderboard.getPodiumScores({
             mode,

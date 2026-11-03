@@ -1,5 +1,5 @@
 import { findOption } from '../game/catalog';
-import { DAY_MS, DAY_TIME_ZONE, SEASON, seasonSchedule } from '../game/schedule';
+import { DAY_TIME_ZONE, SEASON, dayStartMs, seasonSchedule } from '../game/schedule';
 import type { SaveState } from '../game/state';
 import { percentages } from '../game/tally';
 import { iconUrl } from './Monster';
@@ -13,7 +13,7 @@ interface Props {
 }
 
 function nightDate(day: number): string {
-  const d = new Date(SEASON.startMs + day * DAY_MS);
+  const d = new Date(dayStartMs(SEASON, day));
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: DAY_TIME_ZONE });
 }
 

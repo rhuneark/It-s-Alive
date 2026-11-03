@@ -8,10 +8,10 @@ import type { SlotId } from '../game/catalog';
 import { reminderPlan } from '../game/reminders';
 import { pendingReveal, type Reveal } from '../game/reveal';
 import {
-  DAY_MS,
   SEASON,
   closedDays,
   dayIndexAt,
+  dayStartMs,
   phaseAt,
   seasonSchedule,
   type Phase,
@@ -388,8 +388,6 @@ export function useGame(): GameModel {
   // ------------------------------------------------------------- the rampage
   const rampageDay = phase.kind === 'awakened' ? phase.daysSinceAwakening : -1;
   const [todayRubble, setTodayRubble] = useState<number | null>(null);
-  /** When a rampage day starts (game days run 05:00 to 05:00 UTC). */
-  const dayStart = (d: number) => SEASON.awakenMs + d * DAY_MS;
   const [board, setBoard] = useState<run.DayBoard | null>(null);
   const [yesterday, setYesterday] = useState<run.DayBoard | null>(null);
   const refreshBoard = useCallback(async () => {
@@ -398,8 +396,8 @@ export function useGame(): GameModel {
     const mine = epoch.current;
     const day = d.daysSinceAwakening;
     const [today, before] = await Promise.all([
-      run.fetchBoard(day, SEASON.awakenMs + day * DAY_MS),
-      day > 0 ? run.fetchBoard(day - 1, SEASON.awakenMs + (day - 1) * DAY_MS) : null,
+      run.fetchBoard(day),
+      day > 0 ? run.fetchBoard(day - 1) : null,
     ]);
     if (epoch.current !== mine) return;
     if (today) setBoard(today);
@@ -462,7 +460,7 @@ export function useGame(): GameModel {
       return sum;
     };
     const size = communitySize(before(rampageDay));
-    const nextMidnight = SEASON.startMs + (dayIndexAt(now, SEASON) + 1) * DAY_MS;
+    const nextMidnight = dayStartMs(SEASON, dayIndexAt(now, SEASON) + 1);
     return {
       day: rampageDay,
       venue: venueFor(rampageDay),
@@ -496,16 +494,11 @@ export function useGame(): GameModel {
         peak: result.peak,
         powers: result.powers.length,
       });
-      // The village's tally counts the rubble before the player's own upgrades multiplied it; the
-      // day's board, the run's own score.
+      // The village's tally and the day's board both count the rubble before Rubble Value
+      // multiplied it: the board is the day's best rampage, not the biggest purse of upgrades.
       const [how] = await Promise.all([
         run.recordRubble(SEASON.id, d, rubbleBand(result.baseRubble)),
-        run.submitScore(
-          d,
-          dayStart(d),
-          result.rubble,
-          storyRun(saveRef.current.rampage.levels).seconds,
-        ),
+        run.submitScore(d, result.baseRubble, storyRun(saveRef.current.rampage.levels).seconds),
       ]);
       void refreshRubble();
       void refreshBoard();
@@ -568,12 +561,7 @@ export function useGame(): GameModel {
       if (!(await run.signIn())) return 'guest' as const;
       const d = Math.max(0, rampageDay);
       const how = await run.recordRubble(SEASON.id, d, rubbleBand(result.baseRubble));
-      await run.submitScore(
-        d,
-        dayStart(d),
-        result.rubble,
-        storyRun(saveRef.current.rampage.levels).seconds,
-      );
+      await run.submitScore(d, result.baseRubble, storyRun(saveRef.current.rampage.levels).seconds);
       void refreshRubble();
       void refreshBoard();
       return how;

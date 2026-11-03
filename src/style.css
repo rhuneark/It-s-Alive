@@ -3964,7 +3964,9 @@ button,
 
 .day-board-wait,
 .day-board-mine,
-.day-board-champ {
+.day-board-rule,
+.day-board-champ,
+.rampage-board-score {
   font-size: 14px;
   color: var(--parchment-dim);
 }
@@ -4039,4 +4041,13 @@ button,
 
 .daily-note b {
   color: #ffd24a;
+}
+
+.rampage-board-score {
+  text-align: center;
+}
+
+.rampage-board-score b {
+  font-family: var(--font-title);
+  color: #fff4ea;
 }

@@ -9,17 +9,18 @@ import {
   streakToday,
   topOf,
 } from './daily';
-import { DAY_MS, SEASON } from './schedule';
+import { SEASON, dayStartMs } from './schedule';
 import { claimDaily, newSave, parseSave } from './state';
 
 describe("the day's board", () => {
   it('gives every game day a board of its own, even across the ends of months', () => {
     const used = new Map<string, number>();
     for (let d = 0; d < 800; d++) {
-      const start = SEASON.startMs + d * DAY_MS;
+      // real Central midnights: 05:00 UTC in daylight time, 06:00 UTC in standard time
+      const start = dayStartMs(SEASON, d);
       const mode = boardMode(start);
       expect(BOARD_MODES).toContain(mode);
-      for (const t of boardInstances(start)) {
+      for (const t of boardInstances(start, dayStartMs(SEASON, d + 1))) {
         const at = new Date(t);
         const key = `${mode}@${at.getUTCFullYear()}-${at.getUTCMonth()}`;
         // a mode's monthly instance holds one game day only
@@ -30,9 +31,12 @@ describe("the day's board", () => {
     expect(new Set(BOARD_MODES).size).toBe(62);
     // Halloween (it starts 05:00 UTC on Oct 31), and its small hours run into November
     const halloween = Date.UTC(2026, 9, 31, 5);
+    const nov1 = Date.UTC(2026, 10, 1, 5);
+    const nov2 = Date.UTC(2026, 10, 2, 6); // standard time from Nov 1: midnight is 06:00 UTC
     expect(boardMode(halloween)).toBe('m31b');
-    expect(boardInstances(halloween)).toHaveLength(2);
-    expect(boardInstances(halloween + DAY_MS)).toHaveLength(1);
+    expect(boardInstances(halloween, nov1)).toHaveLength(2);
+    expect(boardInstances(nov1, nov2)).toHaveLength(1);
+    expect(boardMode(nov2)).toBe('m2a');
   });
 
   it('shows each player once, at their best, biggest first', () => {
