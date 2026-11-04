@@ -286,7 +286,10 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
     is played by a bot. Ticks every `TICK_MS` 50; a snapshot every 2nd tick (fighters packed 6
     numbers each, power-ups, packed events incl. every smash, what was rebuilt); `over` with the
     standings. If the live join fails (guest, offline, service down) the battle is OFFLINE vs bots
-    on the phone with the same host (`localBattle`), and says so.
+    on the phone with the same host (`localBattle`), and says so. Its ticks follow real time: a
+    busy phone fires the 50 ms timer late, so each call runs the ticks owed (up to 10); before
+    Nov 4 one tick per call played battles in slow motion on a slow device (the e2e's 8 s battle
+    took ~25 s).
   - `Arena` (`BATTLE_SECONDS` 60; owner: "back to 60 seconds"): each creature is a `Beast` on one shared `Field` (rampageRun.ts:
     the story's own creature code, so claws, powers and growth match). A creature devours another up
     to `EAT_RATIO` 0.8 of its might when it reaches it (gains 60% of its mass); the devoured comes
@@ -317,6 +320,17 @@ rules above it). The mode tiles' icons are pixel bitmaps (`PixelArt` in App.tsx)
   Stride, Born Bigger, More Time (+5 s). `storyRun(levels)` gives the run's start size, seconds and
   `Boost`. The village's tally counts a run's `baseRubble` (before Rubble Value), so upgrades never
   inflate the community's growth.
+- TRAILER (owner's request, Nov 4): a 30 s vertical MP4 (1080x1920, H.264 + AAC, RUN's ad video
+  spec is MP4, 15-30 s, under 100 MB), cut from real dev-build footage with the owner's theme from
+  2:00.6 (a quiet dip under the title and the storm, the hit on IT'S ALIVE!). Tools in
+  `tools/trailer/`: `capture.mjs` (records scenes over CDP screencast, each frame with its game
+  time; see its header for the commands), `assemble.py` (30 fps clips and contact sheets),
+  `cards.mjs` (captions in Pixelify Sans), `edit.py` (the shot list, captions, music). The footage
+  shows the community's REAL creature through the mock-only `?winners=live` (run.ts
+  `LIVE_WINNERS`: werewolf head, unicorn horn, hare ears, lunatic brain, bloodshot eye, bat wings,
+  dragon spines, jester head, ribcage, wolf eye, vampire heart, lamprey mouth, blacksmith arm,
+  werewolf claw, witch's arm, bear leg, chicken leg, scorpion tail, lightning). The video itself is
+  not in git (36 MB).
 - Build stamp (`__BUILD__`, set in vite.config.ts) shows at the bottom of every screen. Tapping it 5 times
   opens the hidden Diagnostics panel: sign-in, music file/player/output and the last music error, plus
   Sign in / Try music again buttons. Use it to debug on a phone.
@@ -358,6 +372,7 @@ art/           NOT shipped: picks.json, picked/ (chosen scene-sized paintings, h
                raw/ (git-ignored candidates)
 tools/art/     husk.py (inpaint/edit parts into the husk), process.py (layers), pixellab.py, prompts.py,
                props.py (rampage props), ui_frames.py (the pixel UI's 9-slice frames)
+tools/trailer/ the trailer: capture.mjs, assemble.py, cards.mjs, edit.py
 src/assets/ui/ the pixel UI's frames (tiny PNGs, inlined into the CSS)
 scripts/       simulate.ts (Monte-Carlo checks), shot.mjs (dev screenshots)
 e2e/           Playwright full-season playthrough at 375x667 and 390x844

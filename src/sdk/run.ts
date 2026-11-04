@@ -306,6 +306,20 @@ export async function castVote(season: string, day: number, optionId: string): P
   }
 }
 
+/**
+ * Mock only: `?winners=<option id>,…` makes those options win their nights in the stand-in
+ * tallies (`?winners=live` is the community's real creature), for trailers and screenshots.
+ */
+const LIVE_WINNERS =
+  'head_werewolf,torso_ribcage,arm_blacksmith,leg_rooster,eye_human,arm_werewolf,leg_bear,' +
+  'heart_vampire,tail_scorpion,horns_unicorn,maw_lamprey,wings_bat,head2_jester,eye_wolf,' +
+  'spine_dragon,arm3_witch,ears_hare,brain_lunatic,spark_lightning';
+function devWinners(): Set<string> {
+  if (!isMock() || typeof window === 'undefined') return new Set();
+  const raw = new URLSearchParams(window.location.search).get('winners') ?? '';
+  return new Set((raw === 'live' ? LIVE_WINNERS : raw).split(',').filter(Boolean));
+}
+
 /** Shared vote counts for one day, in option order. Null if any count could not be read. */
 export async function fetchCounts(
   season: string,
@@ -316,7 +330,8 @@ export async function fetchCounts(
   if (sandboxed()) {
     const crowd = simulatedCrowd(`${season}:${day}`, optionIds.length);
     const mine = (await readDevVotes())[String(day)] ?? {};
-    return optionIds.map((id, i) => crowd[i]! + (mine[id] ?? 0));
+    const forced = devWinners();
+    return optionIds.map((id, i) => crowd[i]! + (mine[id] ?? 0) + (forced.has(id) ? 400 : 0));
   }
   try {
     const results = await Promise.all(

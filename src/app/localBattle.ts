@@ -7,6 +7,9 @@ import { BattleHost } from '../game/battleHost';
 import { TICK_MS, type BattleProtocol } from '../game/battleWire';
 import type { BattleLink } from '../sdk/run';
 
+/** The most ticks one late timer call runs (half a second of battle). */
+const MAX_CATCH_UP = 10;
+
 export function localBattle(seconds?: number): BattleLink {
   const host = new BattleHost(`offline:${Date.now()}:${Math.random()}`, seconds, 2.5);
   const you = 'you';
@@ -21,8 +24,20 @@ export function localBattle(seconds?: number): BattleLink {
         if (!joined) return;
         deliver(joined.match);
         joined.all.forEach(deliver);
+        // Ticks follow real time: a busy phone fires the timer late, so it catches up (at most
+        // MAX_CATCH_UP ticks at once) instead of playing the battle in slow motion.
+        let last = performance.now();
+        let owed = 0;
         timer ??= setInterval(() => {
-          host.tick().forEach(deliver);
+          const now = performance.now();
+          owed += now - last;
+          last = now;
+          for (let n = 0; owed >= TICK_MS && n < MAX_CATCH_UP; n++) {
+            owed -= TICK_MS;
+            host.tick().forEach(deliver);
+            if (host.phase === 'over') break;
+          }
+          owed = Math.min(owed, TICK_MS);
           if (host.phase === 'over' && timer) {
             clearInterval(timer);
             timer = null;
