@@ -515,7 +515,9 @@ npm run test:e2e         # Playwright: whole season at 375x667 and 390x844
   and makes it public on approval. 1.30.0 (commit ba1c7ff: the painted home street and the cleaner
   Awaken sheet) was submitted the same way at 05:07 UTC, and 1.31.0 (commit 66da254: villagers who
   fight back, the pixel UI and the oozing Awaken button) at 18:51 UTC, and 1.33.0 (commit 376f9f1:
-  60-second battles and the daily round: venues, the day's top 3, daily rewards) on Nov 1, 01:11 UTC.
+  60-second battles and the daily round: venues, the day's top 3, daily rewards) on Nov 1, 01:11 UTC,
+  and 1.35.0 (commit 696b318: true midnight Central all year, the board scored before Rubble Value,
+  offline battles in real time, the trailer tools) on Nov 4, 14:02 UTC.
   Pushes after that deploy NEW private versions only: a fix
   reaches public players only when the owner asks to publish again (each submission must be a higher
   version and goes through review). Name, tags and description are set game-wide on each deploy.
